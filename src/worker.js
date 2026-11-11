@@ -2,7 +2,7 @@
 // commands from the panels, saves the result and tells the panels it changed.
 // It only ever asks the browser for three things: open, focus or close a tab.
 
-import { addNode, descendantsOf, moveNode, newId, treeFor, validTree } from './model.js';
+import { addNode, descendantsOf, isGroup, isNote, migrate, moveNode, newId, treeFor, validTree } from './model.js';
 import { QUIET, ops } from './ops.js';
 import * as core from './core.js';
 
@@ -59,11 +59,11 @@ const reconcile = async () => core.reconcile(state, await allTabs(), (tab) => wi
 async function init() {
   const { library } = await chrome.storage.local.get('library');
   const { session } = await chrome.storage.session.get('session');
-  if (library) state.library = library;
+  if (library) state.library = migrate(library);
   if (session) ({ binding: state.binding, windows: state.windows, undo, redo } = session);
   log('init:', library ? 'library loaded' : 'new library', '|', session ? 'same session' : 'new session');
   const keepFrom = Date.now() - TRASH_DAYS * 24 * 3600 * 1000;
-  state.library.trash = (state.library.trash ?? []).filter((entry) => entry.at > keepFrom);
+  state.library.trash = state.library.trash.filter((entry) => entry.at > keepFrom);
   await reconcile();
 }
 
@@ -145,19 +145,17 @@ async function settle() {
 async function change(name, args) {
   if (!ops[name]) return log('unknown op', name);
   const before = JSON.stringify(state.library);
-  ops[name](state.library, args);
+  const effect = ops[name](state.library, args, Date.now()) ?? {};
   if (!QUIET.has(name) && JSON.stringify(state.library) !== before) {
     undo.push(before);
     redo = [];
     while (undo.length > UNDO_STEPS || undo.join('').length > UNDO_BYTES) undo.shift();
   }
-  // A deleted tree takes its nodes along, but not the tabs: they become nodes of another tree.
-  if (name === 'tree-remove') await reconcile();
+  // What the operation asks of the browser (see ops.js).
+  if (effect.keepTabs) await reconcile();
   else await settle();
-  if (name === 'address') {
-    const tabId = core.tabOf(state, args.id);
-    if (tabId !== undefined) await chrome.tabs.update(tabId, { url: state.library.nodes[args.id].url });
-  }
+  const tabId = core.tabOf(state, effect.navigate);
+  if (tabId !== undefined) await chrome.tabs.update(tabId, { url: state.library.nodes[effect.navigate].url });
 }
 
 /** Steps the library back (or forward again). Open tabs stay open and find their nodes anew. */
@@ -179,7 +177,7 @@ async function activate({ nodeId, treeId, windowId, where }) {
   const tree = treeFor(state.library, nodeId, treeId);
   let tabId = core.tabOf(state, nodeId);
   if (tabId === undefined) {
-    const url = node.note !== undefined ? chrome.runtime.getURL(`${core.NOTE_PAGE}?id=${nodeId}`) : node.url;
+    const url = isNote(node) ? chrome.runtime.getURL(core.notePath(nodeId)) : node.url;
     const tab = await chrome.tabs.create({ windowId, url: core.isBlank(url) ? undefined : url, active: !where });
     tabId = tab.id;
     // Before its "created" event is handled, so no second node appears.
@@ -236,9 +234,10 @@ async function handle(message, sender) {
       const tree = library.trees[message.treeId];
       const ids = message.ids.flatMap((id) => [id, ...descendantsOf(tree, id)]);
       for (const nodeId of new Set(ids)) {
-        const node = library.nodes[nodeId];
-        const group = node.note !== undefined && !node.note.trim(); // A heading: nothing to open.
-        if (!group && core.tabOf(state, nodeId) === undefined) await activate({ ...message, nodeId, where: 'background' });
+        // A group is a heading: nothing to open.
+        if (!isGroup(library.nodes[nodeId]) && core.tabOf(state, nodeId) === undefined) {
+          await activate({ ...message, nodeId, where: 'background' });
+        }
       }
       return;
     }

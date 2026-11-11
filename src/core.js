@@ -16,6 +16,8 @@ import {
   addNode,
   createLibrary,
   inTree,
+  isGroup,
+  isNote,
   kidsOf,
   moveNode,
   newId,
@@ -28,13 +30,14 @@ import {
 
 export const createState = () => ({ library: createLibrary(), binding: {}, windows: {} });
 
+/** The address of the page that shows a note. */
+export const notePath = (id) => `src/note/note.html?id=${id}`;
+
 const BLANK = ['', 'about:blank', 'chrome://newtab/', 'chrome://new-tab-page/'];
 export const isBlank = (url) => BLANK.includes(url ?? '');
 
 const urlOf = (tab) => tab.pendingUrl || tab.url || '';
 
-/** A note is shown by our own page; its address names the note. */
-export const NOTE_PAGE = 'src/note/note.html';
 const noteIdIn = (url) => url.match(/\/src\/note\/note\.html\?id=([\w-]+)/)?.[1];
 
 /** The open tab showing `nodeId`, if any. */
@@ -63,10 +66,10 @@ function sleeperAt(state, url) {
  */
 function dropIfEmpty(library, id) {
   const node = library.nodes[id];
-  if (!node || node.name || (node.note === undefined ? !isBlank(node.url) : node.note.trim())) return false;
+  if (!node || node.name || (isNote(node) ? !isGroup(node) : !isBlank(node.url))) return false;
   const trees = Object.values(library.trees).filter((tree) => inTree(tree, id));
   if (trees.some((tree) => kidsOf(tree, id).length)) return false;
-  for (const tree of trees) removeNode(library, tree.id, id, false);
+  for (const tree of trees) removeNode(library, tree.id, id);
   return true;
 }
 
@@ -128,7 +131,7 @@ export function tabChanged(state, tab) {
   const { library, binding } = state;
   const bound = binding[tab.id];
   const node = library.nodes[bound?.node];
-  if (!node || node.note !== undefined) return;
+  if (!node || isNote(node)) return;
   const url = urlOf(tab);
   // An empty new tab taken to the address of a sleeping node wakes that node.
   // (A tab the user placed under another node stays where it was put.)

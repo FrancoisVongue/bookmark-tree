@@ -26,6 +26,16 @@ export function createLibrary() {
 
 export const newId = () => crypto.randomUUID();
 
+/** What a node is. A note without text is a group: a heading for the nodes under it. */
+export const isNote = (node) => node.note !== undefined;
+export const isGroup = (node) => isNote(node) && !node.note.trim();
+
+/** Brings a library saved by an older version to today's shape. The one place that knows old shapes. */
+export function migrate(library) {
+  library.trash ??= [];
+  return library;
+}
+
 /** The children of `id` (or of ROOT), in order. */
 export const kidsOf = (tree, id) => tree.children[id] ?? [];
 
@@ -105,21 +115,25 @@ export function moveNode(library, treeId, id, target, position) {
   return true;
 }
 
-/** Forgets nodes that no tree holds. With `keep` they go to the trash; without, for good. */
-export function forgetLoose(library, keep = true) {
+/**
+ * Forgets nodes that no tree holds. Given the time `at`, they go to the
+ * trash, stamped with it; without it they are gone for good.
+ */
+export function forgetLoose(library, at) {
   const held = new Set(Object.values(library.trees).flatMap((tree) => Object.values(tree.children).flat()));
   for (const id in library.nodes) {
     if (held.has(id)) continue;
-    if (keep) (library.trash ??= []).push({ node: library.nodes[id], at: Date.now() });
+    if (at !== undefined) library.trash.push({ node: library.nodes[id], at });
     delete library.nodes[id];
   }
 }
 
 /**
  * Takes `id` out of the tree; its children move up into its place. Once no
- * tree holds the node it goes to the trash (or, without `keep`, is gone).
+ * tree holds the node it goes to the trash, stamped `at` (or, without a
+ * time, is gone for good).
  */
-export function removeNode(library, treeId, id, keep = true) {
+export function removeNode(library, treeId, id, at) {
   const tree = library.trees[treeId];
   if (!inTree(tree, id)) return false;
   const kids = kidsOf(tree, id);
@@ -127,7 +141,7 @@ export function removeNode(library, treeId, id, keep = true) {
   if (kids.length) insert(tree, parent, index, kids);
   delete tree.children[id];
   delete tree.collapsed[id];
-  if (!Object.values(library.trees).some((t) => inTree(t, id))) forgetLoose(library, keep);
+  if (!Object.values(library.trees).some((t) => inTree(t, id))) forgetLoose(library, at);
   return true;
 }
 

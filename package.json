@@ -3,6 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "test:browser": "for f in test/browser/*.mjs; do node $f || exit 1; done"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.50.0"
   }
 }

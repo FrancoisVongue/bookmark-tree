@@ -2,7 +2,7 @@
 
 import { html, render, nothing } from '../vendor/lit-html/lit-html.js';
 import { repeat } from '../vendor/lit-html/directives/repeat.js';
-import { descendantsOf, parentOf } from '../model.js';
+import { descendantsOf, isGroup, isNote, parentOf } from '../model.js';
 import { t } from '../i18n.js';
 
 const svg = (path) => html`<svg viewBox="0 0 20 20" width="16" height="16"><path d=${path} /></svg>`;
@@ -55,9 +55,6 @@ function faviconOf(url) {
   return `${chrome.runtime.getURL('/_favicon/')}?pageUrl=${encodeURIComponent(url)}&size=32`;
 }
 
-export const isNote = (node) => node.note !== undefined;
-/** A note without text is a heading for the nodes under it. */
-export const isGroup = (node) => isNote(node) && !node.note.trim();
 const firstLine = (text) => text.split('\n').find((line) => line.trim())?.replace(/^[#>\-*\s[\]x]+/, '').trim();
 
 export const titleOf = (node) =>
@@ -79,7 +76,7 @@ const act = (action, icon, title, more = '') =>
 function rowView(row, pane, ui, holder, included) {
   const node = ui.library.nodes[row.id];
   if (!node) return '';
-  const picking = pane === ui.picker;
+  const picking = pane === ui.overlay;
   const live = ui.live.has(row.id);
   const drop = ui.drop?.pane === pane && ui.drop.targetId === row.id && ui.drop.position;
   const shared = ui.shared.get(row.id);
@@ -94,7 +91,7 @@ function rowView(row, pane, ui, holder, included) {
     row.kids && 'parent',
     row.collapsed && 'collapsed',
     node.home && 'pinned',
-    ui.drag?.from === pane.tree && ui.drag.ids.includes(row.id) && 'dragging',
+    ui.drag?.kind === 'rows' && ui.drag.from === pane.tree && ui.drag.ids.includes(row.id) && 'dragging',
     drop && `drop-${drop}`,
   ];
   const title = titleOf(node);
@@ -143,7 +140,7 @@ function holderOf(pane, ui) {
 /** One tree. The same view serves the panes of the panel and the picker. */
 function paneView(pane, index, ui) {
   const holder = holderOf(pane, ui);
-  const picking = pane === ui.picker;
+  const picking = pane === ui.overlay;
   const focused = pane === ui.panes[ui.focus];
   const tree = ui.library.trees[pane.tree];
   // In the picker a chosen node brings its subtree along: show that.
@@ -198,18 +195,19 @@ const dialog = (content, more = '') =>
   html`<div class="overlay" data-action="overlay-close"><div class="dialog ${more}">${content}</div></div>`;
 
 function pickerView(ui) {
-  const { pane, id } = ui.picker.into;
+  const picker = ui.overlay;
+  const { pane, id } = picker.into;
   const where = id ? t('addInto', titleOf(ui.library.nodes[id])) : t('addToEnd', ui.library.trees[pane.tree].name);
   const sources = { ...ui, library: { ...ui.library, trees: { ...ui.library.trees } } };
   delete sources.library.trees[pane.tree]; // Not from the tree they go to.
   return dialog(html`
     <h2>${where}</h2>
-    <div class="tabs">${treeTabs(sources, ui.picker.tree, 'picker-tree')}</div>
-    ${paneView(ui.picker, 'picker', ui)}
+    <div class="tabs">${treeTabs(sources, picker.tree, 'picker-tree')}</div>
+    ${paneView(picker, 'picker', ui)}
     <footer>
       <button data-action="overlay-close">${t('cancel')}</button>
-      <button class="primary" data-action="picker-add" ?disabled=${!ui.picker.sel.size}>
-        ${t('addSelected', ui.picker.sel.size)}
+      <button class="primary" data-action="picker-add" ?disabled=${!picker.sel.size}>
+        ${t('addSelected', picker.sel.size)}
       </button>
     </footer>
   `);
@@ -254,7 +252,9 @@ const keysView = () =>
     <footer><button class="primary" data-action="overlay-close">${t('done')}</button></footer>
   `);
 
-/** Draws the panel from `ui` (see panel.js). */
+const OVERLAYS = { picker: pickerView, icons: iconsView, trash: trashView, keys: keysView };
+
+/** Draws the panel from `ui` (see screen.js). */
 export function draw(container, ui) {
   if (!ui.library) return;
   const tool = (action, icon, title, disabled = false) =>
@@ -283,8 +283,7 @@ export function draw(container, ui) {
           </div>`
         : nothing}
       ${ui.drag?.label ? html`<div class="ghost">${ui.drag.label}</div>` : nothing}
-      ${ui.picker ? pickerView(ui) : nothing} ${ui.iconsFor ? iconsView() : nothing}
-      ${ui.dialog === 'trash' ? trashView(ui) : nothing} ${ui.dialog === 'keys' ? keysView() : nothing}
+      ${ui.overlay ? OVERLAYS[ui.overlay.kind](ui) : nothing}
       ${ui.menu ? menuView(ui.menu) : nothing}
     `,
     container,

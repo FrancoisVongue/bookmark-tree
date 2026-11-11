@@ -1,16 +1,22 @@
 // Everything the user can do to the library, by name. A change is a record
-// { op, args } applied by the one owner (the worker); the same record can be
-// logged, undone and replayed. Pure: no Chrome here.
+// { op, args, at } applied by the one owner (the worker). An operation is a
+// function (library, args, at) of nothing else: new ids come in `args`, the
+// time in `at`, so the same record always gives the same result.
+//
+// An operation may return what the browser should do next:
+//   { keepTabs: true }  tabs whose nodes are gone stay open, as new nodes
+//   { navigate: id }    the node's tab, if any, goes to the node's address
+// Pure: no Chrome here.
 
 import {
   ROOT,
   addNode,
   descendantsOf,
   forgetLoose,
+  isNote,
   inTree,
   kidsOf,
   moveNode,
-  newId,
   parentOf,
   placeNode,
   removeNode,
@@ -31,10 +37,10 @@ function link(library, from, to, id, parent = ROOT) {
   for (const kid of kidsOf(library.trees[from], id)) link(library, from, to, kid, id);
 }
 
-/** A copy of `id` and its subtree, with new ids, as the last child of `parent`. */
-function copy(library, tree, id, parent) {
-  const node = addNode(library, tree, { ...structuredClone(library.nodes[id]), id: newId() }, parent);
-  for (const kid of kidsOf(library.trees[tree], id)) copy(library, tree, kid, node.id);
+/** A copy of `id` and its subtree as the last child of `parent`; the copies' ids end in `mark`. */
+function copy(library, tree, id, parent, mark) {
+  const node = addNode(library, tree, { ...structuredClone(library.nodes[id]), id: `${id}-${mark}` }, parent);
+  for (const kid of kidsOf(library.trees[tree], id)) copy(library, tree, kid, node.id, mark);
   return node.id;
 }
 
@@ -58,12 +64,12 @@ export const ops = {
     }
   },
   /** Takes nodes (with subtrees) out of tree `from` and puts them at the end of `tree`. */
-  'move-to'(library, { from, tree, ids }) {
+  'move-to'(library, { from, tree, ids }, at) {
     const source = library.trees[from];
     for (const id of topmost(source, ids)) {
       const all = [id, ...descendantsOf(source, id)];
       link(library, from, tree, id);
-      for (const each of all) removeNode(library, from, each);
+      for (const each of all) removeNode(library, from, each, at);
     }
   },
   /** New sleeping pages ({ id, url, title }), e.g. links pasted or dropped in. */
@@ -87,17 +93,17 @@ export const ops = {
     }
   },
   /** Takes nodes out of this tree only. */
-  remove(library, { tree, ids }) {
-    for (const id of ids) removeNode(library, tree, id);
+  remove(library, { tree, ids }, at) {
+    for (const id of ids) removeNode(library, tree, id, at);
   },
   /** Takes nodes out of every tree. */
-  delete(library, { ids }) {
-    for (const id of ids) for (const tree in library.trees) removeNode(library, tree, id);
+  delete(library, { ids }, at) {
+    for (const id of ids) for (const tree in library.trees) removeNode(library, tree, id, at);
   },
-  duplicate(library, { tree, ids }) {
+  duplicate(library, { tree, ids }, at) {
     for (const id of ids) {
       if (!library.nodes[id] || !inTree(library.trees[tree], id)) continue;
-      moveNode(library, tree, copy(library, tree, id), id, 'after');
+      moveNode(library, tree, copy(library, tree, id, undefined, at.toString(36)), id, 'after');
     }
   },
   collapse(library, { tree, id, collapsed }) {
@@ -110,9 +116,10 @@ export const ops = {
   /** A sleeping page's address, typed by hand. */
   address(library, { id, url }) {
     const node = library.nodes[id];
-    if (!node || node.note !== undefined || !url?.trim()) return;
+    if (!node || isNote(node) || !url?.trim()) return;
     node.url = url.trim();
     if (node.home) node.home = { url: node.url, title: node.title };
+    return { navigate: id };
   },
   rename(library, { id, name }) {
     renameNode(library, id, name);
@@ -128,7 +135,7 @@ export const ops = {
   pin(library, { ids, pinned }) {
     for (const id of ids) {
       const node = library.nodes[id];
-      if (!node || node.note !== undefined) continue;
+      if (!node || isNote(node)) continue;
       if (pinned) node.home = { url: node.url, title: node.title };
       else delete node.home;
     }
@@ -139,7 +146,7 @@ export const ops = {
     if (target) moveNode(library, tree, id, target, position);
   },
   'note-text'(library, { id, text }) {
-    if (library.nodes[id]?.note !== undefined) library.nodes[id].note = text;
+    if (library.nodes[id] && isNote(library.nodes[id])) library.nodes[id].note = text;
   },
   'tree-add'(library, { id, name }) {
     library.trees[id] = { id, name, children: {}, collapsed: {} };
@@ -147,10 +154,11 @@ export const ops = {
   'tree-rename'(library, { tree, name }) {
     if (name?.trim()) library.trees[tree].name = name.trim();
   },
-  'tree-remove'(library, { tree }) {
+  'tree-remove'(library, { tree }, at) {
     if (Object.keys(library.trees).length < 2) return;
     delete library.trees[tree];
-    forgetLoose(library);
+    forgetLoose(library, at);
+    return { keepTabs: true };
   },
   /** Moves a tree `by` places among the trees (-1: left, 1: right). */
   'tree-move'(library, { tree, by }) {
@@ -173,7 +181,7 @@ export const ops = {
   import(library, { id, data }) {
     for (const node of Object.values(data.nodes)) library.nodes[node.id] ??= node;
     library.trees[id] = { ...data.tree, id, name: freeName(library, data.tree.name) };
-    forgetLoose(library, false);
+    forgetLoose(library);
   },
 };
 
