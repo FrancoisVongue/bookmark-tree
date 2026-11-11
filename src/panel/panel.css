@@ -50,6 +50,7 @@ svg {
 }
 
 #app {
+  user-select: none;
   display: flex;
   flex-direction: column;
   height: 100%;

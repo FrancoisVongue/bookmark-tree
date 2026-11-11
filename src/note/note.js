@@ -15,8 +15,7 @@ const editor = new Editor({
     StarterKit,
     TaskList,
     TaskItem.configure({ nested: true }),
-    // Links open in a new tab, which becomes a child of the note in the tree.
-    Link.configure({ openOnClick: true, autolink: true, HTMLAttributes: { target: '_blank', rel: 'noopener' } }),
+    Link.configure({ openOnClick: false, autolink: true }),
     Placeholder.configure({ placeholder: t('notePlaceholder') }),
     Markdown.configure({ linkify: true, transformPastedText: true }),
   ],
@@ -55,6 +54,14 @@ async function load() {
   editor.commands.setContent(node.note, false);
   name();
 }
+
+// A link opens in a new tab, which becomes a child of the note in the tree.
+document.getElementById('note').addEventListener('click', (event) => {
+  const link = event.target.closest('a[href]');
+  if (!link) return;
+  event.preventDefault();
+  send({ type: 'open-link', url: link.href });
+});
 
 // Leaving the page must not lose the last words typed.
 addEventListener('pagehide', save);

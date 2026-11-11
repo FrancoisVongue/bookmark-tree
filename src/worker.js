@@ -202,7 +202,7 @@ async function newTab({ windowId, treeId, nodeId, as }) {
   state.binding[tab.id] = { node: node.id, tree: treeId };
 }
 
-async function handle(message) {
+async function handle(message, sender) {
   const { library } = state;
   switch (message.type) {
     case 'get-state': {
@@ -255,6 +255,13 @@ async function handle(message) {
       else await chrome.tabs.update(tabId, { url: node.home.url });
       return;
     }
+    case 'open-link': {
+      // A link clicked in a note: a new tab, and a child of the note.
+      const from = sender.tab;
+      const tab = await chrome.tabs.create({ url: message.url, windowId: from.windowId, index: from.index + 1 });
+      core.tabOpened(state, tab, from.id);
+      return;
+    }
     case 'show-tree':
       // The tree this window's panel shows: where its new tabs go.
       state.windows[message.windowId] = message.treeId;
@@ -264,7 +271,7 @@ async function handle(message) {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'changed') return;
   if (message.type !== 'get-state') log('command', message);
-  enqueue(message.op ?? message.type, () => handle(message)).then(sendResponse);
+  enqueue(message.op ?? message.type, () => handle(message, sender)).then(sendResponse);
   return true;
 });
 
