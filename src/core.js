@@ -57,13 +57,16 @@ function sleeperAt(state, url) {
   );
 }
 
-/** An empty new tab the user did nothing with: no name, no children. Returns whether it was dropped. */
+/**
+ * A new tab or a new note the user did nothing with: no address or text, no
+ * name, no children. It leaves no trace. Returns whether it was dropped.
+ */
 function dropIfEmpty(library, id) {
   const node = library.nodes[id];
-  if (!node || node.note !== undefined || !isBlank(node.url) || node.name) return false;
+  if (!node || node.name || (node.note === undefined ? !isBlank(node.url) : node.note.trim())) return false;
   const trees = Object.values(library.trees).filter((tree) => inTree(tree, id));
   if (trees.some((tree) => kidsOf(tree, id).length)) return false;
-  for (const tree of trees) removeNode(library, tree.id, id);
+  for (const tree of trees) removeNode(library, tree.id, id, false);
   return true;
 }
 
@@ -152,8 +155,7 @@ export function tabClosed(state, tabId) {
   const id = binding[tabId]?.node;
   delete binding[tabId];
   const node = library.nodes[id];
-  if (!node || node.note !== undefined) return;
-  if (node.home) Object.assign(node, node.home);
+  if (node?.home) Object.assign(node, node.home);
   dropIfEmpty(library, id);
 }
 

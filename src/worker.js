@@ -14,6 +14,7 @@ let undo = [];
 let redo = [];
 const UNDO_STEPS = 50;
 const UNDO_BYTES = 4_000_000;
+const TRASH_DAYS = 30;
 // Tabs whose node was just made top-level: if the browser then reports the
 // page that opened them, the node moves under it.
 const fresh = new Set();
@@ -61,6 +62,8 @@ async function init() {
   if (library) state.library = library;
   if (session) ({ binding: state.binding, windows: state.windows, undo, redo } = session);
   log('init:', library ? 'library loaded' : 'new library', '|', session ? 'same session' : 'new session');
+  const keepFrom = Date.now() - TRASH_DAYS * 24 * 3600 * 1000;
+  state.library.trash = (state.library.trash ?? []).filter((entry) => entry.at > keepFrom);
   await reconcile();
 }
 
@@ -90,6 +93,8 @@ chrome.webNavigation.onCreatedNavigationTarget.addListener(({ tabId, sourceTabId
 });
 
 chrome.tabs.onUpdated.addListener((tabId, change, tab) => {
+  // Sound is not part of the state: the panels just look again.
+  if (change.audible !== undefined) chrome.runtime.sendMessage({ type: 'changed' }).catch(() => {});
   if (change.url === undefined && change.title === undefined) return;
   enqueue('tab updated', () => core.tabChanged(state, tab));
 });
@@ -146,7 +151,13 @@ async function change(name, args) {
     redo = [];
     while (undo.length > UNDO_STEPS || undo.join('').length > UNDO_BYTES) undo.shift();
   }
-  await settle();
+  // A deleted tree takes its nodes along, but not the tabs: they become nodes of another tree.
+  if (name === 'tree-remove') await reconcile();
+  else await settle();
+  if (name === 'address') {
+    const tabId = core.tabOf(state, args.id);
+    if (tabId !== undefined) await chrome.tabs.update(tabId, { url: state.library.nodes[args.id].url });
+  }
 }
 
 /** Steps the library back (or forward again). Open tabs stay open and find their nodes anew. */
@@ -157,22 +168,29 @@ async function stepBack(from, to) {
   await reconcile();
 }
 
-/** Goes to a node's tab, opening one (in the panel's window) if the node is asleep. */
-async function activate({ nodeId, treeId, windowId }) {
+/**
+ * Goes to a node's tab, opening one if the node is asleep. `where` is the
+ * panel's window by default, 'background' (open without going there) or
+ * 'window' (a window of its own).
+ */
+async function activate({ nodeId, treeId, windowId, where }) {
   const node = state.library.nodes[nodeId];
   if (!node) return;
-  const tabId = core.tabOf(state, nodeId);
-  if (tabId !== undefined) {
+  const tree = treeFor(state.library, nodeId, treeId);
+  let tabId = core.tabOf(state, nodeId);
+  if (tabId === undefined) {
+    const url = node.note !== undefined ? chrome.runtime.getURL(`${core.NOTE_PAGE}?id=${nodeId}`) : node.url;
+    const tab = await chrome.tabs.create({ windowId, url: core.isBlank(url) ? undefined : url, active: !where });
+    tabId = tab.id;
+    // Before its "created" event is handled, so no second node appears.
+    state.binding[tabId] = { node: nodeId, tree };
+    log('woke node', nodeId, 'as tab', tabId);
+  } else if (!where) {
     const tab = await chrome.tabs.update(tabId, { active: true });
     if (tab.windowId !== windowId) await chrome.windows.update(tab.windowId, { focused: true });
-    state.binding[tabId].tree = treeFor(state.library, nodeId, treeId);
-    return;
+    state.binding[tabId].tree = tree;
   }
-  const url = node.note !== undefined ? chrome.runtime.getURL(`${core.NOTE_PAGE}?id=${nodeId}`) : node.url;
-  const tab = await chrome.tabs.create({ windowId, url: core.isBlank(url) ? undefined : url });
-  // Before its "created" event is handled, so no second node appears.
-  state.binding[tab.id] = { node: nodeId, tree: treeFor(state.library, nodeId, treeId) };
-  log('woke node', nodeId, 'as tab', tab.id);
+  if (where === 'window') await chrome.windows.create({ tabId });
 }
 
 /** Opens an empty tab as a new node: top-level, or a child / next sibling of `nodeId`. */
@@ -187,8 +205,16 @@ async function newTab({ windowId, treeId, nodeId, as }) {
 async function handle(message) {
   const { library } = state;
   switch (message.type) {
-    case 'get-state':
-      return { library, binding: state.binding, canUndo: undo.length > 0, canRedo: redo.length > 0 };
+    case 'get-state': {
+      const audible = await chrome.tabs.query({ audible: true });
+      return {
+        library,
+        binding: state.binding,
+        audible: audible.map((tab) => state.binding[tab.id]?.node).filter(Boolean),
+        canUndo: undo.length > 0,
+        canRedo: redo.length > 0,
+      };
+    }
     case 'op':
       return change(message.op, message.args);
     case 'undo':
@@ -204,6 +230,17 @@ async function handle(message) {
       const tree = library.trees[message.treeId];
       const ids = message.ids.flatMap((id) => [id, ...descendantsOf(tree, id)]);
       return closeTabs(ids.map((id) => core.tabOf(state, id)).filter((id) => id !== undefined));
+    }
+    case 'wake': {
+      // The opposite: opens the sleeping ones among the nodes and everything under them.
+      const tree = library.trees[message.treeId];
+      const ids = message.ids.flatMap((id) => [id, ...descendantsOf(tree, id)]);
+      for (const nodeId of new Set(ids)) {
+        const node = library.nodes[nodeId];
+        const group = node.note !== undefined && !node.note.trim(); // A heading: nothing to open.
+        if (!group && core.tabOf(state, nodeId) === undefined) await activate({ ...message, nodeId, where: 'background' });
+      }
+      return;
     }
     case 'sleep-one': {
       const tabId = core.tabOf(state, message.nodeId);

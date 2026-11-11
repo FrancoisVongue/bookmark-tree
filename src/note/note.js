@@ -1,70 +1,63 @@
-// A note's page: shows the note as formatted text, or lets the user edit its
-// markdown. The text lives in the library; this page only sends changes.
+// A note's page. The note is written the way it looks: typing markdown
+// ("# ", "- ", "[ ] ", "**bold**") turns into formatting at once. The text
+// lives in the library as markdown; this page only sends changes.
 
-import { marked } from '../vendor/marked/marked.js';
+import { Editor, Link, Markdown, Placeholder, StarterKit, TaskItem, TaskList } from '../vendor/tiptap/tiptap.js';
 import { t } from '../i18n.js';
 
 const log = (...args) => console.log('[tree note]', ...args);
 const id = new URLSearchParams(location.search).get('id');
-const text = document.getElementById('text');
-const shown = document.getElementById('shown');
-const toggle = document.getElementById('toggle');
-let editing = false;
-
 const send = (message) => chrome.runtime.sendMessage(message).catch((error) => log('failed', message.type, error.message));
 
-/** Markdown as page content, without anything that could run. */
-function show(markdown) {
-  const page = new DOMParser().parseFromString(marked.parse(markdown), 'text/html');
-  for (const el of page.querySelectorAll('script, style, iframe, object, embed, link, meta, form')) el.remove();
-  for (const el of page.querySelectorAll('*')) {
-    for (const { name, value } of [...el.attributes]) {
-      if (name.startsWith('on') || /^\s*javascript:/i.test(value)) el.removeAttribute(name);
-    }
-  }
-  shown.replaceChildren(...page.body.childNodes);
+const editor = new Editor({
+  element: document.getElementById('note'),
+  extensions: [
+    StarterKit,
+    TaskList,
+    TaskItem.configure({ nested: true }),
+    // Links open in a new tab, which becomes a child of the note in the tree.
+    Link.configure({ openOnClick: true, autolink: true, HTMLAttributes: { target: '_blank', rel: 'noopener' } }),
+    Placeholder.configure({ placeholder: t('notePlaceholder') }),
+    Markdown.configure({ linkify: true, transformPastedText: true }),
+  ],
+  autofocus: 'end',
+  onUpdate: () => {
+    name();
+    clearTimeout(timer);
+    timer = setTimeout(save, 400);
+  },
+});
+
+let timer;
+let saved; // The text as the library has it, as far as this page knows.
+const text = () => editor.storage.markdown.getMarkdown();
+
+function save() {
+  clearTimeout(timer);
+  if (text() === saved) return;
+  saved = text();
+  send({ type: 'op', op: 'note-text', args: { id, text: saved } });
 }
 
-function draw() {
-  text.hidden = !editing;
-  shown.hidden = editing;
-  toggle.textContent = t(editing ? 'done' : 'edit');
-  if (!editing) show(text.value || t('emptyNote'));
-  const title = text.value.split('\n').find((line) => line.trim())?.replace(/^#+\s*/, '');
-  document.title = title || t('note');
+/** The tab is called what the note's first line says. */
+function name() {
+  const first = editor.getText().split('\n').find((line) => line.trim());
+  document.title = first || t('note');
 }
 
+/** Takes the text from the library, unless it is what this page has already. */
 async function load() {
   const state = await send({ type: 'get-state' });
   const node = state?.library.nodes[id];
   if (!node) return log('no such note', id);
-  if (editing) return; // What is being typed here wins.
-  text.value = node.note;
-  if (!node.note) editing = true;
-  draw();
-  if (editing) text.focus();
+  if (node.note === saved || node.note === text()) return;
+  saved = node.note;
+  editor.commands.setContent(node.note, false);
+  name();
 }
 
-let timer;
-const save = () => send({ type: 'op', op: 'note-text', args: { id, text: text.value } });
-text.addEventListener('input', () => {
-  clearTimeout(timer);
-  timer = setTimeout(save, 400);
-});
-
-toggle.addEventListener('click', () => {
-  editing = !editing;
-  if (!editing) {
-    clearTimeout(timer);
-    save();
-  }
-  draw();
-  if (editing) text.focus();
-});
-
 // Leaving the page must not lose the last words typed.
-addEventListener('pagehide', () => editing && save());
-
+addEventListener('pagehide', save);
 chrome.runtime.onMessage.addListener((message) => {
   if (message?.type === 'changed') load();
 });

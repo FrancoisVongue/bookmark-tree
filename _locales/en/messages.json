@@ -116,14 +116,8 @@
   "splitColumn": {
     "message": "One under another"
   },
-  "edit": {
-    "message": "Edit"
-  },
   "done": {
     "message": "Done"
-  },
-  "emptyNote": {
-    "message": "*Empty note*"
   },
   "addFromTreeHere": {
     "message": "Add here from another tree…"
@@ -133,5 +127,113 @@
   },
   "addToEnd": {
     "message": "Add to the end of “$1”"
+  },
+  "search": {
+    "message": "Search"
+  },
+  "nothingFound": {
+    "message": "Nothing found."
+  },
+  "emptyTree": {
+    "message": "Nothing here yet. Pages you open appear here; you can also paste an address, drag a link in, or add a group."
+  },
+  "newGroup": {
+    "message": "New group"
+  },
+  "openNote": {
+    "message": "Open note"
+  },
+  "openBackground": {
+    "message": "Open in the background"
+  },
+  "openWindow": {
+    "message": "Open in a new window"
+  },
+  "openAll": {
+    "message": "Open all"
+  },
+  "editAddress": {
+    "message": "Edit address"
+  },
+  "copyLink": {
+    "message": "Copy link"
+  },
+  "moveTo": {
+    "message": "Move to the end of “$1”"
+  },
+  "removeBranch": {
+    "message": "Remove with everything inside"
+  },
+  "removed": {
+    "message": "Removed: $1"
+  },
+  "treeDeleted": {
+    "message": "Tree deleted"
+  },
+  "moveLeft": {
+    "message": "Move left"
+  },
+  "moveRight": {
+    "message": "Move right"
+  },
+  "collapseAll": {
+    "message": "Collapse all"
+  },
+  "expandAll": {
+    "message": "Expand all"
+  },
+  "importBookmarks": {
+    "message": "Import browser bookmarks"
+  },
+  "bookmarks": {
+    "message": "Bookmarks"
+  },
+  "trash": {
+    "message": "Trash"
+  },
+  "trashEmpty": {
+    "message": "Nothing was deleted in the last 30 days."
+  },
+  "restore": {
+    "message": "Restore"
+  },
+  "emptyTrash": {
+    "message": "Empty trash"
+  },
+  "shortcuts": {
+    "message": "Keyboard shortcuts"
+  },
+  "playing": {
+    "message": "Playing sound"
+  },
+  "alsoIn": {
+    "message": "Also in: $1"
+  },
+  "newTabsHere": {
+    "message": "New tabs open in this tree"
+  },
+  "keysMove": {
+    "message": "Move around, fold and unfold"
+  },
+  "keysSelect": {
+    "message": "Select several"
+  },
+  "keysOpen": {
+    "message": "Open"
+  },
+  "keysIndent": {
+    "message": "Indent, outdent"
+  },
+  "keysPaste": {
+    "message": "Paste an address as a page"
+  },
+  "keysUndo": {
+    "message": "Undo, redo"
+  },
+  "keysEscape": {
+    "message": "Clear selection and search"
+  },
+  "notePlaceholder": {
+    "message": "Write here. Markdown works: # heading, - list, [ ] task, **bold**…"
   }
 }

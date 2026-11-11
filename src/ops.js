@@ -6,6 +6,7 @@ import {
   ROOT,
   addNode,
   descendantsOf,
+  forgetLoose,
   inTree,
   kidsOf,
   moveNode,
@@ -30,10 +31,20 @@ function link(library, from, to, id, parent = ROOT) {
   for (const kid of kidsOf(library.trees[from], id)) link(library, from, to, kid, id);
 }
 
-/** Forgets nodes that no tree holds. */
-function prune(library) {
-  const held = new Set(Object.values(library.trees).flatMap((tree) => Object.values(tree.children).flat()));
-  for (const id in library.nodes) if (!held.has(id)) delete library.nodes[id];
+/** A copy of `id` and its subtree, with new ids, as the last child of `parent`. */
+function copy(library, tree, id, parent) {
+  const node = addNode(library, tree, { ...structuredClone(library.nodes[id]), id: newId() }, parent);
+  for (const kid of kidsOf(library.trees[tree], id)) copy(library, tree, kid, node.id);
+  return node.id;
+}
+
+/** `name`, or `name 2`, `name 3`... if a tree is already called that. */
+function freeName(library, name) {
+  const taken = new Set(Object.values(library.trees).map((tree) => tree.name));
+  for (let n = 1; ; n++) {
+    const candidate = n === 1 ? name : `${name} ${n}`;
+    if (!taken.has(candidate)) return candidate;
+  }
 }
 
 export const ops = {
@@ -46,8 +57,19 @@ export const ops = {
       moveNode(library, tree, id, target, position);
     }
   },
-  link(library, { from, tree, ids }) {
-    for (const id of topmost(library.trees[from], ids)) link(library, from, tree, id);
+  /** Takes nodes (with subtrees) out of tree `from` and puts them at the end of `tree`. */
+  'move-to'(library, { from, tree, ids }) {
+    const source = library.trees[from];
+    for (const id of topmost(source, ids)) {
+      const all = [id, ...descendantsOf(source, id)];
+      link(library, from, tree, id);
+      for (const each of all) removeNode(library, from, each);
+    }
+  },
+  /** New sleeping pages ({ id, url, title }), e.g. links pasted or dropped in. */
+  add(library, { tree, nodes, target, position }) {
+    for (const node of nodes) addNode(library, tree, node);
+    if (position) ops.move(library, { tree, ids: nodes.map((node) => node.id), target, position });
   },
   indent(library, { tree, ids }) {
     const t = library.trees[tree];
@@ -75,12 +97,22 @@ export const ops = {
   duplicate(library, { tree, ids }) {
     for (const id of ids) {
       if (!library.nodes[id] || !inTree(library.trees[tree], id)) continue;
-      const copy = addNode(library, tree, { ...structuredClone(library.nodes[id]), id: newId() });
-      moveNode(library, tree, copy.id, id, 'after');
+      moveNode(library, tree, copy(library, tree, id), id, 'after');
     }
   },
   collapse(library, { tree, id, collapsed }) {
     setCollapsed(library, tree, id, collapsed);
+  },
+  'collapse-all'(library, { tree, collapsed }) {
+    const t = library.trees[tree];
+    t.collapsed = collapsed ? Object.fromEntries(Object.keys(t.children).filter((id) => id !== ROOT).map((id) => [id, true])) : {};
+  },
+  /** A sleeping page's address, typed by hand. */
+  address(library, { id, url }) {
+    const node = library.nodes[id];
+    if (!node || node.note !== undefined || !url?.trim()) return;
+    node.url = url.trim();
+    if (node.home) node.home = { url: node.url, title: node.title };
   },
   rename(library, { id, name }) {
     renameNode(library, id, name);
@@ -101,8 +133,9 @@ export const ops = {
       else delete node.home;
     }
   },
-  'note-add'(library, { tree, id, target, position }) {
-    addNode(library, tree, { id, note: '' });
+  /** A note; with a `name` and no text it serves as a group heading. */
+  'note-add'(library, { tree, id, name, target, position }) {
+    addNode(library, tree, name ? { id, note: '', name } : { id, note: '' });
     if (target) moveNode(library, tree, id, target, position);
   },
   'note-text'(library, { id, text }) {
@@ -117,18 +150,35 @@ export const ops = {
   'tree-remove'(library, { tree }) {
     if (Object.keys(library.trees).length < 2) return;
     delete library.trees[tree];
-    prune(library);
+    forgetLoose(library);
+  },
+  /** Moves a tree `by` places among the trees (-1: left, 1: right). */
+  'tree-move'(library, { tree, by }) {
+    const ids = Object.keys(library.trees);
+    const from = ids.indexOf(tree);
+    const to = Math.max(0, Math.min(ids.length - 1, from + by));
+    ids.splice(to, 0, ...ids.splice(from, 1));
+    library.trees = Object.fromEntries(ids.map((id) => [id, library.trees[id]]));
+  },
+  /** Puts deleted nodes back, at the end of `tree`. */
+  restore(library, { tree, ids }) {
+    const back = new Set(ids);
+    for (const { node } of library.trash.filter((entry) => back.has(entry.node.id))) addNode(library, tree, node);
+    library.trash = library.trash.filter((entry) => !back.has(entry.node.id));
+  },
+  'trash-empty'(library) {
+    library.trash = [];
   },
   /** Adds an exported tree ({ nodes, tree }) as a new tree. Nodes we already have stay as they are. */
   import(library, { id, data }) {
     for (const node of Object.values(data.nodes)) library.nodes[node.id] ??= node;
-    library.trees[id] = { ...data.tree, id };
-    prune(library);
+    library.trees[id] = { ...data.tree, id, name: freeName(library, data.tree.name) };
+    forgetLoose(library, false);
   },
 };
 
 /** These are not worth a step of undo. */
-export const QUIET = new Set(['collapse', 'note-text']);
+export const QUIET = new Set(['collapse', 'collapse-all', 'note-text']);
 
 /** One tree with the nodes it holds, as a file to keep or carry elsewhere. */
 export function exportTree(library, treeId) {

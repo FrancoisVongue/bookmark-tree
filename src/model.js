@@ -11,13 +11,17 @@
 // in `nodes`, so one node can sit in several trees. Everything is plain JSON:
 // it is saved, exported and (later) synced as is.
 //
+//
+//   library.trash  [{ node, at }]  nodes the user deleted, newest last; they
+//                  are in no tree and can be put back for a while.
+//
 // Functions change the library they are given and return what they found.
 
 export const ROOT = 'root';
 export const MAIN = 'main';
 
 export function createLibrary() {
-  return { nodes: {}, trees: { [MAIN]: { id: MAIN, name: 'Main', children: {}, collapsed: {} } } };
+  return { nodes: {}, trees: { [MAIN]: { id: MAIN, name: 'Main', children: {}, collapsed: {} } }, trash: [] };
 }
 
 export const newId = () => crypto.randomUUID();
@@ -101,11 +105,21 @@ export function moveNode(library, treeId, id, target, position) {
   return true;
 }
 
+/** Forgets nodes that no tree holds. With `keep` they go to the trash; without, for good. */
+export function forgetLoose(library, keep = true) {
+  const held = new Set(Object.values(library.trees).flatMap((tree) => Object.values(tree.children).flat()));
+  for (const id in library.nodes) {
+    if (held.has(id)) continue;
+    if (keep) (library.trash ??= []).push({ node: library.nodes[id], at: Date.now() });
+    delete library.nodes[id];
+  }
+}
+
 /**
- * Takes `id` out of the tree; its children move up into its place. The node
- * itself is forgotten once no tree holds it.
+ * Takes `id` out of the tree; its children move up into its place. Once no
+ * tree holds the node it goes to the trash (or, without `keep`, is gone).
  */
-export function removeNode(library, treeId, id) {
+export function removeNode(library, treeId, id, keep = true) {
   const tree = library.trees[treeId];
   if (!inTree(tree, id)) return false;
   const kids = kidsOf(tree, id);
@@ -113,7 +127,7 @@ export function removeNode(library, treeId, id) {
   if (kids.length) insert(tree, parent, index, kids);
   delete tree.children[id];
   delete tree.collapsed[id];
-  if (!Object.values(library.trees).some((t) => inTree(t, id))) delete library.nodes[id];
+  if (!Object.values(library.trees).some((t) => inTree(t, id))) forgetLoose(library, keep);
   return true;
 }
 
@@ -133,14 +147,15 @@ export function renameNode(library, id, name) {
 
 /**
  * The rows a tree shows, top to bottom: { id, depth, kids, collapsed, hidden }.
- * `hidden` is how many nodes a collapsed row hides.
+ * `hidden` is how many nodes a collapsed row hides. With `open`, nothing is
+ * treated as collapsed.
  */
-export function rowsOf(library, treeId) {
+export function rowsOf(library, treeId, open = false) {
   const tree = library.trees[treeId];
   const rows = [];
   const walk = (id, depth) => {
     const kids = kidsOf(tree, id).length;
-    const collapsed = kids > 0 && !!tree.collapsed[id];
+    const collapsed = !open && kids > 0 && !!tree.collapsed[id];
     rows.push({ id, depth, kids, collapsed, hidden: collapsed ? descendantsOf(tree, id).length : 0 });
     if (!collapsed) for (const kid of kidsOf(tree, id)) walk(kid, depth + 1);
   };

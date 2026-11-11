@@ -27,65 +27,83 @@ main {
   margin: 0 auto;
   padding: 48px 24px;
 }
-#toggle {
-  position: absolute;
-  top: 12px;
-  right: 24px;
-  font: inherit;
-  font-size: 13px;
-  color: var(--accent);
-  background: none;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 4px 12px;
+.tiptap {
+  min-height: 80vh;
+  outline: 0;
+}
+.tiptap > :first-child {
+  margin-top: 0;
+}
+.tiptap p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  color: var(--dim);
+  pointer-events: none;
+}
+.tiptap ul[data-type='taskList'] {
+  list-style: none;
+  padding-left: 4px;
+}
+.tiptap ul[data-type='taskList'] li {
+  display: flex;
+  gap: 8px;
+}
+.tiptap ul[data-type='taskList'] li > label {
+  flex: none;
+  margin-top: 2px;
+}
+.tiptap ul[data-type='taskList'] li > div {
+  flex: 1;
+}
+.tiptap ul[data-type='taskList'] li > div > p {
+  margin: 0;
+}
+.tiptap li[data-checked='true'] > div {
+  color: var(--dim);
+  text-decoration: line-through;
+}
+.tiptap input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
   cursor: pointer;
 }
-#text {
-  width: 100%;
-  min-height: 75vh;
-  box-sizing: border-box;
-  font: 14px/1.6 ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-  color: inherit;
-  background: none;
-  border: 0;
-  outline: 0;
-  resize: none;
-}
-#shown a {
+.tiptap a {
   color: var(--accent);
 }
-#shown code,
-#shown pre {
+.tiptap code,
+.tiptap pre {
   font: 14px ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
   background: color-mix(in srgb, var(--text) 8%, transparent);
   border-radius: 4px;
 }
-#shown code {
+.tiptap code {
   padding: 1px 4px;
 }
-#shown pre {
+.tiptap pre {
   padding: 12px;
   overflow-x: auto;
 }
-#shown pre code {
+.tiptap pre code {
   padding: 0;
   background: none;
 }
-#shown blockquote {
+.tiptap blockquote {
   margin-left: 0;
   padding-left: 16px;
   border-left: 3px solid var(--line);
   color: var(--dim);
 }
-#shown table {
+.tiptap table {
   border-collapse: collapse;
 }
-#shown th,
-#shown td {
+.tiptap th,
+.tiptap td {
   border: 1px solid var(--line);
   padding: 4px 10px;
 }
-#shown hr {
+.tiptap hr {
   border: 0;
   border-top: 1px solid var(--line);
 }
