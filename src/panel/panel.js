@@ -54,6 +54,9 @@ const actions = {
   },
   restore: ({ el }) => op('restore', { tree: here().tree, ids: [el.dataset.node] }),
   'trash-empty': () => op('trash-empty'),
+  'sync-save': cmd.saveSync,
+  'sync-now': cmd.syncNow,
+  'sync-restore': ({ el }) => cmd.goToVersion(el.dataset.ref),
   'overlay-close': closeOverlay,
 };
 

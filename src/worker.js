@@ -4,6 +4,8 @@
 
 import { addNode, descendantsOf, isGroup, isNote, migrate, moveNode, newId, treeFor, validTree } from './model.js';
 import { QUIET, ops } from './ops.js';
+import { EMPTY, merge } from './merge.js';
+import * as github from './github.js';
 import * as core from './core.js';
 
 const log = (...args) => console.log('[tree]', ...args);
@@ -191,6 +193,59 @@ async function activate({ nodeId, treeId, windowId, where }) {
   if (where === 'window') await chrome.windows.create({ tabId });
 }
 
+// --- Keeping the library elsewhere ---------------------------------------------
+// Settings, in local storage under `sync`:
+//   { repo, token, path, api? }   where (see github.js)
+//   { version, base }             the version last seen there, and the library as it was then (JSON)
+//   { at, error }                 when that was; what went wrong the last time, if anything
+
+const SYNC_EVERY_MINUTES = 24 * 60;
+const loadSync = async () => (await chrome.storage.local.get('sync')).sync;
+const saveSync = (settings) => chrome.storage.local.set({ sync: settings });
+
+/** Replaces the library, keeping the way back; open tabs find their nodes anew. */
+async function adopt(library) {
+  undo.push(JSON.stringify(state.library));
+  redo = [];
+  state.library = library;
+  await reconcile();
+}
+
+/**
+ * Brings this library and the saved one together: takes theirs, makes my
+ * changes again on top (see merge.js), saves the result as the next version.
+ * If someone saves in between, it starts over.
+ */
+async function sync() {
+  const settings = await loadSync();
+  if (!settings?.repo || !settings.token) return;
+  try {
+    for (let attempt = 1; ; attempt++) {
+      const remote = await github.pull(settings);
+      const news = remote && remote.version !== settings.version;
+      if (news) {
+        const base = settings.base ? JSON.parse(settings.base) : EMPTY;
+        const merged = merge(base, state.library, migrate(remote.library), Date.now());
+        if (JSON.stringify(merged) !== JSON.stringify(state.library)) await adopt(merged);
+      }
+      const mine = JSON.stringify(state.library);
+      const saved = remote && mine === (news ? JSON.stringify(remote.library) : settings.base);
+      let version = remote?.version;
+      try {
+        if (!saved) version = await github.push(settings, state.library, version, `Tree: ${new Date().toISOString()}`);
+      } catch (error) {
+        if (error instanceof github.Conflict && attempt < 3) continue;
+        throw error;
+      }
+      log('synced', saved ? '(nothing to save)' : '(saved a version)', news ? '(took theirs in)' : '');
+      return saveSync({ ...settings, version, base: mine, at: Date.now(), error: undefined });
+    }
+  } catch (error) {
+    log('sync failed', error.message);
+    await saveSync({ ...settings, error: error.message });
+  }
+}
+
 /** Opens an empty tab as a new node: top-level, or a child / next sibling of `nodeId`. */
 async function newTab({ windowId, treeId, nodeId, as }) {
   treeId = validTree(state.library, treeId);
@@ -261,6 +316,27 @@ async function handle(message, sender) {
       core.tabOpened(state, tab, from.id);
       return;
     }
+    case 'sync-get': {
+      const { token, base, ...shown } = (await loadSync()) ?? {};
+      return { ...shown, hasToken: !!token };
+    }
+    case 'sync-set': {
+      // A new place starts from nothing in common; an empty token field keeps the token.
+      const old = (await loadSync()) ?? {};
+      const moved = old.repo !== message.repo || old.api !== message.api;
+      const settings = { ...(moved ? {} : old), repo: message.repo, api: message.api, path: 'tree.json' };
+      return saveSync({ ...settings, token: message.token || old.token });
+    }
+    case 'sync-now':
+      return sync();
+    case 'sync-history':
+      return github.history(await loadSync()).catch((error) => (log('history failed', error.message), []));
+    case 'sync-restore': {
+      // Goes back to a saved version. The next sync saves it as the newest.
+      const old = await github.pull(await loadSync(), message.ref);
+      if (old) await adopt(migrate(old.library));
+      return;
+    }
     case 'show-tree':
       // The tree this window's panel shows: where its new tabs go.
       state.windows[message.windowId] = message.treeId;
@@ -287,6 +363,10 @@ chrome.commands.onCommand.addListener((command, tab) => {
     });
   });
 });
+
+// Once a day the library is synced by itself (and whenever the user asks).
+chrome.alarms.onAlarm.addListener((alarm) => alarm.name === 'sync' && enqueue('sync', sync));
+chrome.alarms.get('sync').then((alarm) => alarm || chrome.alarms.create('sync', { periodInMinutes: SYNC_EVERY_MINUTES }));
 
 // Clicking the toolbar button shows or hides the panel.
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});

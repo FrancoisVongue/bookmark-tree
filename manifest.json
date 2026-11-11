@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Tree",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "__MSG_extDescription__",
   "default_locale": "en",
   "minimum_chrome_version": "116",
@@ -11,7 +11,8 @@
     "sidePanel",
     "storage",
     "unlimitedStorage",
-    "favicon"
+    "favicon",
+    "alarms"
   ],
   "background": {
     "service_worker": "src/worker.js",
@@ -45,5 +46,8 @@
   },
   "optional_permissions": [
     "bookmarks"
+  ],
+  "host_permissions": [
+    "https://api.github.com/*"
   ]
 }

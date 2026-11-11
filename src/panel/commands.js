@@ -95,6 +95,35 @@ export function endRename(save) {
   rowEl(renaming.pane, renaming.id)?.focus();
 }
 
+// --- Sync ----------------------------------------------------------------------
+
+/** Opens the sync window: where the library is kept, when it was last synced, the saved versions. */
+export async function openSync() {
+  ui.overlay = { kind: 'sync', settings: (await send({ type: 'sync-get' })) ?? {}, versions: [], busy: false };
+  redraw();
+  if (!ui.overlay.settings.repo) return;
+  const versions = await send({ type: 'sync-history' });
+  if (ui.overlay?.kind === 'sync') ui.overlay.versions = versions ?? [];
+  redraw();
+}
+
+/** Does one thing with the sync window showing it is busy, then shows the window afresh. */
+async function syncing(task) {
+  ui.overlay.busy = true;
+  redraw();
+  await task();
+  if (ui.overlay?.kind === 'sync') await openSync();
+}
+
+export const saveSync = () =>
+  syncing(async () => {
+    const field = (name) => app.querySelector(`.dialog [name="${name}"]`).value.trim();
+    await send({ type: 'sync-set', repo: field('repo'), token: field('token'), api: ui.overlay.settings.api });
+    await send({ type: 'sync-now' });
+  });
+export const syncNow = () => syncing(() => send({ type: 'sync-now' }));
+export const goToVersion = (ref) => syncing(() => send({ type: 'sync-restore', ref }));
+
 // --- Files ---------------------------------------------------------------------
 
 export function download(treeId) {

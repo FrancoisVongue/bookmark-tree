@@ -235,5 +235,38 @@
   },
   "notePlaceholder": {
     "message": "Write here. Markdown works: # heading, - list, [ ] task, **bold**…"
+  },
+  "sync": {
+    "message": "Sync…"
+  },
+  "syncRepo": {
+    "message": "GitHub repository (private)"
+  },
+  "syncToken": {
+    "message": "Access token"
+  },
+  "syncTokenSaved": {
+    "message": "saved — leave empty to keep it"
+  },
+  "syncSave": {
+    "message": "Save and sync"
+  },
+  "syncBusy": {
+    "message": "Syncing…"
+  },
+  "syncNow": {
+    "message": "Sync now"
+  },
+  "syncLast": {
+    "message": "Last synced: $1. Syncs once a day by itself."
+  },
+  "syncHint": {
+    "message": "The library is kept as a file in your repository; every sync is a version you can go back to. The token needs read and write access to the repository's contents."
+  },
+  "syncError": {
+    "message": "Sync failed: $1"
+  },
+  "goToVersion": {
+    "message": "Go to this version"
   }
 }

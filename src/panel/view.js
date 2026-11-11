@@ -252,7 +252,39 @@ const keysView = () =>
     <footer><button class="primary" data-action="overlay-close">${t('done')}</button></footer>
   `);
 
-const OVERLAYS = { picker: pickerView, icons: iconsView, trash: trashView, keys: keysView };
+function syncView(ui) {
+  const { settings, versions, busy } = ui.overlay;
+  const when = (time) => new Date(time).toLocaleString();
+  const status = settings.error
+    ? html`<p class="hint error">${t('syncError', settings.error)}</p>`
+    : html`<p class="hint">${settings.at ? t('syncLast', when(settings.at)) : t('syncHint')}</p>`;
+  return dialog(html`
+    <h2>${t('sync')}</h2>
+    <label class="field">${t('syncRepo')}<input name="repo" placeholder="owner/repository" .value=${settings.repo ?? ''} /></label>
+    <label class="field">
+      ${t('syncToken')}
+      <input name="token" type="password" placeholder=${settings.hasToken ? t('syncTokenSaved') : 'github_pat_…'} />
+    </label>
+    ${status}
+    <div class="list">
+      ${versions.map(
+        ({ ref, at }) => html`
+          <div class="row asleep">
+            <span class="title">${when(at)}</span>
+            <button class="pill" data-action="sync-restore" data-ref=${ref} ?disabled=${busy}>${t('goToVersion')}</button>
+          </div>
+        `,
+      )}
+    </div>
+    <footer>
+      <button data-action="overlay-close">${t('done')}</button>
+      <button data-action="sync-now" ?disabled=${busy || !settings.repo}>${t('syncNow')}</button>
+      <button class="primary" data-action="sync-save" ?disabled=${busy}>${t(busy ? 'syncBusy' : 'syncSave')}</button>
+    </footer>
+  `);
+}
+
+const OVERLAYS = { picker: pickerView, icons: iconsView, trash: trashView, keys: keysView, sync: syncView };
 
 /** Draws the panel from `ui` (see screen.js). */
 export function draw(container, ui) {

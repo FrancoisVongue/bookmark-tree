@@ -99,6 +99,7 @@ export function mainMenu() {
     item('importTree', cmd.upload),
     item('exportTree', () => cmd.download(tree)),
     null,
+    item('sync', cmd.openSync),
     { label: `${t('trash')} (${ui.library.trash.length})`, run: show('trash') },
     item('shortcuts', show('keys')),
   ];
