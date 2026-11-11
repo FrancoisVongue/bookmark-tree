@@ -156,8 +156,9 @@ function paneView(pane, index, ui) {
       style="flex-grow:${pane.size ?? 1}"
     >
       ${ui.panes.length > 1 && !picking
-        ? html`<header class="pane-head" title=${focused ? t('newTabsHere') : ''}>
+        ? html`<header class="pane-head">
             <span>${tree.name}</span>
+            ${focused ? html`<span class="here">${t('newTabsHere')}</span>` : ''}
             ${act('pane-close', 'close', t('closePane'))}
           </header>`
         : ''}

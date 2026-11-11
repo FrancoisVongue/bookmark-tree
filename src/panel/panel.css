@@ -557,3 +557,11 @@ svg {
   color: var(--dim);
   white-space: nowrap;
 }
+
+.pane-head .here {
+  flex: 1;
+  margin-left: 8px;
+  color: var(--dim);
+  text-transform: none;
+  letter-spacing: 0;
+}

@@ -517,6 +517,7 @@ const actions = {
 };
 
 let justDragged = false;
+let opening; // A sleeping page about to be opened by a click.
 app.addEventListener('click', (event) => {
   if (justDragged || event.target.closest('input, .menu')) return;
   const el = event.target.closest('[data-action]');
@@ -535,13 +536,18 @@ app.addEventListener('click', (event) => {
   select(pane, id, event);
   redraw();
   const plain = !event.ctrlKey && !event.metaKey && !event.shiftKey && event.detail === 1;
-  if (plain && pane !== ui.picker) open(pane, id);
+  if (!plain || pane === ui.picker) return;
+  // Going to an open tab is instant. Opening a sleeping page waits a moment,
+  // in case this is the first half of a double click (which renames).
+  if (ui.live.has(id)) open(pane, id);
+  else opening = setTimeout(() => open(pane, id), 220);
 });
 
 app.addEventListener('dblclick', (event) => {
   const id = idAt(event.target);
   const pane = paneAt(event.target);
   const treeId = event.target.closest('.bar .tab[data-tree]')?.dataset.tree;
+  clearTimeout(opening);
   if (treeId) startRename({ tree: treeId });
   else if (id && pane !== ui.picker && event.target.closest('.title')) startRename({ id, pane });
 });
