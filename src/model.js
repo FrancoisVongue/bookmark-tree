@@ -1,0 +1,149 @@
+// The library: pages the user keeps, arranged in trees. Pure data, no Chrome.
+//
+//   library.nodes  { [nodeId]: { id, url, title, name?, icon?, home?, note? } }
+//                  a page; `name` is the user's own title, `icon` an emoji,
+//                  `home` { url, title } the address it is pinned to. A node
+//                  with `note` (markdown text) is a note, not a page.
+//   library.trees  { [treeId]: { id, name, children, collapsed } }  where it sits
+//
+// A tree stores structure only: `children` maps a parent id (or ROOT) to the
+// ordered ids of its children, `collapsed` marks folded nodes. Content lives
+// in `nodes`, so one node can sit in several trees. Everything is plain JSON:
+// it is saved, exported and (later) synced as is.
+//
+// Functions change the library they are given and return what they found.
+
+export const ROOT = 'root';
+export const MAIN = 'main';
+
+export function createLibrary() {
+  return { nodes: {}, trees: { [MAIN]: { id: MAIN, name: 'Main', children: {}, collapsed: {} } } };
+}
+
+export const newId = () => crypto.randomUUID();
+
+/** The children of `id` (or of ROOT), in order. */
+export const kidsOf = (tree, id) => tree.children[id] ?? [];
+
+/** The parent of `id` (ROOT for a top-level node), or undefined if it isn't in the tree. */
+export function parentOf(tree, id) {
+  for (const parent in tree.children) if (tree.children[parent].includes(id)) return parent;
+  return undefined;
+}
+
+export const inTree = (tree, id) => parentOf(tree, id) !== undefined;
+
+/** `id`'s descendants, depth first. */
+export function descendantsOf(tree, id) {
+  const out = [];
+  for (const kid of kidsOf(tree, id)) out.push(kid, ...descendantsOf(tree, kid));
+  return out;
+}
+
+function insert(tree, parent, index, ids) {
+  const list = (tree.children[parent] ??= []);
+  list.splice(index ?? list.length, 0, ...ids);
+}
+
+function detach(tree, id) {
+  const parent = parentOf(tree, id);
+  const list = tree.children[parent];
+  const index = list.indexOf(id);
+  list.splice(index, 1);
+  if (!list.length) delete tree.children[parent];
+  return { parent, index };
+}
+
+/** Puts a node the library already has into a tree, as the last child of `parent`. */
+export function placeNode(library, treeId, id, parent = ROOT) {
+  const tree = library.trees[treeId];
+  if (inTree(tree, id)) return;
+  insert(tree, parent !== ROOT && !inTree(tree, parent) ? ROOT : parent, null, [id]);
+}
+
+/** Adds a new node to the library, as the last child of `parent` in the tree. */
+export function addNode(library, treeId, node, parent = ROOT) {
+  library.nodes[node.id] = node;
+  placeNode(library, treeId, node.id, parent);
+  return node;
+}
+
+/** The tree a node is shown in: `preferred` if it holds the node, else the first that does. */
+export function treeFor(library, id, preferred) {
+  if (library.trees[preferred] && inTree(library.trees[preferred], id)) return preferred;
+  return Object.keys(library.trees).find((treeId) => inTree(library.trees[treeId], id));
+}
+
+/** The given tree's id if it exists, else the first tree's. */
+export const validTree = (library, treeId) => (library.trees[treeId] ? treeId : Object.keys(library.trees)[0]);
+
+/**
+ * Moves `id`, with its subtree, relative to `target`:
+ *   before / after  sibling of the target
+ *   inside / first  last / first child of the target
+ *   end             last top-level node (target is ignored)
+ * False when the move is impossible (into itself or its own subtree).
+ */
+export function moveNode(library, treeId, id, target, position) {
+  const tree = library.trees[treeId];
+  if (!inTree(tree, id)) return false;
+  if (position !== 'end') {
+    if (!inTree(tree, target) || target === id || descendantsOf(tree, id).includes(target)) return false;
+  }
+  detach(tree, id);
+  if (position === 'inside') insert(tree, target, null, [id]);
+  else if (position === 'first') insert(tree, target, 0, [id]);
+  else if (position === 'end') insert(tree, ROOT, null, [id]);
+  else {
+    const parent = parentOf(tree, target);
+    insert(tree, parent, tree.children[parent].indexOf(target) + (position === 'after' ? 1 : 0), [id]);
+  }
+  return true;
+}
+
+/**
+ * Takes `id` out of the tree; its children move up into its place. The node
+ * itself is forgotten once no tree holds it.
+ */
+export function removeNode(library, treeId, id) {
+  const tree = library.trees[treeId];
+  if (!inTree(tree, id)) return false;
+  const kids = kidsOf(tree, id);
+  const { parent, index } = detach(tree, id);
+  if (kids.length) insert(tree, parent, index, kids);
+  delete tree.children[id];
+  delete tree.collapsed[id];
+  if (!Object.values(library.trees).some((t) => inTree(t, id))) delete library.nodes[id];
+  return true;
+}
+
+export function setCollapsed(library, treeId, id, collapsed) {
+  const tree = library.trees[treeId];
+  if (collapsed) tree.collapsed[id] = true;
+  else delete tree.collapsed[id];
+}
+
+/** Gives a node the user's own name; an empty name goes back to the page title. */
+export function renameNode(library, id, name) {
+  const node = library.nodes[id];
+  if (!node) return;
+  if (name?.trim()) node.name = name.trim();
+  else delete node.name;
+}
+
+/**
+ * The rows a tree shows, top to bottom: { id, depth, kids, collapsed, hidden }.
+ * `hidden` is how many nodes a collapsed row hides.
+ */
+export function rowsOf(library, treeId) {
+  const tree = library.trees[treeId];
+  const rows = [];
+  const walk = (id, depth) => {
+    const kids = kidsOf(tree, id).length;
+    const collapsed = kids > 0 && !!tree.collapsed[id];
+    rows.push({ id, depth, kids, collapsed, hidden: collapsed ? descendantsOf(tree, id).length : 0 });
+    if (!collapsed) for (const kid of kidsOf(tree, id)) walk(kid, depth + 1);
+  };
+  for (const id of kidsOf(tree, ROOT)) walk(id, 0);
+  return rows;
+}

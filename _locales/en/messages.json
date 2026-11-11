@@ -1,0 +1,137 @@
+{
+  "extDescription": {
+    "message": "Your pages as trees, in the side panel."
+  },
+  "actionTitle": {
+    "message": "Show or hide the tree"
+  },
+  "newTab": {
+    "message": "New tab"
+  },
+  "untitled": {
+    "message": "Untitled"
+  },
+  "note": {
+    "message": "Note"
+  },
+  "collapse": {
+    "message": "Collapse"
+  },
+  "expand": {
+    "message": "Expand"
+  },
+  "sleep": {
+    "message": "Put to sleep (close the tab, keep the page here)"
+  },
+  "sleepShort": {
+    "message": "Put to sleep"
+  },
+  "remove": {
+    "message": "Remove from this tree"
+  },
+  "deleteEverywhere": {
+    "message": "Delete from all trees"
+  },
+  "renameHint": {
+    "message": "Name"
+  },
+  "rename": {
+    "message": "Rename"
+  },
+  "changeIcon": {
+    "message": "Change icon"
+  },
+  "noIcon": {
+    "message": "No icon"
+  },
+  "duplicate": {
+    "message": "Duplicate"
+  },
+  "pin": {
+    "message": "Pin to this address"
+  },
+  "unpin": {
+    "message": "Unpin"
+  },
+  "goHome": {
+    "message": "Back to the pinned address"
+  },
+  "backHome": {
+    "message": "Back to $1"
+  },
+  "indent": {
+    "message": "Indent"
+  },
+  "outdent": {
+    "message": "Outdent"
+  },
+  "newChild": {
+    "message": "New child tab"
+  },
+  "newSibling": {
+    "message": "New tab below"
+  },
+  "newNote": {
+    "message": "New note"
+  },
+  "newTree": {
+    "message": "New tree"
+  },
+  "openBeside": {
+    "message": "Open beside"
+  },
+  "closePane": {
+    "message": "Close this view"
+  },
+  "exportTree": {
+    "message": "Export tree"
+  },
+  "importTree": {
+    "message": "Import tree"
+  },
+  "deleteTree": {
+    "message": "Delete tree"
+  },
+  "undo": {
+    "message": "Undo"
+  },
+  "redo": {
+    "message": "Redo"
+  },
+  "more": {
+    "message": "More"
+  },
+  "addFromTree": {
+    "message": "Add from another tree…"
+  },
+  "addSelected": {
+    "message": "Add ($1)"
+  },
+  "cancel": {
+    "message": "Cancel"
+  },
+  "splitRow": {
+    "message": "Side by side"
+  },
+  "splitColumn": {
+    "message": "One under another"
+  },
+  "edit": {
+    "message": "Edit"
+  },
+  "done": {
+    "message": "Done"
+  },
+  "emptyNote": {
+    "message": "*Empty note*"
+  },
+  "addFromTreeHere": {
+    "message": "Add here from another tree…"
+  },
+  "addInto": {
+    "message": "Add into “$1”"
+  },
+  "addToEnd": {
+    "message": "Add to the end of “$1”"
+  }
+}

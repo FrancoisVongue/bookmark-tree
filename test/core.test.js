@@ -1,0 +1,177 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { MAIN, rowsOf } from '../src/model.js';
+import {
+  createState,
+  reconcile,
+  tabChanged,
+  tabClosed,
+  tabOf,
+  tabOpened,
+  tabOpenedFrom,
+  tabReplaced,
+} from '../src/core.js';
+
+const tab = (id, name) => ({ id, url: name ? `https://${name}/` : 'chrome://newtab/', title: name ?? 'New Tab' });
+
+/** The tree as an outline of titles; sleeping nodes are in (brackets). */
+function outline(state) {
+  return rowsOf(state.library, MAIN)
+    .map((row) => {
+      const title = state.library.nodes[row.id].title;
+      return '  '.repeat(row.depth) + (tabOf(state, row.id) === undefined ? `(${title})` : title);
+    })
+    .join('\n');
+}
+
+test('a tab becomes a top-level node', () => {
+  const state = createState();
+  assert.equal(tabOpened(state, tab(1, 'a')), 'new');
+  assert.equal(tabOpened(state, tab(2, 'b')), 'new');
+  assert.equal(tabOpened(state, tab(2, 'b')), 'known');
+  assert.equal(outline(state), 'a\nb');
+});
+
+test('a tab opened from a page becomes its child', () => {
+  const state = createState();
+  tabOpened(state, tab(1, 'a'));
+  tabOpened(state, tab(2, 'b'));
+  assert.equal(tabOpened(state, tab(3, 'c'), 1), 'child');
+  assert.equal(tabOpened(state, tab(4, 'd'), 3), 'child');
+  assert.equal(outline(state), 'a\n  c\n    d\nb');
+});
+
+test('the source can be reported after the tab', () => {
+  const state = createState();
+  tabOpened(state, tab(1, 'a'));
+  tabOpened(state, tab(2, 'b'));
+  assert.equal(tabOpenedFrom(state, 2, 1), true);
+  assert.equal(outline(state), 'a\n  b');
+  assert.equal(tabOpenedFrom(state, 9, 1), false);
+});
+
+test('a closed tab leaves its node asleep, where it was', () => {
+  const state = createState();
+  tabOpened(state, tab(1, 'a'));
+  tabOpened(state, tab(2, 'b'), 1);
+  tabClosed(state, 1);
+  assert.equal(outline(state), '(a)\n  b');
+  assert.deepEqual(state.binding, { 2: state.binding[2] });
+});
+
+test('an empty new tab leaves nothing behind when it closes', () => {
+  const state = createState();
+  tabOpened(state, tab(1, 'a'));
+  tabOpened(state, tab(2));
+  tabClosed(state, 2);
+  assert.equal(outline(state), 'a');
+});
+
+test('an empty tab with children stays when it closes', () => {
+  const state = createState();
+  tabOpened(state, tab(1));
+  tabOpened(state, tab(2, 'b'), 1);
+  tabClosed(state, 1);
+  assert.equal(outline(state), '(New Tab)\n  b');
+});
+
+test('opening the address of a sleeping node wakes it instead of adding one', () => {
+  const state = createState();
+  tabOpened(state, tab(1, 'a'));
+  tabOpened(state, tab(2, 'b'), 1);
+  tabClosed(state, 2);
+  assert.equal(tabOpened(state, tab(7, 'b')), 'woken');
+  assert.equal(outline(state), 'a\n  b');
+});
+
+test('a link to the address of a sleeping node still opens as a child', () => {
+  const state = createState();
+  tabOpened(state, tab(1, 'a'));
+  tabOpened(state, tab(2, 'b'));
+  tabClosed(state, 2);
+  assert.equal(tabOpened(state, tab(3, 'b'), 1), 'child');
+  assert.equal(outline(state), 'a\n  b\n(b)');
+});
+
+test('a live node is never taken by a second tab with the same address', () => {
+  const state = createState();
+  tabOpened(state, tab(1, 'a'));
+  assert.equal(tabOpened(state, tab(2, 'a')), 'new');
+  assert.equal(outline(state), 'a\na');
+});
+
+test('a node follows its tab to another page', () => {
+  const state = createState();
+  tabOpened(state, tab(1, 'a'));
+  tabChanged(state, tab(1, 'z'));
+  assert.equal(outline(state), 'z');
+  tabChanged(state, tab(99, 'q')); // Not a tab we know: ignored.
+  assert.equal(outline(state), 'z');
+});
+
+test('a replaced tab keeps its node', () => {
+  const state = createState();
+  tabOpened(state, tab(1, 'a'));
+  const id = state.binding[1];
+  tabReplaced(state, 5, 1);
+  assert.deepEqual(state.binding, { 5: id });
+});
+
+test('after a browser restart tabs find their nodes by address', () => {
+  const state = createState();
+  tabOpened(state, tab(1, 'a'));
+  tabOpened(state, tab(2, 'b'), 1);
+  tabOpened(state, tab(3, 'c'), 2);
+  // New session: same pages, new tab ids, one page more and one less.
+  state.binding = {};
+  reconcile(state, [tab(11, 'c'), tab(12, 'a'), tab(13, 'new')]);
+  assert.equal(outline(state), 'a\n  (b)\n    c\nnew');
+});
+
+test('reconcile drops tabs that are gone and keeps the rest', () => {
+  const state = createState();
+  tabOpened(state, tab(1, 'a'));
+  tabOpened(state, tab(2, 'b'));
+  reconcile(state, [tab(2, 'b')]);
+  assert.equal(outline(state), '(a)\nb');
+});
+
+test('an empty new tab taken to a sleeping node\'s address wakes that node', () => {
+  const state = createState();
+  tabOpened(state, tab(1, 'a'));
+  tabOpened(state, tab(2, 'b'), 1);
+  tabClosed(state, 2);
+  tabOpened(state, tab(3));
+  tabChanged(state, tab(3, 'b'));
+  assert.equal(outline(state), 'a\n  b');
+  assert.equal(tabOf(state, state.binding[3].node), 3);
+});
+
+test('empty tabs left asleep by a browser that quit are swept away', () => {
+  const state = createState();
+  tabOpened(state, tab(1, 'a'));
+  tabOpened(state, tab(2));
+  state.binding = {};
+  reconcile(state, []);
+  assert.equal(outline(state), '(a)');
+});
+
+test('a pinned node goes back home when its tab closes', () => {
+  const state = createState();
+  tabOpened(state, tab(1, 'a'));
+  const node = state.library.nodes[state.binding[1].node];
+  node.home = { url: node.url, title: node.title };
+  tabChanged(state, tab(1, 'z'));
+  assert.equal(outline(state), 'z');
+  tabClosed(state, 1);
+  assert.equal(outline(state), '(a)');
+  assert.equal(tabOpened(state, tab(5, 'a')), 'woken');
+});
+
+test('the extension\'s own pages are not nodes', () => {
+  const state = createState();
+  assert.equal(tabOpened(state, { id: 1, url: 'chrome-extension://abc/src/panel/panel.html' }), 'ours');
+  tabOpened(state, tab(2));
+  tabChanged(state, { id: 2, url: 'chrome-extension://abc/src/panel/panel.html', title: 'Tree' });
+  assert.equal(outline(state), '');
+});
