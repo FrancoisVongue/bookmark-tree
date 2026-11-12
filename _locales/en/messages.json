@@ -111,10 +111,10 @@
     "message": "Cancel"
   },
   "splitRow": {
-    "message": "Side by side"
+    "message": "Two trees side by side"
   },
   "splitColumn": {
-    "message": "One under another"
+    "message": "Two trees one under another"
   },
   "addFromTreeHere": {
     "message": "Take here from another tree…"
@@ -160,6 +160,27 @@
   },
   "removed": {
     "message": "Removed: $1"
+  },
+  "movedTo": {
+    "message": "Moved to “$1”: $2"
+  },
+  "askRemove": {
+    "message": "Remove $1 pages from “$2”?"
+  },
+  "askDelete": {
+    "message": "Delete $1 pages from all trees?"
+  },
+  "askDeleteTree": {
+    "message": "Delete the tree “$1”?"
+  },
+  "askEmptyTrash": {
+    "message": "Empty the trash ($1 pages)?"
+  },
+  "removeYes": {
+    "message": "Remove"
+  },
+  "deleteYes": {
+    "message": "Delete"
   },
   "treeDeleted": {
     "message": "Tree deleted"
@@ -220,6 +241,66 @@
   },
   "notePlaceholder": {
     "message": "Write here. Markdown works: # heading, - list, [ ] task, **bold**…"
+  },
+  "noteUndo": {
+    "message": "Undo"
+  },
+  "noteRedo": {
+    "message": "Redo"
+  },
+  "noteBold": {
+    "message": "Bold"
+  },
+  "noteItalic": {
+    "message": "Italic"
+  },
+  "noteStrike": {
+    "message": "Strikethrough"
+  },
+  "noteCode": {
+    "message": "Code"
+  },
+  "noteHeading": {
+    "message": "Heading $1"
+  },
+  "noteQuote": {
+    "message": "Quote"
+  },
+  "noteCodeBlock": {
+    "message": "Code block"
+  },
+  "noteBulletList": {
+    "message": "Bullet list"
+  },
+  "noteNumberedList": {
+    "message": "Numbered list"
+  },
+  "noteTaskList": {
+    "message": "Task list"
+  },
+  "noteLink": {
+    "message": "Link"
+  },
+  "noteLinkAddress": {
+    "message": "Link address (leave empty to remove the link)"
+  },
+  "noteTable": {
+    "message": "Insert table"
+  },
+  "noteRowAdd": {
+    "message": "Add row below"
+  },
+  "noteRowRemove": {
+    "message": "Delete row"
+  },
+  "noteColumnAdd": {
+    "message": "Add column to the right"
+  },
+  "noteColumnRemove": {
+    "message": "Delete column"
+  },
+  "noteTableRemove": {
+    "message": "Delete table"
   },
   "syncRepo": {
     "message": "GitHub repository (private)"

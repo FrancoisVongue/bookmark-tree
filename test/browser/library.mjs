@@ -86,7 +86,7 @@ await step('back up everything, delete a tree, restore the backup', async () => 
   const [file] = await Promise.all([settings.waitForEvent('download'), settings.click('[data-action="backup"]')]);
   backup = `${dir}/${file.suggestedFilename()}`; await file.saveAs(backup);
   await settings.close(); await panel.bringToFront();
-  await panel.locator('.grid .tab', { hasText: 'Home' }).click({ button: 'right' }); await menu('Delete tree'); await sleep(400);
+  await panel.locator('.grid .tab', { hasText: 'Home' }).click({ button: 'right' }); await menu('Delete tree'); await sleep(200); console.log('asked:', await panel.locator('.dialog.ask p').textContent().catch(() => '-')); await panel.click('.dialog [data-action="yes"]'); await sleep(400);
   console.log('    after deleting Home:', (await grid()).replace(/\n\s+/g, ' / '));
   settings = await openSettings(ctx, panel, errors);
   console.log('  settings say:', await importFile(settings, backup));

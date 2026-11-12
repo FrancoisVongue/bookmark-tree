@@ -2,7 +2,7 @@
 
 import { gridOf, isNote } from '../model.js';
 import { t } from '../i18n.js';
-import { app, here, newPane, op, redraw, refresh, rowOf, say, send, targets, ui, under } from './screen.js';
+import { app, here, newPane, op, redraw, refresh, rowOf, send, targets, ui, under } from './screen.js';
 import * as cmd from './commands.js';
 
 const item = (label, run, hint, disabled = false) => ({ label: t(label), hint, disabled, run });
@@ -22,6 +22,17 @@ export function openMenu(x, y, items) {
   ui.menu.x = Math.max(4, Math.min(x, innerWidth - box.width - 4));
   ui.menu.y = Math.max(4, Math.min(y, innerHeight - box.height - 4));
   redraw();
+}
+
+/** A menu hanging from a button. Pressing the button again closes it. */
+export function menuUnder(button, items) {
+  if (ui.menu?.opener === button) {
+    ui.menu = undefined;
+    return redraw();
+  }
+  const box = button.getBoundingClientRect();
+  openMenu(box.right, box.bottom, items);
+  ui.menu.opener = button;
 }
 
 const hasOtherTrees = () => Object.keys(ui.library.trees).length > 1;
@@ -66,10 +77,6 @@ export function rowMenu(pane, id) {
 
 export function treeMenu(treeId) {
   const ids = Object.keys(ui.library.trees);
-  const drop = async () => {
-    await op('tree-remove', { tree: treeId });
-    say(t('treeDeleted'));
-  };
   return [
     item('rename', () => cmd.startRename({ tree: treeId })),
     item('changeIcon', () => ((ui.overlay = { kind: 'icons', tree: treeId }), redraw())),
@@ -79,13 +86,12 @@ export function treeMenu(treeId) {
     item('exportBookmarks', () => cmd.downloadBookmarks(treeId)),
     item('exportTree', () => cmd.download(treeId)),
     null,
-    item('deleteTree', drop, '', ids.length < 2),
+    item('deleteTree', () => cmd.removeTree(treeId), '', ids.length < 2),
   ];
 }
 
 export function mainMenu() {
   const tree = here().tree;
-  const turn = () => ((ui.split = ui.split === 'row' ? 'column' : 'row'), refresh());
   // The table of trees can grow freely, and shrink while every tree still has a cell.
   const { columns, rows } = gridOf(ui.library);
   const trees = Object.keys(ui.library.trees).length;
@@ -99,7 +105,6 @@ export function mainMenu() {
     item('collapseAll', () => op('collapse-all', { tree, collapsed: true })),
     item('expandAll', () => op('collapse-all', { tree, collapsed: false })),
     item('addFromTree', () => cmd.openPicker(here()), '', !hasOtherTrees()),
-    ui.panes.length > 1 && item(ui.split === 'row' ? 'splitColumn' : 'splitRow', turn),
     null,
     item('newTree', () => cmd.newTree()),
     size('addColumn', { columns: 1 }),

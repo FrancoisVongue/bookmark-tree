@@ -9,6 +9,8 @@ To rebuild it, in an empty folder:
     npm i @tiptap/core@2 @tiptap/pm@2 @tiptap/starter-kit@2 \
       @tiptap/extension-task-list@2 @tiptap/extension-task-item@2 \
       @tiptap/extension-link@2 @tiptap/extension-placeholder@2 \
+      @tiptap/extension-table@2 @tiptap/extension-table-row@2 \
+      @tiptap/extension-table-header@2 @tiptap/extension-table-cell@2 \
       tiptap-markdown@0.8 esbuild
     npx esbuild entry.js --bundle --format=esm --minify --outfile=tiptap.js
 
@@ -21,5 +23,9 @@ with this `entry.js`:
     export { default as Link } from '@tiptap/extension-link';
     export { default as Placeholder } from '@tiptap/extension-placeholder';
     export { Markdown } from 'tiptap-markdown';
+    export { default as Table } from '@tiptap/extension-table';
+    export { default as TableRow } from '@tiptap/extension-table-row';
+    export { default as TableHeader } from '@tiptap/extension-table-header';
+    export { default as TableCell } from '@tiptap/extension-table-cell';
 
 Built from versions 2.27.3 (Tiptap) and 0.8.10 (tiptap-markdown).

@@ -1,9 +1,8 @@
 // The panel's entry: the mouse, and the start. It turns what the user does
 // into commands for the worker (see screen.js for what the panel itself owns).
 
-import { isGroup } from '../model.js';
 import { app, closeOverlay, here, idAt, log, newPane, op, paneAt, picker, redraw, refresh, rowOf, send, setFocus, targets, ui } from './screen.js';
-import { mainMenu, openMenu, rowMenu, treeMenu } from './menus.js';
+import { mainMenu, menuUnder, openMenu, rowMenu, treeMenu } from './menus.js';
 import { endsDrag } from './drag.js';
 import * as cmd from './commands.js';
 import './keys.js';
@@ -33,10 +32,9 @@ const actions = {
     ui.focus = 0;
     refresh();
   },
-  more: ({ el }) => {
-    const box = el.getBoundingClientRect();
-    openMenu(box.right, box.bottom, mainMenu());
-  },
+  more: ({ el }) => menuUnder(el, mainMenu()),
+  'split-row': () => cmd.split('row'),
+  'split-column': () => cmd.split('column'),
   'picker-tree': ({ el }) => {
     ui.overlay = { kind: 'picker', ...newPane(el.dataset.tree), into: picker().into };
     refresh();
@@ -52,6 +50,11 @@ const actions = {
   icon: ({ el }) => cmd.setIcon(el.dataset.icon),
   settings: cmd.openSettings,
   'overlay-close': closeOverlay,
+  yes: () => {
+    const { run } = ui.overlay;
+    closeOverlay();
+    run();
+  },
 };
 
 let opening; // A sleeping page about to be opened by a click.
@@ -103,14 +106,14 @@ app.addEventListener('dblclick', (event) => {
   else if (id && pane !== picker() && event.target.closest('.title')) cmd.startRename({ id, pane });
 });
 
-// Middle click, as on a tab or a link: closes a live node's tab (the node
-// stays, asleep), opens a sleeping one without going to it.
+// Middle click, as on a tab: closes a live node's tab (the node stays,
+// asleep); on a node that is asleep already, takes it out of the tree.
 app.addEventListener('auxclick', (event) => {
   const id = idAt(event.target);
   const pane = paneAt(event.target);
   if (!id || event.button !== 1 || pane === picker()) return;
   if (ui.live.has(id)) send({ type: 'sleep-one', nodeId: id });
-  else if (!isGroup(ui.library.nodes[id])) cmd.activate(pane, id, 'background');
+  else cmd.remove(pane, id);
 });
 
 app.addEventListener('contextmenu', (event) => {
@@ -128,11 +131,12 @@ app.addEventListener('contextmenu', (event) => {
   openMenu(event.clientX, event.clientY, rowMenu(pane, id));
 });
 
-// A press anywhere else closes the menu.
+// A press anywhere else closes the menu. A press on the button it hangs from
+// is that button's to answer (see menuUnder).
 addEventListener(
   'pointerdown',
   (event) => {
-    if (!ui.menu || event.target.closest?.('.menu')) return;
+    if (!ui.menu || event.target.closest?.('.menu') || ui.menu.opener?.contains(event.target)) return;
     ui.menu = undefined;
     redraw();
   },

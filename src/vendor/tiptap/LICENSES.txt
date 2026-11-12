@@ -1091,6 +1091,10 @@ Packages that ship no licence file; the licence named in their package.json:
 @tiptap/extension-paragraph 2.27.3: MIT
 @tiptap/extension-placeholder 2.27.3: MIT
 @tiptap/extension-strike 2.27.3: MIT
+@tiptap/extension-table 2.27.3: MIT
+@tiptap/extension-table-cell 2.27.3: MIT
+@tiptap/extension-table-header 2.27.3: MIT
+@tiptap/extension-table-row 2.27.3: MIT
 @tiptap/extension-task-item 2.27.3: MIT
 @tiptap/extension-task-list 2.27.3: MIT
 @tiptap/extension-text 2.27.3: MIT

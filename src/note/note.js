@@ -2,8 +2,9 @@
 // ("# ", "- ", "[ ] ", "**bold**") turns into formatting at once. The text
 // lives in the library as markdown; this page only sends changes.
 
-import { Editor, Link, Markdown, Placeholder, StarterKit, TaskItem, TaskList } from '../vendor/tiptap/tiptap.js';
+import { Editor, Link, Markdown, Placeholder, StarterKit, Table, TableCell, TableHeader, TableRow, TaskItem, TaskList } from '../vendor/tiptap/tiptap.js';
 import { t } from '../i18n.js';
+import { toolbar } from './tools.js';
 
 const log = (...args) => console.log('[tree note]', ...args);
 const id = new URLSearchParams(location.search).get('id');
@@ -15,6 +16,10 @@ const editor = new Editor({
     StarterKit,
     TaskList,
     TaskItem.configure({ nested: true }),
+    Table,
+    TableRow,
+    TableHeader,
+    TableCell,
     Link.configure({ openOnClick: false, autolink: true }),
     Placeholder.configure({ placeholder: t('notePlaceholder') }),
     Markdown.configure({ linkify: true, transformPastedText: true }),
@@ -26,6 +31,8 @@ const editor = new Editor({
     timer = setTimeout(save, 400);
   },
 });
+
+toolbar(editor, document.getElementById('tools'));
 
 let timer;
 let saved; // The text as the library has it, as far as this page knows.

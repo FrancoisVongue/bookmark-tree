@@ -27,14 +27,15 @@ export const ui = {
   query: '', // What is searched for.
   cursor: undefined, // The row the keyboard is on, in the focused pane.
   renaming: undefined, // { id, pane, field? } or { tree }.
-  drag: undefined, // { kind: 'rows', ids, from, label } or { kind: 'link' } while something is dragged.
-  drop: undefined, // { pane, targetId, position } where it would land.
-  menu: undefined, // { x, y, items }
+  drag: undefined, // { kind: 'rows', ids, from, label }, { kind: 'tree', tree, label } or { kind: 'link' } while something is dragged.
+  drop: undefined, // Where it would land: { pane, targetId, position } in a pane, { cell, tree } in the table of trees.
+  menu: undefined, // { x, y, items, opener }: `opener` is the button it hangs from, if any.
   // The one thing open on top of the panel, if any:
   //   { kind: 'picker', into, tree, rows, sel }  a pane to choose nodes of another tree
   //   { kind: 'icons', ids } or { ..., tree }    the table of icons, for nodes or for a tree
+  //   { kind: 'ask', question, yes, run }        a question before something is lost
   overlay: undefined,
-  toast: undefined, // What was just removed, with a way back.
+  toast: undefined, // What was just done, with a way back.
 };
 
 export const send = (message) => {
@@ -61,13 +62,27 @@ export const targets = (pane, id) =>
 export const branches = (pane, id) =>
   targets(pane, id).flatMap((each) => (rowOf(pane, each)?.collapsed ? [each, ...under(pane, each)] : [each]));
 
+/** Keeps the keyboard on the tree when nothing else has it. */
+function holdKeys() {
+  const busy = ui.renaming || ui.overlay || ui.menu;
+  if (!busy && !app.contains(document.activeElement)) rowEl(here(), ui.cursor)?.focus({ preventScroll: true });
+}
+
 export function closeOverlay() {
   ui.overlay = undefined;
   redraw();
+  holdKeys();
+}
+
+/** Asks before something is lost: `run` happens only on a yes (the button named `yes`). */
+export function ask(question, yes, run) {
+  ui.overlay = { kind: 'ask', question, yes, run };
+  redraw();
+  app.querySelector('.dialog .primary').focus(); // So Enter says yes.
 }
 
 let toastTimer;
-/** Tells what was just removed, for a few seconds, with a way back. */
+/** Tells what was just done, for a few seconds, with a way back. */
 export function say(text) {
   clearTimeout(toastTimer);
   ui.toast = text;
@@ -169,8 +184,7 @@ function follow() {
     shownActive = ui.activeId;
     for (const pane of ui.panes) rowEl(pane, ui.activeId)?.scrollIntoView({ block: 'nearest' });
   }
-  const busy = ui.renaming || ui.overlay || ui.menu;
-  if (!busy && !app.contains(document.activeElement)) rowEl(here(), ui.cursor)?.focus({ preventScroll: true });
+  holdKeys();
 }
 
 let generation = 0;

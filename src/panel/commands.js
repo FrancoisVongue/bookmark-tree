@@ -6,7 +6,7 @@ import { toHtml, toOutline } from '../bookmarks.js';
 import { t } from '../i18n.js';
 import { askForBookmarks, saveFile } from '../page.js';
 import { titleOf } from './view.js';
-import { app, branches, closeOverlay, here, newPane, op, redraw, refresh, rowEl, rowOf, say, send, ui } from './screen.js';
+import { app, ask, branches, closeOverlay, here, newPane, op, redraw, refresh, rowEl, rowOf, say, send, setFocus, ui } from './screen.js';
 
 export const activate = (pane, id, where) =>
   send({ type: 'activate', nodeId: id, treeId: pane.tree, windowId: ui.windowId, where });
@@ -43,11 +43,45 @@ export async function newTree(cell) {
   startRename({ tree: id });
 }
 
-/** Takes nodes out of the tree (or, with `everywhere`, out of all trees) and offers the way back. */
-export async function remove(pane, id, everywhere = false) {
+/**
+ * Takes nodes out of the tree (or, with `everywhere`, out of all trees) and
+ * offers the way back. One node goes at once; several are asked about first.
+ */
+export function remove(pane, id, everywhere = false) {
   const ids = branches(pane, id);
-  await (everywhere ? op('delete', { ids }) : op('remove', { tree: pane.tree, ids }));
-  say(t('removed', ids.length));
+  const go = async () => {
+    await (everywhere ? op('delete', { ids }) : op('remove', { tree: pane.tree, ids }));
+    say(t('removed', ids.length));
+  };
+  if (ids.length === 1) return go();
+  if (everywhere) ask(t('askDelete', ids.length), t('deleteYes'), go);
+  else ask(t('askRemove', ids.length, ui.library.trees[pane.tree].name), t('removeYes'), go);
+}
+
+/** Deletes a tree, once the user has said yes. */
+export function removeTree(treeId) {
+  ask(t('askDeleteTree', ui.library.trees[treeId].name), t('deleteYes'), async () => {
+    await op('tree-remove', { tree: treeId });
+    say(t('treeDeleted'));
+  });
+}
+
+/**
+ * The two split buttons. With one tree shown, either shows a second beside
+ * it (the same tree, until another is chosen in the table). With several, the
+ * button of the way they lie now leaves only the focused one; the other
+ * button turns them.
+ */
+export function split(way) {
+  if (ui.panes.length === 1) {
+    ui.panes.push(newPane(here().tree));
+    setFocus(ui.panes[1]);
+  } else if (ui.split === way) {
+    ui.panes = [here()];
+    ui.focus = 0;
+  }
+  ui.split = way;
+  refresh();
 }
 
 /**

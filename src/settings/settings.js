@@ -7,7 +7,7 @@ import { validTree } from '../model.js';
 import { fromHtml, fromOutline } from '../bookmarks.js';
 import { t } from '../i18n.js';
 import { askForBookmarks, pickFile, saveFile } from '../page.js';
-import { iconView, titleOf } from '../panel/view.js';
+import { askView, iconView, titleOf } from '../panel/view.js';
 
 const app = document.getElementById('app');
 const send = (message) => chrome.runtime.sendMessage(message).catch((error) => console.log('[tree settings]', message.type, error.message));
@@ -24,6 +24,7 @@ const page = {
   keys: {}, // The browser-wide shortcuts as they are set now: { [command]: keys }.
   busy: false,
   said: undefined, // { text, undo } - what was just done, and whether it can be undone.
+  asking: undefined, // { question, yes, run } - a question before something is lost.
 };
 
 /** What each key does. The browser-wide ones (the third item names the command) can be changed by the user. */
@@ -71,6 +72,18 @@ function say(text, undo = false) {
   page.said = { text, undo };
   draw();
   saidTimer = setTimeout(() => ((page.said = undefined), draw()), 8000);
+}
+
+/** Asks before something is lost: `run` happens only on a yes (the button named `yes`). */
+function ask(question, yes, run) {
+  page.asking = { question, yes, run };
+  draw();
+  app.querySelector('.dialog .primary').focus(); // So Enter says yes.
+}
+
+function closeQuestion() {
+  page.asking = undefined;
+  draw();
 }
 
 /** Does something that takes a while with the buttons held, then shows everything afresh. */
@@ -148,10 +161,17 @@ const actions = {
   // The whole library, as a file to keep somewhere safe.
   backup: () => saveFile(`tree-backup-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(page.library), 'application/json'),
   restore: ({ node }) => op('restore', { tree: page.tree, ids: [node] }),
-  'trash-empty': async () => {
-    await op('trash-empty');
-    say(t('trashEmptied'), true);
+  'trash-empty': () =>
+    ask(t('askEmptyTrash', page.library.trash.length), t('emptyTrash'), async () => {
+      await op('trash-empty');
+      say(t('trashEmptied'), true);
+    }),
+  yes: () => {
+    const { run } = page.asking;
+    closeQuestion();
+    run();
   },
+  'overlay-close': closeQuestion,
   'keys-change': () => chrome.tabs.create({ url: 'chrome://extensions/shortcuts' }),
   undo: () => {
     page.said = undefined;
@@ -161,7 +181,13 @@ const actions = {
 
 app.addEventListener('click', (event) => {
   const el = event.target.closest('[data-action]');
-  if (el && !el.disabled) actions[el.dataset.action]({ ...el.dataset });
+  // A click inside a dialog lands on the overlay behind it too: that is not "close".
+  const inside = el?.dataset.action === 'overlay-close' && event.target !== el;
+  if (el && !el.disabled && !inside) actions[el.dataset.action]({ ...el.dataset });
+});
+
+addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && page.asking) closeQuestion();
 });
 
 // --- What it looks like --------------------------------------------------------
@@ -259,6 +285,7 @@ function draw() {
             ${page.said.undo ? html`<button class="pill" data-action="undo">${t('undo')}</button>` : nothing}
           </div>`
         : nothing}
+      ${page.asking ? askView(page.asking) : nothing}
     `,
     app,
   );

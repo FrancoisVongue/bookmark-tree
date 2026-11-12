@@ -88,6 +88,61 @@ svg {
   background: rgb(127 127 127 / 0.35);
 }
 
+/* What opens on top of a page: the picker and the icons in the panel, a question anywhere. */
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  /* One cell the size of the page: a dialog's "100%" is then the page, not what the dialog holds. */
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+  padding: 12px;
+  background: rgb(0 0 0 / 0.35);
+}
+.dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  max-width: 420px;
+  max-height: 100%;
+  box-sizing: border-box;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--bg);
+  box-shadow: 0 8px 32px rgb(0 0 0 / 0.35);
+}
+.dialog footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.dialog footer button {
+  height: 28px;
+  padding: 0 14px;
+  border-radius: 14px;
+}
+.dialog footer button:hover {
+  background: var(--hover);
+}
+.dialog .primary {
+  background: var(--accent);
+  color: var(--bg);
+}
+.dialog .primary:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.dialog.ask {
+  max-width: 320px;
+}
+.dialog p {
+  margin: 0;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
 .field {
   display: flex;
   flex-direction: column;

@@ -51,6 +51,10 @@
   height: 28px;
   color: var(--dim);
 }
+.tools .act[aria-pressed='true'] {
+  background: var(--badge);
+  color: var(--text);
+}
 .tabs {
   flex: 1;
   min-width: 0;
@@ -138,6 +142,7 @@
 }
 
 .row {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -191,6 +196,32 @@
 }
 .row.drop-first {
   box-shadow: calc(var(--indent)) 2px 0 var(--accent);
+}
+
+/*
+ * Guides: a line from under each parent's arrow down along all that hangs on
+ * it. Solid, dashed, dotted by depth, so that neighbours never look alike.
+ * The mask is one tile of three levels, drawn for --indent: 18px, 6px tall
+ * (the row's height is a multiple of that, so the dashes meet between rows).
+ * The guide the current tab hangs on is drawn again, in the accent colour.
+ */
+.row::before,
+.row.lit::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 2px;
+  width: calc(var(--depth) * var(--indent));
+  background: color-mix(in srgb, var(--dim) 45%, transparent);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='54' height='6'%3E%3Cpath d='M8 0h1v6H8zM26 0h1v3h-1zM44 0h1v1h-1zM44 3h1v1h-1z'/%3E%3C/svg%3E");
+  pointer-events: none;
+}
+.row.lit::after {
+  left: calc(2px + (var(--lit) - 1) * var(--indent));
+  width: var(--indent);
+  background: var(--accent);
+  -webkit-mask-position: calc((1 - var(--lit)) * var(--indent)) 0;
 }
 
 .twisty {
@@ -327,28 +358,6 @@
   margin: 4px 0;
 }
 
-.overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 20;
-  display: grid;
-  place-items: center;
-  padding: 12px;
-  background: rgb(0 0 0 / 0.35);
-}
-.dialog {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  width: 100%;
-  max-width: 420px;
-  max-height: 100%;
-  box-sizing: border-box;
-  padding: 12px;
-  border-radius: 12px;
-  background: var(--bg);
-  box-shadow: 0 8px 32px rgb(0 0 0 / 0.35);
-}
 .dialog h2 {
   margin: 0;
   font-size: 14px;
@@ -356,27 +365,6 @@
 }
 .dialog .tabs {
   flex: none;
-}
-.dialog footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-.dialog footer button {
-  height: 28px;
-  padding: 0 14px;
-  border-radius: 14px;
-}
-.dialog footer button:hover {
-  background: var(--hover);
-}
-.dialog .primary {
-  background: var(--accent);
-  color: var(--bg);
-}
-.dialog .primary:disabled {
-  opacity: 0.4;
-  cursor: default;
 }
 .dialog.icons {
   display: grid;
@@ -439,7 +427,9 @@
 .dialog .row:hover {
   background: var(--hover);
 }
+/* The picker's list gives way, and scrolls, so the dialog fits the panel with its buttons in sight. */
 .dialog .pane {
+  flex: 0 1 auto;
   padding: 0;
 }
 

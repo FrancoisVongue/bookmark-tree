@@ -18,6 +18,7 @@ addEventListener('keydown', (event) => {
     return;
   }
   if (event.key === 'Escape') {
+    if (ui.overlay?.kind === 'ask') return closeOverlay(); // "No" to a question, and nothing else.
     if (ui.drag) endDrag();
     ui.menu = undefined;
     for (const pane of ui.panes) pane.sel.clear();
