@@ -2,7 +2,7 @@
 // commands from the panels, saves the result and tells the panels it changed.
 // It only ever asks the browser for three things: open, focus or close a tab.
 
-import { addNode, descendantsOf, isGroup, isNote, migrate, moveNode, newId, problems, treeFor, validTree } from './model.js';
+import { addNode, descendantsOf, isGroup, isNote, migrate, moveNode, newId, problems, stamped, treeFor, validTree } from './model.js';
 import { QUIET, ops } from './ops.js';
 import { EMPTY, merge } from './merge.js';
 import * as github from './github.js';
@@ -67,7 +67,7 @@ async function commit(name) {
 }
 
 const allTabs = () => chrome.tabs.query({});
-const reconcile = async () => core.reconcile(state, await allTabs(), (tab) => windowTree(tab.windowId));
+const reconcile = async () => core.reconcile(state, await allTabs(), (tab) => windowTree(tab.windowId), Date.now());
 
 async function init() {
   const { library } = await chrome.storage.local.get('library');
@@ -89,18 +89,28 @@ async function init() {
 
 // --- Facts from the browser ----------------------------------------------------
 
-chrome.tabs.onCreated.addListener((created) =>
-  enqueue('tab created', async () => {
+// The tab each window shows. A new tab the user opens goes right below its
+// node, if that node is in the tree the window's panel shows (see core.js).
+const shown = new Map();
+chrome.tabs.onActivated.addListener(({ tabId, windowId }) => shown.set(windowId, tabId));
+
+chrome.tabs.onCreated.addListener((created) => {
+  // Right now, before the new tab itself becomes the one shown.
+  const beside = created.openerTabId ?? shown.get(created.windowId);
+  return enqueue('tab created', async () => {
     // Read it again: the address is often not set yet when the event fires,
     // and the round trip gives the "opened from" report time to arrive.
     const tab = (await chrome.tabs.get(created.id).catch(() => null)) ?? created;
     const source = openedFrom.get(tab.id);
     openedFrom.delete(tab.id);
-    const result = core.tabOpened(state, tab, source, windowTree(tab.windowId));
-    if (result === 'new') fresh.add(tab.id);
-    log('tab', tab.id, 'created ->', result, source === undefined ? '' : `(from tab ${source})`, tab.pendingUrl || tab.url);
-  }),
-);
+    const result = core.tabOpened(state, tab, source, windowTree(tab.windowId), Date.now());
+    if (result === 'new') {
+      fresh.add(tab.id);
+      if (beside !== tab.id) core.tabOpenedBeside(state, tab.id, beside);
+    }
+    log('tab', tab.id, 'created ->', result, source === undefined ? `(beside tab ${beside})` : `(from tab ${source})`, tab.pendingUrl || tab.url);
+  });
+});
 
 chrome.webNavigation.onCreatedNavigationTarget.addListener(({ tabId, sourceTabId }) => {
   openedFrom.set(tabId, sourceTabId);
@@ -329,7 +339,7 @@ async function exchange() {
 async function newTab({ windowId, treeId, nodeId, as }) {
   treeId = validTree(state.library, treeId);
   const tab = await chrome.tabs.create({ windowId });
-  const node = addNode(state.library, treeId, { id: newId(), url: '', title: '' });
+  const node = addNode(state.library, treeId, stamped({ id: newId(), url: '', title: '' }, Date.now()));
   if (nodeId) moveNode(state.library, treeId, node.id, nodeId, as === 'child' ? 'inside' : 'after');
   state.binding[tab.id] = { node: node.id, tree: treeId };
 }
@@ -342,6 +352,7 @@ async function handle(message, sender) {
       return {
         library,
         binding: state.binding,
+        windows: state.windows,
         audible: audible.map((tab) => state.binding[tab.id]?.node).filter(Boolean),
         trouble,
         canUndo: undo.length > 0,
@@ -393,7 +404,7 @@ async function handle(message, sender) {
       // A link clicked in a note: a new tab, and a child of the note.
       const from = sender.tab;
       const tab = await chrome.tabs.create({ url: message.url, windowId: from.windowId, index: from.index + 1 });
-      core.tabOpened(state, tab, from.id);
+      core.tabOpened(state, tab, from.id, undefined, Date.now());
       return;
     }
     case 'sync-get': {

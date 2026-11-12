@@ -1,0 +1,128 @@
+/* What every page of the extension shares: colours, and a few small parts. */
+
+:root {
+  color-scheme: light dark;
+  --bg: #fff;
+  --text: #1f1f1f;
+  --dim: #6b6f6d;
+  --hover: rgb(31 31 31 / 0.07);
+  --active-bg: #d3e3fd;
+  --active-text: #041e49;
+  --accent: #0b57d0;
+  --badge: #e9eef6;
+  --row: 30px;
+  --indent: 18px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #282a2c;
+    --text: #e3e3e3;
+    --dim: #9aa0a6;
+    --hover: rgb(227 227 227 / 0.08);
+    --active-bg: #004a77;
+    --active-text: #c2e7ff;
+    --accent: #a8c7fa;
+    --badge: #3c4043;
+  }
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 13px system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+button {
+  font: inherit;
+  color: inherit;
+  border: 0;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+}
+svg {
+  fill: currentColor;
+  display: block;
+}
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.pill {
+  flex: none;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 12px;
+  color: var(--accent);
+  font-weight: 600;
+}
+.pill:hover {
+  background: var(--hover);
+}
+.pill:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 12px;
+  z-index: 15;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 6px 6px 14px;
+  border-radius: 18px;
+  background: var(--text);
+  color: var(--bg);
+  white-space: nowrap;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.3);
+}
+.toast .pill {
+  color: var(--bg);
+  background: rgb(127 127 127 / 0.35);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--dim);
+  font-size: 12px;
+}
+.field input {
+  height: 28px;
+  padding: 0 8px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--badge);
+  border-radius: 6px;
+  user-select: text;
+}
+.field input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.hint {
+  color: var(--dim);
+  line-height: 1.5;
+}
+.hint.error {
+  color: #d93025;
+}
+.trouble {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #d93025;
+  color: #fff;
+  user-select: text;
+}

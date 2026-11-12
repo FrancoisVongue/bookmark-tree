@@ -77,3 +77,10 @@ test('nothing changed on my side: the result is theirs', () => {
   ops['collapse-all'](theirs, { tree: MAIN, collapsed: true });
   assert.deepEqual(merge(base, mine, theirs, 1), theirs);
 });
+
+test("a tree's icon travels", () => {
+  const base = createLibrary();
+  const mine = structuredClone(base);
+  mine.trees[MAIN].icon = '🔥';
+  assert.equal(merge(base, mine, structuredClone(base), 1).trees[MAIN].icon, '🔥');
+});

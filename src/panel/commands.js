@@ -2,10 +2,11 @@
 
 import { isGroup } from '../model.js';
 import { exportTree } from '../ops.js';
-import { fromHtml, fromOutline, toHtml, toOutline } from '../bookmarks.js';
+import { toHtml, toOutline } from '../bookmarks.js';
 import { t } from '../i18n.js';
+import { askForBookmarks, saveFile } from '../page.js';
 import { titleOf } from './view.js';
-import { app, branches, here, log, newPane, op, redraw, refresh, rowEl, rowOf, say, send, ui } from './screen.js';
+import { app, branches, closeOverlay, here, newPane, op, redraw, refresh, rowEl, rowOf, say, send, ui } from './screen.js';
 
 export const activate = (pane, id, where) =>
   send({ type: 'activate', nodeId: id, treeId: pane.tree, windowId: ui.windowId, where });
@@ -67,6 +68,15 @@ export function pagesIn(text) {
     .map((url) => ({ id: crypto.randomUUID(), url, title: '' }));
 }
 
+/** Gives what the table of icons was opened for (nodes, or a tree) the first sign of `text` as its icon; none, if empty. */
+export function setIcon(text) {
+  const { ids, tree } = ui.overlay;
+  const icon = [...new Intl.Segmenter().segment(text.trim())][0]?.segment ?? '';
+  if (tree) op('tree-icon', { tree, icon });
+  else op('icon', { ids, icon });
+  closeOverlay();
+}
+
 // --- Renaming (and typing an address) ------------------------------------------
 
 export function startRename(what) {
@@ -97,45 +107,10 @@ export function endRename(save) {
   rowEl(renaming.pane, renaming.id)?.focus();
 }
 
-// --- Sync ----------------------------------------------------------------------
+// --- A tree as a file, as bookmarks; the rest is on the settings page ----------
 
-/** Opens the sync window: where the library is kept, when it was last synced, the saved versions. */
-export async function openSync() {
-  ui.overlay = { kind: 'sync', settings: (await send({ type: 'sync-get' })) ?? {}, versions: [], busy: false };
-  redraw();
-  const versions = await send({ type: 'sync-history' });
-  if (ui.overlay?.kind === 'sync') ui.overlay.versions = versions ?? [];
-  redraw();
-}
-
-/** Does one thing with the sync window showing it is busy, then shows the window afresh. */
-async function syncing(task) {
-  ui.overlay.busy = true;
-  redraw();
-  await task();
-  if (ui.overlay?.kind === 'sync') await openSync();
-}
-
-export const saveSync = () =>
-  syncing(async () => {
-    const field = (name) => app.querySelector(`.dialog [name="${name}"]`).value.trim();
-    await send({ type: 'sync-set', repo: field('repo'), token: field('token'), api: ui.overlay.settings.api });
-    await send({ type: 'sync-now' });
-  });
-export const syncNow = () => syncing(() => send({ type: 'sync-now' }));
-export const goToVersion = (ref) => syncing(() => send({ type: 'sync-restore', ref }));
-
-// --- Files and bookmarks -------------------------------------------------------
-
-const uuid = () => crypto.randomUUID();
-
-function saveFile(name, text, type) {
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(new Blob([text], { type }));
-  link.download = name;
-  link.click();
-  URL.revokeObjectURL(link.href);
-}
+/** Sync, versions, files, the trash, the keys: on a page of their own. */
+export const openSettings = () => chrome.runtime.openOptionsPage();
 
 /** One tree, in our own format (everything about its nodes is kept). */
 export const download = (treeId) => {
@@ -148,51 +123,6 @@ export const downloadBookmarks = (treeId) => {
   const { name } = ui.library.trees[treeId];
   saveFile(`${name}.bookmarks.html`, toHtml(toOutline(ui.library, treeId, titleOf), name), 'text/html');
 };
-
-/** The whole library, as a file to keep somewhere safe. */
-export const backUpAll = () =>
-  saveFile(`tree-backup-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(ui.library), 'application/json');
-
-/** Adds a tree from `data` ({ nodes, tree }) and shows it. */
-async function addTree(data) {
-  const id = uuid();
-  await op('import', { id, data });
-  here().tree = id;
-  refresh();
-}
-
-/** Takes in a file: a tree of ours, a bookmarks file of any browser, or a backup of the whole library. */
-export function upload() {
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = '.json,.html,.htm';
-  input.onchange = async () => {
-    const [file] = input.files;
-    const text = await file.text();
-    try {
-      if (text.trimStart().startsWith('<')) return addTree(fromOutline(fromHtml(text), file.name.replace(/(\.bookmarks)?\.[^.]*$/, ''), uuid));
-      const data = JSON.parse(text);
-      if (data.trees) return say((await send({ type: 'restore-file', library: data })) ?? t('restored'));
-      if (!data.nodes || !data.tree?.children) throw new Error('not a tree file');
-      addTree(data);
-    } catch (error) {
-      log('import failed', error.message);
-      say(t('importFailed'));
-    }
-  };
-  input.click();
-}
-
-const askForBookmarks = () => chrome.permissions.request({ permissions: ['bookmarks'] });
-
-/** The browser's bookmarks as a new tree. */
-export async function importBookmarks() {
-  if (!(await askForBookmarks())) return;
-  const outline = (items) =>
-    items.map((item) => (item.url ? { title: item.title, url: item.url } : { title: item.title || t('untitled'), children: outline(item.children ?? []) }));
-  const [root] = await chrome.bookmarks.getTree();
-  addTree(fromOutline(outline(root.children.filter((folder) => folder.children?.length)), t('bookmarks'), uuid));
-}
 
 /**
  * A tree as a folder among the browser's own bookmarks ("Other bookmarks"),

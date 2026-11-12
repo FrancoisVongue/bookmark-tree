@@ -2,6 +2,7 @@
 // tree looks like after each step, and any errors from the consoles.
 // Run: node test/browser/restart.mjs   (needs `npm install`; TREE_CHROME may name the browser)
 import { chromium } from 'playwright-core';
+import { importFile, openSettings } from './_settings.js';
 import http from 'node:http';
 import os from 'node:os';
 import fs from 'node:fs';
@@ -44,7 +45,7 @@ await step('initial', async () => {});
 await step('sleep subtree of a (button)', async () => { await row('Page /a').hover(); await row('Page /a').locator('[data-action="sleep"]').click(); });
 console.log('open pages:', ctx.pages().map((p) => p.url().replace(base, '')).filter((u) => !u.startsWith('chrome-ext')).join(' | '));
 await step('click sleeping child wakes it', async () => { await Promise.all([ctx.waitForEvent('page'), row('child-of').click()]); await sleep(500); await panel.bringToFront(); });
-await step('export + import', async () => { await panel.locator('.grid .tab').first().click({ button: 'right' }); const [dl] = await Promise.all([panel.waitForEvent('download'), menu('Export tree')]); const file = dir + '/' + dl.suggestedFilename(); await dl.saveAs(file); console.log('exported', dl.suggestedFilename(), fs.statSync(file).size, 'bytes'); await panel.click('[data-action="more"]'); const [fc] = await Promise.all([panel.waitForEvent('filechooser'), menu('Import a file')]); await fc.setFiles(file); await sleep(500); console.log('tree tabs:', (await panel.locator('.bar .tab[data-tree]').allTextContents()).map((x) => x.trim())); });
+await step('export + import', async () => { await panel.locator('.grid .tab').first().click({ button: 'right' }); const [dl] = await Promise.all([panel.waitForEvent('download'), menu('Export tree')]); const file = dir + '/' + dl.suggestedFilename(); await dl.saveAs(file); console.log('exported', dl.suggestedFilename(), fs.statSync(file).size, 'bytes'); const settings = await openSettings(ctx, panel, errors); console.log('settings say:', await importFile(settings, file)); await settings.close(); await panel.bringToFront(); await sleep(300); console.log('tree tabs:', (await panel.locator('.bar .tab[data-tree]').allTextContents()).map((x) => x.trim())); });
 await step('40 notes, then wheel during drag', async () => {
   await panel.locator('.bar .tab[data-tree]').first().click(); await sleep(300);
   for (let i = 0; i < 40; i++) await msg({ type: 'op', op: 'note-add', args: { tree: 'main', id: 'n' + i } });

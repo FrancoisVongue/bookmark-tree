@@ -2,6 +2,7 @@
 // a stand-in for GitHub that runs here. Prints both trees after each step.
 // Run: node test/browser/sync.mjs   (needs `npm install`; TREE_CHROME may name the browser)
 import { chromium } from 'playwright-core';
+import { importFile, openSettings } from './_settings.js';
 import http from 'node:http';
 import os from 'node:os';
 import fs from 'node:fs';
@@ -85,13 +86,14 @@ console.log('  B trash:', (await B.msg({ type: 'get-state' })).library.trash.map
 await B.sync();
 await show('B synced with nothing new: no new version');
 
-await A.panel.click('[data-action="more"]');
-await A.panel.locator('.menu button', { hasText: 'Sync' }).click();
+const settings = await openSettings(A.ctx, A.panel, errors);
 await sleep(800);
-console.log('\n  sync window:', (await A.panel.locator('.dialog .hint').textContent()).trim().slice(0, 40), '| versions listed:', await A.panel.locator('.dialog .list .row').count());
-await A.panel.locator('[data-action="sync-restore"]').last().click();
+console.log('\n  settings:', (await settings.locator('.hint').nth(1).textContent()).trim().slice(0, 40), '| versions listed:', await settings.locator('[data-action="version"]').count());
+await settings.locator('.item:not(:has-text("this computer")) [data-action="version"]').last().click(); // The oldest one on GitHub.
 await sleep(1200);
-await A.panel.locator('.dialog footer button').first().click();
+console.log('  settings say:', await settings.locator('.toast span').textContent().catch(() => '-'));
+await settings.close();
+await A.panel.bringToFront();
 await show('A went to the first version');
 await A.panel.keyboard.press('Control+z');
 await show('A undid that');

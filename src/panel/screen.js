@@ -32,7 +32,7 @@ export const ui = {
   menu: undefined, // { x, y, items }
   // The one thing open on top of the panel, if any:
   //   { kind: 'picker', into, tree, rows, sel }  a pane to choose nodes of another tree
-  //   { kind: 'icons', ids } | { kind: 'trash' } | { kind: 'keys' } | { kind: 'sync', ... }
+  //   { kind: 'icons', ids } or { ..., tree }    the table of icons, for nodes or for a tree
   overlay: undefined,
   toast: undefined, // What was just removed, with a way back.
 };

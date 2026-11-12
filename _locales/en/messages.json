@@ -87,7 +87,7 @@
     "message": "Export tree"
   },
   "importTree": {
-    "message": "Import a file (tree, bookmarks, backup)…"
+    "message": "Import a file…"
   },
   "deleteTree": {
     "message": "Delete tree"
@@ -102,10 +102,10 @@
     "message": "More"
   },
   "addFromTree": {
-    "message": "Add from another tree…"
+    "message": "Take from another tree…"
   },
   "addSelected": {
-    "message": "Add ($1)"
+    "message": "Show here too ($1)"
   },
   "cancel": {
     "message": "Cancel"
@@ -116,17 +116,14 @@
   "splitColumn": {
     "message": "One under another"
   },
-  "done": {
-    "message": "Done"
-  },
   "addFromTreeHere": {
-    "message": "Add here from another tree…"
+    "message": "Take here from another tree…"
   },
   "addInto": {
-    "message": "Add into “$1”"
+    "message": "Into “$1”"
   },
   "addToEnd": {
-    "message": "Add to the end of “$1”"
+    "message": "To the end of “$1”"
   },
   "search": {
     "message": "Search"
@@ -158,9 +155,6 @@
   "copyLink": {
     "message": "Copy link"
   },
-  "moveTo": {
-    "message": "Move to the end of “$1”"
-  },
   "removeBranch": {
     "message": "Remove with everything inside"
   },
@@ -184,9 +178,6 @@
   },
   "trash": {
     "message": "Trash"
-  },
-  "trashEmpty": {
-    "message": "Nothing was deleted in the last 30 days."
   },
   "restore": {
     "message": "Restore"
@@ -229,9 +220,6 @@
   },
   "notePlaceholder": {
     "message": "Write here. Markdown works: # heading, - list, [ ] task, **bold**…"
-  },
-  "sync": {
-    "message": "Sync…"
   },
   "syncRepo": {
     "message": "GitHub repository (private)"
@@ -298,5 +286,59 @@
   },
   "localBackup": {
     "message": "this computer"
+  },
+  "settings": {
+    "message": "Settings, backups, trash…"
+  },
+  "settingsTitle": {
+    "message": "Tree: settings"
+  },
+  "syncTitle": {
+    "message": "Sync through GitHub"
+  },
+  "versions": {
+    "message": "Versions to go back to"
+  },
+  "versionsHint": {
+    "message": "Going to a version replaces the library on this computer with the library as it was then. Undo brings today’s back."
+  },
+  "versionsNone": {
+    "message": "None yet. This computer puts the library aside every hour and keeps the last of each day for a week; every sync with GitHub is a version too."
+  },
+  "wentToVersion": {
+    "message": "The library is now as it was: $1"
+  },
+  "files": {
+    "message": "Files"
+  },
+  "filesHint": {
+    "message": "A backup file holds the whole library; importing one replaces the library. A tree file or a bookmarks file of any browser is added as a new tree."
+  },
+  "imported": {
+    "message": "Added as the tree “$1”"
+  },
+  "trashHint": {
+    "message": "Deleted pages are kept for 30 days. Restored ones go to the end of “$1”."
+  },
+  "trashEmptied": {
+    "message": "Trash emptied"
+  },
+  "keysNotSet": {
+    "message": "not set"
+  },
+  "keysChange": {
+    "message": "Change the first three…"
+  },
+  "restoreBackup": {
+    "message": "Restore a backup…"
+  },
+  "addedOn": {
+    "message": "Added $1"
+  },
+  "moveSelected": {
+    "message": "Move here ($1)"
+  },
+  "anyIcon": {
+    "message": "Or type any emoji or letter, then Enter"
   }
 }

@@ -21,33 +21,19 @@ const ICONS = {
   shared: svg('M7 4h9v9h-2V6H7zM4 7h9v9H4zm1.6 1.6v5.8h5.800V8.6z'),
 };
 
+// The icons offered, eight to a row. No table fits everyone's work, so two
+// rows are about no subject at all (marks, colours), and the dialog takes
+// any emoji or letter typed by hand.
 export const EMOJI = [
-  ...'⭐ ❤️ 🔥 ✅ ❌ ⚠️ ❓ 💡 📌 📎 🔒 🔑 🔔 🏷️ 🎯 🚀'.split(' '),
-  ...'📁 📂 📄 📝 📚 📖 🗂️ 🗒️ 📅 ⏰ ⌛ 📊 📈 💰 🛒 🎁'.split(' '),
-  ...'💻 🖥️ 📱 ⚙️ 🔧 🧪 🐞 🧩 🌐 🔗 ✉️ 💬 📷 🎬 🎵 🎮'.split(' '),
-  ...'🏠 🏢 🏦 🏥 ✈️ 🚗 🍔 ☕ 🌱 🌙 ☀️ 🌈 🧠 👤 👥 🎓'.split(' '),
-];
-
-/** What each key does, for the list of shortcuts. */
-const KEYS = [
-  ['Alt+T', 'actionTitle'],
-  ['Alt+C · Ctrl+Shift+Enter', 'newChild'],
-  ['Alt+N · Ctrl+Enter', 'newSibling'],
-  ['Ctrl+G', 'newGroup'],
-  ['Ctrl+M', 'newNote'],
-  ['Ctrl+F', 'search'],
-  ['↑ ↓ ← →', 'keysMove'],
-  ['Shift+↑ ↓ · Ctrl+A', 'keysSelect'],
-  ['Enter', 'keysOpen'],
-  ['F2', 'rename'],
-  ['Tab · Shift+Tab', 'keysIndent'],
-  ['Ctrl+D', 'duplicate'],
-  ['Ctrl+V', 'keysPaste'],
-  ['Del', 'remove'],
-  ['Shift+Del', 'deleteEverywhere'],
-  ['Ctrl+Z · Ctrl+Shift+Z', 'keysUndo'],
-  ['Esc', 'keysEscape'],
-];
+  '⭐ ❤️ 🔥 ✅ ❌ ⚠️ ❓ 💡', // marks
+  '🔴 🟠 🟡 🟢 🔵 🟣 🟤 🟥', // colours
+  '📌 🔒 🔑 🔔 🎯 🚀 📅 ⏰', // what matters, and when
+  '📁 📄 📝 📚 🎓 🔍 📰 🧠', // reading and study
+  '💼 📊 💰 💳 🛒 📦 🧾 ⚖️', // work, money, law
+  '💻 📱 ⚙️ 🔧 🐞 🧪 🤖 🌐', // making software, science
+  '🎨 ✏️ 📷 🎬 🎵 🎮 ✉️ 💬', // making things, play, talk
+  '🏠 👥 💊 ✈️ 🚗 🍔 ⚽ 🌱', // life away from the screen
+].flatMap((row) => row.split(' '));
 
 /** Chrome's own icon cache: works for sleeping pages and chrome:// pages too. */
 function faviconOf(url) {
@@ -63,7 +49,7 @@ export const titleOf = (node) =>
 /** Away from the address it is pinned to. */
 const isAway = (node) => node.home && node.url !== node.home.url;
 
-function iconView(node) {
+export function iconView(node) {
   if (node.icon) return html`<span class="favicon emoji">${node.icon}</span>`;
   if (isGroup(node)) return html`<span class="favicon glyph">${ICONS.group}</span>`;
   if (isNote(node)) return html`<span class="favicon glyph">${ICONS.note}</span>`;
@@ -105,7 +91,7 @@ function rowView(row, pane, ui, holder, included) {
       aria-selected=${pane.sel.has(row.id)}
       tabindex=${pane === ui.panes[ui.focus] && row.id === ui.cursor ? 0 : -1}
       style="--depth:${row.depth}"
-      title="${title}${node.url ? `\n${node.url}` : ''}"
+      title=${[title, node.url, node.added && t('addedOn', new Date(node.added).toLocaleDateString())].filter(Boolean).join('\n')}
     >
       <button class="twisty" data-action="collapse" tabindex="-1" title=${t(row.collapsed ? 'expand' : 'collapse')}>
         ${ICONS.chevron}
@@ -154,7 +140,7 @@ function paneView(pane, index, ui) {
     >
       ${ui.panes.length > 1 && !picking
         ? html`<header class="pane-head">
-            <span>${tree.name}</span>
+            <span>${treeLabel(tree)}</span>
             ${focused ? html`<span class="here">${t('newTabsHere')}</span>` : ''}
             ${act('pane-close', 'close', t('closePane'))}
           </header>`
@@ -167,12 +153,14 @@ function paneView(pane, index, ui) {
   `;
 }
 
+const treeLabel = (tree) => (tree.icon ? `${tree.icon} ${tree.name}` : tree.name);
+
 function treeTabs(ui, current, action) {
   return Object.values(ui.library.trees).map((tree) =>
     ui.renaming?.tree === tree.id
       ? html`<input class="rename tree-name" .value=${tree.name} aria-label=${t('renameHint')} />`
       : html`<button class="tab ${tree.id === current ? 'current' : ''}" data-action=${action} data-tree=${tree.id}>
-          ${tree.name}
+          ${treeLabel(tree)}
         </button>`,
   );
 }
@@ -187,7 +175,7 @@ function treeGrid(ui) {
     const tree = ui.library.trees[id];
     if (ui.renaming?.tree === id) return html`<input class="rename tree-name" .value=${tree.name} aria-label=${t('renameHint')} />`;
     const state = `${id === current ? 'current' : ''} ${ui.drag?.tree === id ? 'dragging' : ''} ${drop}`;
-    return html`<button class="tab ${state}" data-action="tree-show" data-tree=${id} data-cell=${cell}>${tree.name}</button>`;
+    return html`<button class="tab ${state}" data-action="tree-show" data-tree=${id} data-cell=${cell}>${treeLabel(tree)}</button>`;
   };
   return html`<div class="grid" style="grid-template-columns:repeat(${columns}, minmax(0, 1fr))">${cells.map(cellView)}</div>`;
 }
@@ -221,8 +209,9 @@ function pickerView(ui) {
     ${paneView(picker, 'picker', ui)}
     <footer>
       <button data-action="overlay-close">${t('cancel')}</button>
-      <button class="primary" data-action="picker-add" ?disabled=${!picker.sel.size}>
-        ${t('addSelected', picker.sel.size)}
+      <button data-action="picker-add" ?disabled=${!picker.sel.size}>${t('addSelected', picker.sel.size)}</button>
+      <button class="primary" data-action="picker-add" data-take ?disabled=${!picker.sel.size}>
+        ${t('moveSelected', picker.sel.size)}
       </button>
     </footer>
   `);
@@ -232,74 +221,13 @@ const iconsView = () =>
   dialog(
     html`
       ${EMOJI.map((emoji) => html`<button data-action="icon" data-icon=${emoji}>${emoji}</button>`)}
+      <input class="any" placeholder=${t('anyIcon')} aria-label=${t('anyIcon')} />
       <button class="wide" data-action="icon" data-icon="">${t('noIcon')}</button>
     `,
     'icons',
   );
 
-function trashView(ui) {
-  const trash = ui.library.trash.toReversed();
-  return dialog(html`
-    <h2>${t('trash')}</h2>
-    <div class="list">
-      ${trash.length ? '' : html`<p class="hint">${t('trashEmpty')}</p>`}
-      ${trash.map(
-        ({ node, at }) => html`
-          <div class="row asleep" title=${node.url ?? ''}>
-            ${iconView(node)}<span class="title">${titleOf(node)}</span>
-            <span class="when">${new Date(at).toLocaleDateString()}</span>
-            <button class="pill" data-action="restore" data-node=${node.id}>${t('restore')}</button>
-          </div>
-        `,
-      )}
-    </div>
-    <footer>
-      <button data-action="trash-empty" ?disabled=${!trash.length}>${t('emptyTrash')}</button>
-      <button class="primary" data-action="overlay-close">${t('done')}</button>
-    </footer>
-  `);
-}
-
-const keysView = () =>
-  dialog(html`
-    <h2>${t('shortcuts')}</h2>
-    <div class="list keys">${KEYS.map(([keys, what]) => html`<kbd>${keys}</kbd><span>${t(what)}</span>`)}</div>
-    <footer><button class="primary" data-action="overlay-close">${t('done')}</button></footer>
-  `);
-
-function syncView(ui) {
-  const { settings, versions, busy } = ui.overlay;
-  const when = (time, local) => (local ? `${new Date(time).toLocaleDateString()} · ${t('localBackup')}` : new Date(time).toLocaleString());
-  const status = settings.error
-    ? html`<p class="hint error">${t('syncError', settings.error)}</p>`
-    : html`<p class="hint">${settings.at ? t('syncLast', when(settings.at)) : t('syncHint')}</p>`;
-  return dialog(html`
-    <h2>${t('sync')}</h2>
-    <label class="field">${t('syncRepo')}<input name="repo" placeholder="owner/repository" .value=${settings.repo ?? ''} /></label>
-    <label class="field">
-      ${t('syncToken')}
-      <input name="token" type="password" placeholder=${settings.hasToken ? t('syncTokenSaved') : 'github_pat_…'} />
-    </label>
-    ${status} ${settings.outOfStep ? html`<p class="hint error">${t('outOfStep')}</p>` : ''}
-    <div class="list">
-      ${versions.map(
-        ({ ref, at, local }) => html`
-          <div class="row asleep">
-            <span class="title">${when(at, local)}</span>
-            <button class="pill" data-action="sync-restore" data-ref=${ref} ?disabled=${busy}>${t('goToVersion')}</button>
-          </div>
-        `,
-      )}
-    </div>
-    <footer>
-      <button data-action="overlay-close">${t('done')}</button>
-      <button data-action="sync-now" ?disabled=${busy || !settings.repo}>${t('syncNow')}</button>
-      <button class="primary" data-action="sync-save" ?disabled=${busy}>${t(busy ? 'syncBusy' : 'syncSave')}</button>
-    </footer>
-  `);
-}
-
-const OVERLAYS = { picker: pickerView, icons: iconsView, trash: trashView, keys: keysView, sync: syncView };
+const OVERLAYS = { picker: pickerView, icons: iconsView };
 
 /** Draws the panel from `ui` (see screen.js). */
 export function draw(container, ui) {
@@ -309,7 +237,8 @@ export function draw(container, ui) {
   render(
     html`
       <header class="bar">
-        ${ui.trouble ? html`<p class="trouble">${ui.trouble}</p>` : nothing} ${treeGrid(ui)}
+        ${ui.trouble ? html`<p class="trouble">${ui.trouble}<button data-action="settings">${t('restoreBackup')}</button></p>` : nothing}
+        ${treeGrid(ui)}
         <div class="tools">
           <label class="search">
             ${ICONS.search}

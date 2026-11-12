@@ -2,6 +2,7 @@
 // tree looks like after each step, and any errors from the consoles.
 // Run: node test/browser/basics.mjs   (needs `npm install`; TREE_CHROME may name the browser)
 import { chromium } from 'playwright-core';
+import { importFile, openSettings } from './_settings.js';
 import http from 'node:http';
 import os from 'node:os';
 import fs from 'node:fs';
@@ -51,7 +52,7 @@ await step('undo from toast', async () => { await panel.click('.toast [data-acti
 await step('open all under a', async () => { await row('Page /a').click({ button: 'right' }); await menu('Open all'); await sleep(800); });
 console.log('pages:', pages());
 await step('duplicate branch a', async () => { await row('Page /a').click({ button: 'right' }); await menu('Duplicate'); });
-await step('delete b everywhere, restore from trash', async () => { await row('Page /b').click({ button: 'right' }); await menu('Delete from all trees'); await sleep(300); await panel.click('[data-action="more"]'); await menu('Trash'); await sleep(300); console.log('trash rows:', await panel.locator('.dialog .row .title').allTextContents());  await panel.locator('[data-action="restore"]').first().click(); await sleep(300); await panel.locator('.dialog .primary').click(); });
+await step('delete b everywhere, restore from trash', async () => { await row('Page /b').click({ button: 'right' }); await menu('Delete from all trees'); await sleep(300); const settings = await openSettings(ctx, panel, errors); console.log('trash rows:', await settings.locator('.item:has([data-action="restore"]) .title').allTextContents()); await settings.locator('[data-action="restore"]').first().click(); await sleep(300); await settings.close(); await panel.bringToFront(); });
 await step('new tree, new tab in it, delete tree: tab survives', async () => { await panel.click('[data-action="tree-add"]'); await sleep(300); await panel.keyboard.type('Temp'); await panel.keyboard.press('Enter'); await sleep(300); const [p] = await Promise.all([ctx.waitForEvent('page'), panel.click('[data-action="new-tab"]')]); await p.goto(base + '/in-temp'); await panel.bringToFront(); await sleep(400); console.log('Temp tree:', await outline()); await panel.locator('.bar .tab', { hasText: 'Temp' }).click({ button: 'right' }); await menu('Delete tree'); });
 console.log('pages:', pages());
 let note;

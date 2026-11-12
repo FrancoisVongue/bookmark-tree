@@ -37,9 +37,9 @@ test('moving into another tree shows the nodes there too, with their subtrees', 
   assert.equal(outline(lib), 'a\n  b\nc');
 });
 
-test('move-to takes the nodes out of the tree they came from', () => {
+test('a move that takes: the nodes leave the tree they came from', () => {
   const lib = library('a\n  b\nc');
-  ops['move-to'](lib, { from: MAIN, tree: 'other', ids: ['a'] }, 1);
+  ops.move(lib, { from: MAIN, tree: 'other', ids: ['a'], position: 'end', take: true }, 1);
   assert.equal(outline(lib, 'other'), 'a\n  b');
   assert.equal(outline(lib), 'c');
   assert.deepEqual(lib.trash, []);
@@ -137,4 +137,12 @@ test('a sound library has no problems; a damaged one is told apart', () => {
   delete hole.nodes.a;
   assert.equal(problems(hole)[0], 'a in tree main is not a node');
   assert.deepEqual(problems({ nodes: {} }), ['this is not a library']);
+});
+
+test('what is added or copied remembers when', () => {
+  const library = createLibrary();
+  ops.add(library, { tree: MAIN, nodes: [{ id: 'a', url: 'https://a.example/', title: 'A' }] }, 1000);
+  ops['note-add'](library, { tree: MAIN, id: 'n' }, 2000);
+  ops.duplicate(library, { tree: MAIN, ids: ['a'] }, 3000);
+  assert.deepEqual(Object.values(library.nodes).map((node) => node.added), [1000, 2000, 3000]);
 });

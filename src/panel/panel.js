@@ -41,22 +41,16 @@ const actions = {
     ui.overlay = { kind: 'picker', ...newPane(el.dataset.tree), into: picker().into };
     refresh();
   },
-  'picker-add': () => {
+  // What is chosen in the picker is shown here too, or (the "move" button) moves here.
+  'picker-add': ({ el }) => {
     const { tree, sel, into } = picker();
     const { pane, id } = into;
-    op('move', { tree: pane.tree, from: tree, ids: [...sel], target: id, position: id ? 'inside' : 'end' });
+    op('move', { tree: pane.tree, from: tree, ids: [...sel], target: id, position: id ? 'inside' : 'end', take: 'take' in el.dataset });
     if (id) op('collapse', { tree: pane.tree, id, collapsed: false }); // So what was added is seen.
     closeOverlay();
   },
-  icon: ({ el }) => {
-    op('icon', { ids: ui.overlay.ids, icon: el.dataset.icon });
-    closeOverlay();
-  },
-  restore: ({ el }) => op('restore', { tree: here().tree, ids: [el.dataset.node] }),
-  'trash-empty': () => op('trash-empty'),
-  'sync-save': cmd.saveSync,
-  'sync-now': cmd.syncNow,
-  'sync-restore': ({ el }) => cmd.goToVersion(el.dataset.ref),
+  icon: ({ el }) => cmd.setIcon(el.dataset.icon),
+  settings: cmd.openSettings,
   'overlay-close': closeOverlay,
 };
 

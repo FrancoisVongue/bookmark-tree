@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MAIN, createLibrary, problems, rowsOf } from '../src/model.js';
+import { MAIN, addNode, createLibrary, newId, problems, rowsOf } from '../src/model.js';
 import { ops } from '../src/ops.js';
 import { fromHtml, fromOutline, toHtml, toOutline } from '../src/bookmarks.js';
 
@@ -50,7 +50,25 @@ test('a bookmarks file as browsers write it', () => {
     <DT><A HREF="https://last.example/">Last</A>
 </DL><p>`;
   assert.deepEqual(fromHtml(html), [
-    { title: 'Bookmarks bar', children: [{ title: 'Example & co', url: 'https://example.com/' }, { title: 'Empty', children: [] }] },
+    {
+      title: 'Bookmarks bar',
+      added: 1_700_000_000_000,
+      children: [
+        { title: 'Example & co', url: 'https://example.com/', added: 1_700_000_002_000 },
+        { title: 'Empty', children: [], added: 1_700_000_003_000 },
+      ],
+    },
     { title: 'Last', url: 'https://last.example/' },
   ]);
+});
+
+test('the date a page was added travels through a bookmarks file, to the second', () => {
+  const library = createLibrary();
+  addNode(library, MAIN, { id: 'a', url: 'https://a.example/', title: 'A', added: 1_700_000_000_000 });
+  addNode(library, MAIN, { id: 'b', url: 'https://b.example/', title: 'B' });
+  const html = toHtml(toOutline(library, MAIN, (node) => node.title), 'Main');
+  assert.match(html, /HREF="https:\/\/a.example\/" ADD_DATE="1700000000">A</);
+  const back = Object.values(fromOutline(fromHtml(html), 'Main', newId).nodes);
+  assert.deepEqual(back.map((node) => node.added), [1_700_000_000_000, undefined]);
+  assert.equal('added' in back[1], false);
 });

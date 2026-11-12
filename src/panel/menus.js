@@ -34,7 +34,6 @@ export function rowMenu(pane, id) {
   const node = ui.library.nodes[id];
   const tree = pane.tree;
   const page = !isNote(node);
-  const others = Object.values(ui.library.trees).filter((other) => other.id !== tree);
   const links = () => ids.map((each) => ui.library.nodes[each].url).join('\n');
   return [
     !page && item('openNote', () => cmd.activate(pane, id)),
@@ -59,7 +58,6 @@ export function rowMenu(pane, id) {
     item('indent', () => op('indent', { tree, ids }), 'Tab'),
     item('outdent', () => op('outdent', { tree, ids }), 'Shift+Tab'),
     item('addFromTreeHere', () => cmd.openPicker(pane, id), '', !hasOtherTrees()),
-    ...others.map((other) => ({ label: t('moveTo', other.name), run: () => op('move-to', { from: tree, tree: other.id, ids }) })),
     null,
     item(rowOf(pane, id).collapsed ? 'removeBranch' : 'remove', () => cmd.remove(pane, id), 'Del'),
     item('deleteEverywhere', () => cmd.remove(pane, id, true), 'Shift+Del'),
@@ -74,6 +72,7 @@ export function treeMenu(treeId) {
   };
   return [
     item('rename', () => cmd.startRename({ tree: treeId })),
+    item('changeIcon', () => ((ui.overlay = { kind: 'icons', tree: treeId }), redraw())),
     item('openBeside', () => (ui.panes.push(newPane(treeId)), refresh())),
     null,
     item('saveToBookmarks', () => cmd.saveToBookmarks(treeId)),
@@ -86,7 +85,6 @@ export function treeMenu(treeId) {
 
 export function mainMenu() {
   const tree = here().tree;
-  const show = (kind) => () => ((ui.overlay = { kind }), redraw());
   const turn = () => ((ui.split = ui.split === 'row' ? 'column' : 'row'), refresh());
   // The table of trees can grow freely, and shrink while every tree still has a cell.
   const { columns, rows } = gridOf(ui.library);
@@ -109,12 +107,6 @@ export function mainMenu() {
     size('addRow', { rows: 1 }),
     size('removeRow', { rows: -1 }),
     null,
-    item('importBookmarks', cmd.importBookmarks),
-    item('importTree', cmd.upload),
-    item('backUpAll', cmd.backUpAll),
-    null,
-    item('sync', cmd.openSync),
-    { label: `${t('trash')} (${ui.library.trash.length})`, run: show('trash') },
-    item('shortcuts', show('keys')),
+    item('settings', cmd.openSettings),
   ];
 }

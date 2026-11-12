@@ -23,6 +23,7 @@ import {
   removeNode,
   renameNode,
   setCollapsed,
+  stamped,
 } from './model.js';
 
 /** `ids` in tree order, without those that sit under another of them. */
@@ -38,10 +39,10 @@ function link(library, from, to, id, parent = ROOT) {
   for (const kid of kidsOf(library.trees[from], id)) link(library, from, to, kid, id);
 }
 
-/** A copy of `id` and its subtree as the last child of `parent`; the copies' ids end in `mark`. */
-function copy(library, tree, id, parent, mark) {
-  const node = addNode(library, tree, { ...structuredClone(library.nodes[id]), id: `${id}-${mark}` }, parent);
-  for (const kid of kidsOf(library.trees[tree], id)) copy(library, tree, kid, node.id, mark);
+/** A copy of `id` and its subtree, made at time `at`, as the last child of `parent`. The copies' ids end in the time. */
+function copy(library, tree, id, parent, at) {
+  const node = addNode(library, tree, stamped({ ...structuredClone(library.nodes[id]), id: `${id}-${at.toString(36)}` }, at), parent);
+  for (const kid of kidsOf(library.trees[tree], id)) copy(library, tree, kid, node.id, at);
   return node.id;
 }
 
@@ -55,27 +56,24 @@ function freeName(library, name) {
 }
 
 export const ops = {
-  /** Moves nodes (with subtrees) within `tree`; coming from another tree, they are shown here too. */
-  move(library, { tree, from = tree, ids, target, position }) {
-    ids = topmost(library.trees[from], ids);
+  /**
+   * Moves nodes (with subtrees) within `tree`. Coming from another tree, they
+   * are shown here too; with `take`, they leave the tree they came from.
+   */
+  move(library, { tree, from = tree, ids, target, position, take }, at) {
+    const source = library.trees[from];
+    ids = topmost(source, ids);
+    const taken = take && from !== tree ? ids.flatMap((id) => [id, ...descendantsOf(source, id)]) : [];
     if (from !== tree) for (const id of ids) link(library, from, tree, id);
     // Placing one by one right after the target would reverse them.
     for (const id of position === 'after' || position === 'first' ? ids.toReversed() : ids) {
       moveNode(library, tree, id, target, position);
     }
-  },
-  /** Takes nodes (with subtrees) out of tree `from` and puts them at the end of `tree`. */
-  'move-to'(library, { from, tree, ids }, at) {
-    const source = library.trees[from];
-    for (const id of topmost(source, ids)) {
-      const all = [id, ...descendantsOf(source, id)];
-      link(library, from, tree, id);
-      for (const each of all) removeNode(library, from, each, at);
-    }
+    for (const id of taken) removeNode(library, from, id, at);
   },
   /** New sleeping pages ({ id, url, title }), e.g. links pasted or dropped in. */
-  add(library, { tree, nodes, target, position }) {
-    for (const node of nodes) addNode(library, tree, node);
+  add(library, { tree, nodes, target, position }, at) {
+    for (const node of nodes) addNode(library, tree, stamped(node, at));
     if (position) ops.move(library, { tree, ids: nodes.map((node) => node.id), target, position });
   },
   indent(library, { tree, ids }) {
@@ -104,7 +102,7 @@ export const ops = {
   duplicate(library, { tree, ids }, at) {
     for (const id of ids) {
       if (!library.nodes[id] || !inTree(library.trees[tree], id)) continue;
-      moveNode(library, tree, copy(library, tree, id, undefined, at.toString(36)), id, 'after');
+      moveNode(library, tree, copy(library, tree, id, undefined, at), id, 'after');
     }
   },
   collapse(library, { tree, id, collapsed }) {
@@ -142,8 +140,8 @@ export const ops = {
     }
   },
   /** A note; with a `name` and no text it serves as a group heading. */
-  'note-add'(library, { tree, id, name, target, position }) {
-    addNode(library, tree, name ? { id, note: '', name } : { id, note: '' });
+  'note-add'(library, { tree, id, name, target, position }, at) {
+    addNode(library, tree, stamped(name ? { id, note: '', name } : { id, note: '' }, at));
     if (target) moveNode(library, tree, id, target, position);
   },
   'note-text'(library, { id, text }) {
@@ -175,6 +173,10 @@ export const ops = {
   },
   'tree-rename'(library, { tree, name }) {
     if (name?.trim()) library.trees[tree].name = name.trim();
+  },
+  'tree-icon'(library, { tree, icon }) {
+    if (icon) library.trees[tree].icon = icon;
+    else delete library.trees[tree].icon;
   },
   'tree-remove'(library, { tree }, at) {
     if (Object.keys(library.trees).length < 2) return;

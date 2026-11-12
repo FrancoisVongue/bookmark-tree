@@ -12,7 +12,11 @@ addEventListener('keydown', (event) => {
     else if (event.key === 'Escape') cmd.endRename(false);
     return;
   }
-  if (event.target.closest?.('.dialog input')) return; // Typing in a form.
+  if (event.target.closest?.('.dialog input') && event.key !== 'Escape') {
+    // Typing in a form; in the table of icons, Enter takes what was typed.
+    if (event.key === 'Enter' && event.target.closest('.icons')) cmd.setIcon(event.target.value);
+    return;
+  }
   if (event.key === 'Escape') {
     if (ui.drag) endDrag();
     ui.menu = undefined;

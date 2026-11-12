@@ -11,7 +11,7 @@
 // deleted goes to the other's trash rather than away. Pure: no Chrome here.
 //
 //   d.nodes  { [id]: { node, keys } }   a new or changed node, and which of its fields changed
-//   d.trees  { [treeId]: { name, renamed, added,
+//   d.trees  { [treeId]: { name, renamed, icon, redrawn, added,
 //                          put: [[id, parent, after, moved]],  places, top to bottom
 //                          out: [id],                          taken out of the tree
 //                          collapsed: { [id]: bool } } }
@@ -47,7 +47,7 @@ function diffTree(was, tree, changed) {
     if (!!was.collapsed[id] !== !!tree.collapsed[id]) collapsed[id] = !!tree.collapsed[id];
   }
   const out = descendantsOf(was, ROOT).filter((id) => !inTree(tree, id));
-  return { name: tree.name, renamed: tree.name !== was.name, put, out, collapsed };
+  return { name: tree.name, renamed: tree.name !== was.name, icon: tree.icon, redrawn: tree.icon !== was.icon, put, out, collapsed };
 }
 
 /** What changed from `base` to `mine`. */
@@ -59,7 +59,7 @@ export function diff(base, mine) {
   }
   for (const [treeId, tree] of Object.entries(mine.trees)) {
     const entry = { ...diffTree(base.trees[treeId] ?? NO_TREE, tree, d.nodes), added: !base.trees[treeId] };
-    const quiet = !entry.added && !entry.renamed && !entry.put.length && !entry.out.length && !Object.keys(entry.collapsed).length;
+    const quiet = !entry.added && !entry.renamed && !entry.redrawn && !entry.put.length && !entry.out.length && !Object.keys(entry.collapsed).length;
     if (!quiet) d.trees[treeId] = entry;
   }
   if (!same(base.grid, mine.grid)) d.grid = mine.grid;
@@ -96,6 +96,7 @@ export function apply(out, d, at) {
     for (const id of changes.out) if (inTree(tree, id)) removeNode(out, treeId, id, at);
     for (const [id, on] of Object.entries(changes.collapsed)) on ? (tree.collapsed[id] = true) : delete tree.collapsed[id];
     if (changes.renamed) tree.name = changes.name;
+    if (changes.redrawn) tree.icon = changes.icon;
   }
   for (const treeId of d.gone) if (out.trees[treeId] && Object.keys(out.trees).length > 1) delete out.trees[treeId];
   if (d.grid) out.grid = structuredClone(d.grid);

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MAIN, rowsOf } from '../src/model.js';
+import { MAIN, ROOT, rowsOf } from '../src/model.js';
 import {
   createState,
   reconcile,
@@ -8,6 +8,7 @@ import {
   tabClosed,
   tabOf,
   tabOpened,
+  tabOpenedBeside,
   tabOpenedFrom,
   tabReplaced,
 } from '../src/core.js';
@@ -174,4 +175,36 @@ test('the extension\'s own pages are not nodes', () => {
   tabOpened(state, tab(2));
   tabChanged(state, { id: 2, url: 'chrome-extension://abc/src/panel/panel.html', title: 'Tree' });
   assert.equal(outline(state), '');
+});
+
+test('a new tab opened while looking at a page goes right below it, and still wakes a sleeping page', () => {
+  const state = createState();
+  tabOpened(state, { id: 1, url: 'https://a.example/' });
+  tabOpened(state, { id: 2, url: 'https://b.example/' }, 1);
+  tabOpened(state, { id: 3, url: 'https://c.example/' });
+  tabClosed(state, 3);
+  assert.equal(tabOpened(state, { id: 4, url: 'chrome://newtab/' }), 'new');
+  tabOpenedBeside(state, 4, 2);
+  const tree = state.library.trees[MAIN];
+  const [a, b, c] = [1, 2].map((id) => state.binding[id].node).concat(tree.children[ROOT][1]);
+  assert.deepEqual(tree.children[a], [b, state.binding[4].node]);
+  // Taken to the address of the sleeping page, the empty tab becomes that page.
+  tabChanged(state, { id: 4, url: 'https://c.example/' });
+  assert.equal(state.binding[4].node, c);
+  assert.deepEqual(tree.children[a], [b]);
+});
+
+test('the tree the panel shows decides where a new tab goes, whatever page the user came from', () => {
+  const state = createState();
+  state.library.trees.other = { id: 'other', name: 'Other', children: {}, collapsed: {} };
+  tabOpened(state, { id: 1, url: 'https://a.example/' });
+  // The panel now shows the other, empty tree; the tab of the first is still the current one.
+  tabOpened(state, { id: 2, url: 'chrome://newtab/' }, undefined, 'other');
+  assert.equal(tabOpenedBeside(state, 2, 1), false);
+  assert.deepEqual(state.library.trees.other.children[ROOT], [state.binding[2].node]);
+  assert.deepEqual(state.library.trees[MAIN].children[ROOT], [state.binding[1].node]);
+  // The next one is opened while looking at that new tab: right below it, in the same tree.
+  tabOpened(state, { id: 3, url: 'chrome://newtab/' }, undefined, 'other');
+  tabOpenedBeside(state, 3, 2);
+  assert.deepEqual(state.library.trees.other.children[ROOT], [2, 3].map((id) => state.binding[id].node));
 });

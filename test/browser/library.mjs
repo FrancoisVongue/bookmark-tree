@@ -2,6 +2,7 @@
 // damaged library, in a real Chromium with the extension loaded.
 // Run: node test/browser/library.mjs   (needs `npm install`; TREE_CHROME may name the browser)
 import { chromium } from 'playwright-core';
+import { importFile, openSettings } from './_settings.js';
 import http from 'node:http';
 import os from 'node:os';
 import fs from 'node:fs';
@@ -74,29 +75,29 @@ await step('export as a bookmarks file, import it back', async () => {
   const [file] = await Promise.all([panel.waitForEvent('download'), menu('Export as a bookmarks file')]);
   const path = `${dir}/${file.suggestedFilename()}`; await file.saveAs(path);
   console.log('  file:', file.suggestedFilename(), '|', fs.readFileSync(path, 'utf8').split('\n')[0]);
-  await panel.click('[data-action="more"]');
-  const [chooser] = await Promise.all([panel.waitForEvent('filechooser'), menu('Import a file')]);
-  await chooser.setFiles(path); await sleep(700);
+  const settings = await openSettings(ctx, panel, errors);
+  console.log('  settings say:', await importFile(settings, path));
+  await settings.close(); await panel.bringToFront(); await sleep(300);
 });
 console.log(`    imported tree:\n    ${await rows()}`);
 let backup;
 await step('back up everything, delete a tree, restore the backup', async () => {
-  await panel.click('[data-action="more"]');
-  const [file] = await Promise.all([panel.waitForEvent('download'), menu('Back up everything')]);
+  let settings = await openSettings(ctx, panel, errors);
+  const [file] = await Promise.all([settings.waitForEvent('download'), settings.click('[data-action="backup"]')]);
   backup = `${dir}/${file.suggestedFilename()}`; await file.saveAs(backup);
+  await settings.close(); await panel.bringToFront();
   await panel.locator('.grid .tab', { hasText: 'Home' }).click({ button: 'right' }); await menu('Delete tree'); await sleep(400);
   console.log('    after deleting Home:', (await grid()).replace(/\n\s+/g, ' / '));
-  await panel.click('[data-action="more"]');
-  const [chooser] = await Promise.all([panel.waitForEvent('filechooser'), menu('Import a file')]);
-  await chooser.setFiles(backup); await sleep(700);
-  console.log('  toast:', await panel.locator('.toast span').textContent().catch(() => '-'));
+  settings = await openSettings(ctx, panel, errors);
+  console.log('  settings say:', await importFile(settings, backup));
+  await settings.close(); await panel.bringToFront(); await sleep(300);
 });
 const bad = JSON.parse(fs.readFileSync(backup, 'utf8')); bad.trees.main.children.root.push('nobody');
 console.log('\n== a damaged backup is refused:', await msg({ type: 'restore-file', library: bad }));
 console.log('== an op that would damage the library is not made:', await msg({ type: 'op', op: 'import', args: { id: 'z', data: { nodes: {}, tree: { name: 'Z', children: { root: ['ghost'] }, collapsed: {} } } } }), '| trees:', (await grid()).replace(/\n\s+/g, ' / '));
-await more('Sync'); await sleep(600);
-console.log('== local backups listed:', await panel.locator('.dialog .list .row .title').allTextContents());
-await panel.keyboard.press('Escape');
+let settings = await openSettings(ctx, panel, errors);
+console.log('== local backups listed:', await settings.locator('.item:has([data-action="version"]) .title').allTextContents());
+await settings.close();
 
 console.log('\n== the stored library gets damaged behind our back; the browser restarts');
 const before = (await msg({ type: 'get-state' })).library;
@@ -107,9 +108,12 @@ console.log('  banner:', (await panel.locator('.trouble').textContent().catch(()
 await (await ctx.newPage()).goto(`${base}/new`); await sleep(600);
 const stored = await panel.evaluate(() => chrome.storage.local.get('library'));
 console.log('  stored library untouched by the new tab:', Object.keys(stored.library.nodes).length === Object.keys(before.nodes).length);
-await panel.bringToFront(); await more('Sync'); await sleep(600);
-await panel.locator('[data-action="sync-restore"]').first().click(); await sleep(1000);
-await panel.keyboard.press('Escape'); await sleep(300);
+await panel.bringToFront();
+settings = await openSettings(ctx, panel, errors, '.trouble button');
+console.log('  settings banner:', (await settings.locator('.trouble').textContent().catch(() => 'NONE')).slice(0, 40));
+await settings.locator('[data-action="version"]').first().click(); await sleep(1000);
+console.log('  settings say:', await settings.locator('.toast span').textContent().catch(() => '-'));
+await settings.close(); await panel.bringToFront(); await sleep(400);
 console.log('  after restoring the local backup — banner:', await panel.locator('.trouble').count(), '| trees:', (await grid()).replace(/\n\s+/g, ' / '));
 
 console.log('\nERRORS:', errors.length ? `\n${errors.join('\n')}` : 'none');

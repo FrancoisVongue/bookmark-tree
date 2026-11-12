@@ -1,9 +1,10 @@
 // The library: pages the user keeps, arranged in trees. Pure data, no Chrome.
 //
-//   library.nodes  { [nodeId]: { id, url, title, name?, icon?, home?, note? } }
-//                  a page; `name` is the user's own title, `icon` an emoji,
-//                  `home` { url, title } the address it is pinned to. A node
-//                  with `note` (markdown text) is a note, not a page.
+//   library.nodes  { [nodeId]: { id, url, title, added?, name?, icon?, home?, note? } }
+//                  a page; `added` is when it came into the library, `name`
+//                  the user's own title, `icon` an emoji, `home` { url, title }
+//                  the address it is pinned to. A node with `note` (markdown
+//                  text) is a note, not a page.
 //   library.trees  { [treeId]: { id, name, children, collapsed } }  where it sits
 //
 // A tree stores structure only: `children` maps a parent id (or ROOT) to the
@@ -28,6 +29,9 @@ export function createLibrary() {
 }
 
 export const newId = () => crypto.randomUUID();
+
+/** `node`, marked as added to the library at time `at` (left as it is when the time is not known). */
+export const stamped = (node, at) => (at === undefined ? node : { ...node, added: at });
 
 /** What a node is. A note without text is a group: a heading for the nodes under it. */
 export const isNote = (node) => node.note !== undefined;
