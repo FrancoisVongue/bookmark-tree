@@ -15,6 +15,9 @@
 //   library.trash  [{ node, at }]  nodes the user deleted, newest last; they
 //                  are in no tree and can be put back for a while.
 //
+//   library.grid   { columns, rows, cells: [treeId | null] }  where each tree
+//                  sits in the table of trees at the top of the panel
+//
 // Functions change the library they are given and return what they found.
 
 export const ROOT = 'root';
@@ -29,6 +32,52 @@ export const newId = () => crypto.randomUUID();
 /** What a node is. A note without text is a group: a heading for the nodes under it. */
 export const isNote = (node) => node.note !== undefined;
 export const isGroup = (node) => isNote(node) && !node.note.trim();
+
+/**
+ * What is wrong with a library, in words; nothing, if it is sound. Every node
+ * a tree lists must exist and be listed once, within reach of the top, and
+ * every node must be in some tree. A library with problems is never saved,
+ * taken from elsewhere or merged in: better to stop than to lose pages.
+ */
+export function problems(library) {
+  if (!library?.nodes || !library.trees || !Object.keys(library.trees).length) return ['this is not a library'];
+  const found = [];
+  const held = new Set();
+  for (const tree of Object.values(library.trees)) {
+    const seen = new Set();
+    const walk = (id) => {
+      for (const kid of kidsOf(tree, id)) {
+        if (seen.has(kid)) found.push(`${kid} is twice in tree ${tree.id}`);
+        else if (!library.nodes[kid]) found.push(`${kid} in tree ${tree.id} is not a node`);
+        else (seen.add(kid), held.add(kid), walk(kid));
+      }
+    };
+    walk(ROOT);
+    if (Object.values(tree.children).flat().length !== seen.size) found.push(`tree ${tree.id} lists nodes out of reach`);
+  }
+  for (const id in library.nodes) if (!held.has(id)) found.push(`${id} is in no tree`);
+  return found;
+}
+
+/**
+ * The table of trees: { columns, rows, cells }, where `cells` holds a tree id
+ * or null for each cell, row by row. Whatever is stored, every tree comes out
+ * in exactly one cell: a tree without a place takes the first free one.
+ */
+export function gridOf(library) {
+  const columns = library.grid?.columns ?? 4;
+  const stored = library.grid?.cells ?? [];
+  const cells = stored.map((id, at) => (library.trees[id] && stored.indexOf(id) === at ? id : null));
+  for (const id in library.trees) {
+    if (cells.includes(id)) continue;
+    const free = cells.indexOf(null);
+    if (free === -1) cells.push(id);
+    else cells[free] = id;
+  }
+  const used = cells.findLastIndex(Boolean) + 1;
+  const rows = Math.max(library.grid?.rows ?? 1, Math.ceil(used / columns));
+  return { columns, rows, cells: Array.from({ length: rows * columns }, (_, at) => cells[at] ?? null) };
+}
 
 /** Brings a library saved by an older version to today's shape. The one place that knows old shapes. */
 export function migrate(library) {

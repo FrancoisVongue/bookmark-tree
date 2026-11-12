@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MAIN, ROOT, addNode, createLibrary, rowsOf } from '../src/model.js';
+import { MAIN, ROOT, addNode, createLibrary, gridOf, problems, rowsOf } from '../src/model.js';
 import { exportTree, ops } from '../src/ops.js';
 
 /** A library from an outline: two spaces of indentation per level, ids are the names. */
@@ -100,10 +100,17 @@ test('a deleted tree sends its own nodes to the trash and keeps the tabs', () =>
   assert.equal(ops['tree-remove'](lib, { tree: 'other' }, 8), undefined); // The last tree stays.
 });
 
-test('trees change places', () => {
+test('trees sit in a table: any cell, swapping, resizing', () => {
   const lib = library('a');
-  ops['tree-move'](lib, { tree: 'other', by: -1 });
-  assert.deepEqual(Object.keys(lib.trees), ['other', MAIN]);
+  assert.deepEqual(gridOf(lib), { columns: 4, rows: 1, cells: [MAIN, 'other', null, null] });
+  ops['grid-move'](lib, { tree: MAIN, cell: 3 });
+  ops['grid-move'](lib, { tree: 'other', cell: 3 });
+  assert.deepEqual(gridOf(lib).cells, [null, MAIN, null, 'other']); // The one that was there took the place left.
+  ops['grid-size'](lib, { columns: 2, rows: 2 });
+  assert.deepEqual(gridOf(lib), { columns: 2, rows: 2, cells: ['other', MAIN, null, null] });
+  ops['tree-add'](lib, { id: 'third', name: 'Third', cell: 3 });
+  ops['grid-size'](lib, { columns: 1, rows: 1 });
+  assert.deepEqual(gridOf(lib), { columns: 1, rows: 3, cells: ['other', MAIN, 'third'] }); // Nothing falls off the table.
 });
 
 test('an exported tree comes back as a new tree with a name of its own', () => {
@@ -119,4 +126,15 @@ test('pasted pages land where they were put; a group is a note with a name', () 
   ops['note-add'](lib, { tree: MAIN, id: 'g', name: 'Work', target: 'b', position: 'after' });
   assert.equal(outline(lib), 'a\nx\ny\nb\ng');
   assert.deepEqual(lib.nodes.g, { id: 'g', note: '', name: 'Work' });
+});
+
+test('a sound library has no problems; a damaged one is told apart', () => {
+  const lib = library('a\n  b');
+  assert.deepEqual(problems(lib), []);
+  lib.trees[MAIN].children.b = ['a'];
+  assert.ok(problems(lib).length);
+  const hole = library('a');
+  delete hole.nodes.a;
+  assert.equal(problems(hole)[0], 'a in tree main is not a node');
+  assert.deepEqual(problems({ nodes: {} }), ['this is not a library']);
 });

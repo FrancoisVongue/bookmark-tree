@@ -27,7 +27,7 @@ const actions = {
     here().sel.clear();
     refresh();
   },
-  'tree-add': cmd.newTree,
+  'tree-add': ({ el }) => cmd.newTree(Number(el.dataset.cell)),
   'pane-close': ({ pane }) => {
     ui.panes.splice(ui.panes.indexOf(pane), 1);
     ui.focus = 0;

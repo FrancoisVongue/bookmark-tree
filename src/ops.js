@@ -13,6 +13,7 @@ import {
   addNode,
   descendantsOf,
   forgetLoose,
+  gridOf,
   isNote,
   inTree,
   kidsOf,
@@ -148,8 +149,29 @@ export const ops = {
   'note-text'(library, { id, text }) {
     if (library.nodes[id] && isNote(library.nodes[id])) library.nodes[id].note = text;
   },
-  'tree-add'(library, { id, name }) {
+  /** A new tree; in cell `cell` of the table of trees, or the first free one. */
+  'tree-add'(library, { id, name, cell }) {
     library.trees[id] = { id, name, children: {}, collapsed: {} };
+    if (cell !== undefined) ops['grid-move'](library, { tree: id, cell });
+  },
+  /** Moves a tree to a cell of the table; a tree already there takes the place left. */
+  'grid-move'(library, { tree, cell }) {
+    const grid = gridOf(library);
+    const from = grid.cells.indexOf(tree);
+    if (from === -1 || cell < 0 || cell >= grid.cells.length) return;
+    [grid.cells[from], grid.cells[cell]] = [grid.cells[cell], tree];
+    library.grid = grid;
+  },
+  /** Gives the table of trees another size. Trees keep their row and column where those still exist. */
+  'grid-size'(library, { columns, rows }) {
+    const old = gridOf(library);
+    const cells = Array(columns * rows).fill(null);
+    old.cells.forEach((id, at) => {
+      const [row, column] = [Math.floor(at / old.columns), at % old.columns];
+      if (id && row < rows && column < columns) cells[row * columns + column] = id;
+    });
+    library.grid = { columns, rows, cells };
+    library.grid = gridOf(library); // Those left without a cell take free ones.
   },
   'tree-rename'(library, { tree, name }) {
     if (name?.trim()) library.trees[tree].name = name.trim();
@@ -159,14 +181,6 @@ export const ops = {
     delete library.trees[tree];
     forgetLoose(library, at);
     return { keepTabs: true };
-  },
-  /** Moves a tree `by` places among the trees (-1: left, 1: right). */
-  'tree-move'(library, { tree, by }) {
-    const ids = Object.keys(library.trees);
-    const from = ids.indexOf(tree);
-    const to = Math.max(0, Math.min(ids.length - 1, from + by));
-    ids.splice(to, 0, ...ids.splice(from, 1));
-    library.trees = Object.fromEntries(ids.map((id) => [id, library.trees[id]]));
   },
   /** Puts deleted nodes back, at the end of `tree`. */
   restore(library, { tree, ids }) {

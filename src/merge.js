@@ -16,6 +16,7 @@
 //                          out: [id],                          taken out of the tree
 //                          collapsed: { [id]: bool } } }
 //   d.gone   [treeId]                   trees deleted
+//   d.grid   the table of trees, if it changed (taken whole)
 
 import { ROOT, descendantsOf, forgetLoose, inTree, kidsOf, moveNode, parentOf, placeNode, removeNode } from './model.js';
 
@@ -61,10 +62,11 @@ export function diff(base, mine) {
     const quiet = !entry.added && !entry.renamed && !entry.put.length && !entry.out.length && !Object.keys(entry.collapsed).length;
     if (!quiet) d.trees[treeId] = entry;
   }
+  if (!same(base.grid, mine.grid)) d.grid = mine.grid;
   return d;
 }
 
-export const isEmpty = (d) => !Object.keys(d.nodes).length && !Object.keys(d.trees).length && !d.gone.length;
+export const isEmpty = (d) => !Object.keys(d.nodes).length && !Object.keys(d.trees).length && !d.gone.length && !d.grid;
 
 /** Puts `id` under `parent`, right after sibling `after` (first, without one), as far as the tree allows. */
 function put(out, treeId, id, parent, after) {
@@ -96,6 +98,7 @@ export function apply(out, d, at) {
     if (changes.renamed) tree.name = changes.name;
   }
   for (const treeId of d.gone) if (out.trees[treeId] && Object.keys(out.trees).length > 1) delete out.trees[treeId];
+  if (d.grid) out.grid = structuredClone(d.grid);
   forgetLoose(out, at);
   out.trash = out.trash.filter((entry) => !out.nodes[entry.node.id]);
   return out;

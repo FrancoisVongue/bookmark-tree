@@ -87,7 +87,7 @@
     "message": "Export tree"
   },
   "importTree": {
-    "message": "Import tree"
+    "message": "Import a file (tree, bookmarks, backup)…"
   },
   "deleteTree": {
     "message": "Delete tree"
@@ -169,12 +169,6 @@
   },
   "treeDeleted": {
     "message": "Tree deleted"
-  },
-  "moveLeft": {
-    "message": "Move left"
-  },
-  "moveRight": {
-    "message": "Move right"
   },
   "collapseAll": {
     "message": "Collapse all"
@@ -271,5 +265,38 @@
   },
   "outOfStep": {
     "message": "This computer is out of step with your others. Sync with GitHub to catch up."
+  },
+  "addColumn": {
+    "message": "Table of trees: add a column"
+  },
+  "removeColumn": {
+    "message": "Table of trees: remove a column"
+  },
+  "addRow": {
+    "message": "Table of trees: add a row"
+  },
+  "removeRow": {
+    "message": "Table of trees: remove a row"
+  },
+  "saveToBookmarks": {
+    "message": "Save to the browser's bookmarks"
+  },
+  "exportBookmarks": {
+    "message": "Export as a bookmarks file"
+  },
+  "savedToBookmarks": {
+    "message": "Saved to bookmarks: $1"
+  },
+  "backUpAll": {
+    "message": "Back up everything to a file"
+  },
+  "restored": {
+    "message": "Library restored from the backup"
+  },
+  "importFailed": {
+    "message": "That file could not be read"
+  },
+  "localBackup": {
+    "message": "this computer"
   }
 }

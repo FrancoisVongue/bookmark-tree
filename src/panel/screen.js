@@ -18,6 +18,7 @@ export const ui = {
   audible: new Set(), // Ids of nodes whose tab is making sound.
   shared: new Map(), // Node id -> names of the other trees it is in.
   activeId: undefined, // The node of this window's current tab.
+  trouble: undefined, // What the worker could not do: read the library, or save it.
   canUndo: false,
   canRedo: false,
   panes: (kept.panes ?? []).map((pane) => newPane(pane.tree, pane.size)), // The trees shown: { tree, size, rows, sel }.
@@ -111,6 +112,7 @@ function found(rows, query) {
 
 function take(state, active) {
   ui.library = migrate(state.library);
+  ui.trouble = state.trouble;
   ui.canUndo = state.canUndo;
   ui.canRedo = state.canRedo;
   ui.live = new Set(Object.values(state.binding).map((bound) => bound.node));

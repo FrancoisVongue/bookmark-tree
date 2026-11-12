@@ -4,8 +4,9 @@
 // a top-level node. Subtrees come along; dropping into a pane that shows
 // another tree shows the nodes there too.
 //
-// A link dragged in from a page is the browser's own drag (ours cannot leave
-// the panel); it shares only the question "where would this land?".
+// A tree is dragged the same way, by its name, to another cell of the table
+// of trees. A link dragged in from a page is the browser's own drag (ours
+// cannot leave the panel); it shares only the question "where would this land?".
 
 import { titleOf } from './view.js';
 import { app, idAt, op, paneAt, redraw, refresh, rowOf, targets, ui } from './screen.js';
@@ -13,7 +14,7 @@ import { pagesIn } from './commands.js';
 
 // The gesture in progress, from the button going down to the click after it.
 const gesture = {
-  press: undefined, // { x, y, id, pane } on a row, or { divider } on the line between panes.
+  press: undefined, // { x, y, id, pane } on a row, { x, y, tree } on a tree's name, or { divider } on the line between panes.
   pointer: { x: 0, y: 0 },
   unfold: undefined, // A timer: a folded row opens when something is held over it.
   dragged: false, // The button came up after a drag: the click that follows is not a click.
@@ -49,7 +50,14 @@ function inDragged(pane, id) {
 
 const paneElAtPointer = () => document.elementFromPoint(gesture.pointer.x, gesture.pointer.y)?.closest('.panes .pane');
 
+/** Where the dragged thing would land: a cell of the table for a tree, a place in a pane for rows and links. */
 function updateDrop() {
+  if (ui.drag.kind === 'tree') {
+    const cell = document.elementFromPoint(gesture.pointer.x, gesture.pointer.y)?.closest('.grid [data-cell]')?.dataset.cell;
+    if (cell === undefined ? !ui.drop : ui.drop?.cell === Number(cell)) return;
+    ui.drop = cell === undefined ? undefined : { cell: Number(cell) };
+    return redraw();
+  }
   const paneEl = paneElAtPointer();
   const pane = paneEl && ui.panes[paneEl.dataset.pane];
   let drop = pane && dropAt(pane, paneEl, gesture.pointer.y);
@@ -106,6 +114,8 @@ function resize(divider) {
 
 app.addEventListener('pointerdown', (event) => {
   gesture.dragged = false;
+  const tab = event.target.closest('.grid .tab[data-tree]');
+  if (event.button === 0 && tab) gesture.press = { x: event.clientX, y: event.clientY, tree: tab.dataset.tree };
   if (event.button !== 0 || event.target.closest('button, input, .menu, .overlay')) return;
   const divider = event.target.closest('.divider');
   const id = idAt(event.target);
@@ -124,9 +134,10 @@ addEventListener('pointermove', (event) => {
   gesture.pointer = { x: event.clientX, y: event.clientY };
   if (press.divider) return resize(press.divider);
   if (ui.drag || Math.hypot(event.clientX - press.x, event.clientY - press.y) < 5) return;
+  app.setPointerCapture(event.pointerId); // Keep hearing the pointer outside the panel.
+  if (press.tree) return startDrag({ kind: 'tree', tree: press.tree, label: ui.library.trees[press.tree].name });
   const ids = targets(press.pane, press.id);
   const title = titleOf(ui.library.nodes[press.id]);
-  app.setPointerCapture(event.pointerId); // Keep hearing the pointer outside the panel.
   startDrag({ kind: 'rows', ids, from: press.pane.tree, label: ids.length > 1 ? `${title} +${ids.length - 1}` : title });
 });
 
@@ -138,6 +149,7 @@ addEventListener('pointerup', () => {
   if (!drag) return;
   endDrag();
   gesture.dragged = true;
+  if (drop && drag.kind === 'tree') return op('grid-move', { tree: drag.tree, cell: drop.cell });
   if (drop) {
     op('move', { tree: drop.pane.tree, from: drag.from, ids: drag.ids, target: drop.targetId, position: drop.position });
   }

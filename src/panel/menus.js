@@ -1,6 +1,6 @@
 // The menus: what can be done with a row, a tree, the panel.
 
-import { isNote } from '../model.js';
+import { gridOf, isNote } from '../model.js';
 import { t } from '../i18n.js';
 import { app, here, newPane, op, redraw, refresh, rowOf, say, send, targets, ui, under } from './screen.js';
 import * as cmd from './commands.js';
@@ -75,8 +75,9 @@ export function treeMenu(treeId) {
   return [
     item('rename', () => cmd.startRename({ tree: treeId })),
     item('openBeside', () => (ui.panes.push(newPane(treeId)), refresh())),
-    item('moveLeft', () => op('tree-move', { tree: treeId, by: -1 }), '', ids[0] === treeId),
-    item('moveRight', () => op('tree-move', { tree: treeId, by: 1 }), '', ids.at(-1) === treeId),
+    null,
+    item('saveToBookmarks', () => cmd.saveToBookmarks(treeId)),
+    item('exportBookmarks', () => cmd.downloadBookmarks(treeId)),
     item('exportTree', () => cmd.download(treeId)),
     null,
     item('deleteTree', drop, '', ids.length < 2),
@@ -87,6 +88,13 @@ export function mainMenu() {
   const tree = here().tree;
   const show = (kind) => () => ((ui.overlay = { kind }), redraw());
   const turn = () => ((ui.split = ui.split === 'row' ? 'column' : 'row'), refresh());
+  // The table of trees can grow freely, and shrink while every tree still has a cell.
+  const { columns, rows } = gridOf(ui.library);
+  const trees = Object.keys(ui.library.trees).length;
+  const size = (label, more) => {
+    const next = { columns: columns + (more.columns ?? 0), rows: rows + (more.rows ?? 0) };
+    return item(label, () => op('grid-size', next), '', next.columns * next.rows < trees || next.columns > 6);
+  };
   return [
     item('redo', () => send({ type: 'redo' }), 'Ctrl+Shift+Z', !ui.canRedo),
     null,
@@ -95,9 +103,15 @@ export function mainMenu() {
     item('addFromTree', () => cmd.openPicker(here()), '', !hasOtherTrees()),
     ui.panes.length > 1 && item(ui.split === 'row' ? 'splitColumn' : 'splitRow', turn),
     null,
+    item('newTree', () => cmd.newTree()),
+    size('addColumn', { columns: 1 }),
+    size('removeColumn', { columns: -1 }),
+    size('addRow', { rows: 1 }),
+    size('removeRow', { rows: -1 }),
+    null,
     item('importBookmarks', cmd.importBookmarks),
     item('importTree', cmd.upload),
-    item('exportTree', () => cmd.download(tree)),
+    item('backUpAll', cmd.backUpAll),
     null,
     item('sync', cmd.openSync),
     { label: `${t('trash')} (${ui.library.trash.length})`, run: show('trash') },

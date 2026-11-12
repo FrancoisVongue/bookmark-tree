@@ -598,3 +598,37 @@ svg {
   opacity: 0.4;
   cursor: default;
 }
+
+.grid {
+  display: grid;
+  gap: 2px;
+}
+.grid .tab,
+.grid .cell {
+  max-width: none;
+  height: 26px;
+  border-radius: 8px;
+}
+.cell {
+  display: grid;
+  place-items: center;
+  color: transparent;
+}
+.cell:hover {
+  color: var(--dim);
+  background: var(--hover);
+}
+.grid .drop {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+.grid .dragging {
+  opacity: 0.4;
+}
+.trouble {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #d93025;
+  color: #fff;
+  user-select: text;
+}

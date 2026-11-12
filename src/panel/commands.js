@@ -2,6 +2,7 @@
 
 import { isGroup } from '../model.js';
 import { exportTree } from '../ops.js';
+import { fromHtml, fromOutline, toHtml, toOutline } from '../bookmarks.js';
 import { t } from '../i18n.js';
 import { titleOf } from './view.js';
 import { app, branches, here, log, newPane, op, redraw, refresh, rowEl, rowOf, say, send, ui } from './screen.js';
@@ -32,9 +33,10 @@ export async function newGroup(pane, target) {
   startRename({ id, pane });
 }
 
-export async function newTree() {
+/** A new tree, in cell `cell` of the table of trees (or the first free one). */
+export async function newTree(cell) {
   const id = crypto.randomUUID();
-  await op('tree-add', { id, name: t('newTree') });
+  await op('tree-add', { id, name: t('newTree'), cell });
   here().tree = id;
   await refresh();
   startRename({ tree: id });
@@ -101,7 +103,6 @@ export function endRename(save) {
 export async function openSync() {
   ui.overlay = { kind: 'sync', settings: (await send({ type: 'sync-get' })) ?? {}, versions: [], busy: false };
   redraw();
-  if (!ui.overlay.settings.repo) return;
   const versions = await send({ type: 'sync-history' });
   if (ui.overlay?.kind === 'sync') ui.overlay.versions = versions ?? [];
   redraw();
@@ -124,52 +125,95 @@ export const saveSync = () =>
 export const syncNow = () => syncing(() => send({ type: 'sync-now' }));
 export const goToVersion = (ref) => syncing(() => send({ type: 'sync-restore', ref }));
 
-// --- Files ---------------------------------------------------------------------
+// --- Files and bookmarks -------------------------------------------------------
 
-export function download(treeId) {
-  const data = exportTree(ui.library, treeId);
+const uuid = () => crypto.randomUUID();
+
+function saveFile(name, text, type) {
   const link = document.createElement('a');
-  link.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
-  link.download = `${data.tree.name}.tree.json`;
+  link.href = URL.createObjectURL(new Blob([text], { type }));
+  link.download = name;
   link.click();
   URL.revokeObjectURL(link.href);
 }
 
+/** One tree, in our own format (everything about its nodes is kept). */
+export const download = (treeId) => {
+  const data = exportTree(ui.library, treeId);
+  saveFile(`${data.tree.name}.tree.json`, JSON.stringify(data, null, 2), 'application/json');
+};
+
+/** One tree as a bookmarks file any browser can import. */
+export const downloadBookmarks = (treeId) => {
+  const { name } = ui.library.trees[treeId];
+  saveFile(`${name}.bookmarks.html`, toHtml(toOutline(ui.library, treeId, titleOf), name), 'text/html');
+};
+
+/** The whole library, as a file to keep somewhere safe. */
+export const backUpAll = () =>
+  saveFile(`tree-backup-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(ui.library), 'application/json');
+
 /** Adds a tree from `data` ({ nodes, tree }) and shows it. */
 async function addTree(data) {
-  const id = crypto.randomUUID();
+  const id = uuid();
   await op('import', { id, data });
   here().tree = id;
   refresh();
 }
 
+/** Takes in a file: a tree of ours, a bookmarks file of any browser, or a backup of the whole library. */
 export function upload() {
   const input = document.createElement('input');
   input.type = 'file';
-  input.accept = '.json,application/json';
+  input.accept = '.json,.html,.htm';
   input.onchange = async () => {
+    const [file] = input.files;
+    const text = await file.text();
     try {
-      const data = JSON.parse(await input.files[0].text());
+      if (text.trimStart().startsWith('<')) return addTree(fromOutline(fromHtml(text), file.name.replace(/(\.bookmarks)?\.[^.]*$/, ''), uuid));
+      const data = JSON.parse(text);
+      if (data.trees) return say((await send({ type: 'restore-file', library: data })) ?? t('restored'));
       if (!data.nodes || !data.tree?.children) throw new Error('not a tree file');
       addTree(data);
     } catch (error) {
       log('import failed', error.message);
+      say(t('importFailed'));
     }
   };
   input.click();
 }
 
-/** The browser's bookmarks as a new tree: folders become groups, bookmarks sleeping pages. */
+const askForBookmarks = () => chrome.permissions.request({ permissions: ['bookmarks'] });
+
+/** The browser's bookmarks as a new tree. */
 export async function importBookmarks() {
-  if (!(await chrome.permissions.request({ permissions: ['bookmarks'] }))) return;
-  const data = { nodes: {}, tree: { name: t('bookmarks'), children: {}, collapsed: {} } };
-  const walk = (item, parent) => {
-    const id = crypto.randomUUID();
-    data.nodes[id] = item.url ? { id, url: item.url, title: item.title } : { id, note: '', name: item.title || t('untitled') };
-    (data.tree.children[parent] ??= []).push(id);
-    for (const child of item.children ?? []) walk(child, id);
-  };
+  if (!(await askForBookmarks())) return;
+  const outline = (items) =>
+    items.map((item) => (item.url ? { title: item.title, url: item.url } : { title: item.title || t('untitled'), children: outline(item.children ?? []) }));
   const [root] = await chrome.bookmarks.getTree();
-  for (const folder of root.children) if (folder.children.length) walk(folder, 'root');
-  addTree(data);
+  addTree(fromOutline(outline(root.children.filter((folder) => folder.children?.length)), t('bookmarks'), uuid));
+}
+
+/**
+ * A tree as a folder among the browser's own bookmarks ("Other bookmarks"),
+ * replacing the folder a previous time left. The browser keeps and syncs it
+ * by itself, whatever happens to this extension.
+ */
+export async function saveToBookmarks(treeId) {
+  if (!(await askForBookmarks())) return;
+  const title = `Tree: ${ui.library.trees[treeId].name}`;
+  const [root] = await chrome.bookmarks.getTree();
+  const parentId = (root.children[1] ?? root.children[0]).id;
+  for (const old of await chrome.bookmarks.getChildren(parentId)) {
+    if (!old.url && old.title === title) await chrome.bookmarks.removeTree(old.id);
+  }
+  const create = async (items, parent) => {
+    for (const item of items) {
+      const made = await chrome.bookmarks.create({ parentId: parent, title: item.title, url: item.url });
+      if (item.children) await create(item.children, made.id);
+    }
+  };
+  const folder = await chrome.bookmarks.create({ parentId, title });
+  await create(toOutline(ui.library, treeId, titleOf), folder.id);
+  say(t('savedToBookmarks', title));
 }

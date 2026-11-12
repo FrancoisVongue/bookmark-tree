@@ -2,7 +2,7 @@
 // commands from the panels, saves the result and tells the panels it changed.
 // It only ever asks the browser for three things: open, focus or close a tab.
 
-import { addNode, descendantsOf, isGroup, isNote, migrate, moveNode, newId, treeFor, validTree } from './model.js';
+import { addNode, descendantsOf, isGroup, isNote, migrate, moveNode, newId, problems, treeFor, validTree } from './model.js';
 import { QUIET, ops } from './ops.js';
 import { EMPTY, merge } from './merge.js';
 import * as github from './github.js';
@@ -12,6 +12,10 @@ import * as core from './core.js';
 const log = (...args) => console.log('[tree]', ...args);
 
 let state = core.createState();
+// Nothing is saved before the library has been read: an empty one must never replace the user's.
+let loaded = false;
+// What the user must be told: the library could not be read, or could not be saved.
+let trouble;
 // The library as it was before each of the user's changes, newest last (JSON).
 let undo = [];
 let redo = [];
@@ -48,9 +52,15 @@ let saved = { library: '', session: '' };
 async function commit(name) {
   const library = JSON.stringify(state.library);
   const session = JSON.stringify({ binding: state.binding, windows: state.windows, undo, redo });
-  if (library === saved.library && session === saved.session) return;
-  if (library !== saved.library) await chrome.storage.local.set({ library: state.library });
-  if (session !== saved.session) await chrome.storage.session.set({ session: JSON.parse(session) });
+  if (!loaded || (library === saved.library && session === saved.session)) return;
+  try {
+    if (library !== saved.library) await chrome.storage.local.set({ library: state.library });
+    if (session !== saved.session) await chrome.storage.session.set({ session: JSON.parse(session) });
+    trouble = undefined;
+  } catch (error) {
+    trouble = `The last change could not be saved: ${error.message}`;
+    throw error;
+  }
   saved = { library, session };
   log('saved after', name, `(${Object.keys(state.library.nodes).length} nodes, ${Object.keys(state.binding).length} live)`);
   chrome.runtime.sendMessage({ type: 'changed' }).catch(() => {}); // No panel open.
@@ -62,12 +72,19 @@ const reconcile = async () => core.reconcile(state, await allTabs(), (tab) => wi
 async function init() {
   const { library } = await chrome.storage.local.get('library');
   const { session } = await chrome.storage.session.get('session');
-  if (library) state.library = migrate(library);
+  const found = library ? problems(migrate(library)) : [];
+  if (found.length) {
+    trouble = `The saved library is damaged (${found[0]}). Nothing is changed until you restore a backup.`;
+    throw new Error(trouble);
+  }
+  if (library) state.library = library;
+  loaded = true;
   if (session) ({ binding: state.binding, windows: state.windows, undo, redo } = session);
   log('init:', library ? 'library loaded' : 'new library', '|', session ? 'same session' : 'new session');
   const keepFrom = Date.now() - TRASH_DAYS * 24 * 3600 * 1000;
   state.library.trash = state.library.trash.filter((entry) => entry.at > keepFrom);
   await reconcile();
+  await backUp();
 }
 
 // --- Facts from the browser ----------------------------------------------------
@@ -149,6 +166,12 @@ async function change(name, args) {
   if (!ops[name]) return log('unknown op', name);
   const before = JSON.stringify(state.library);
   const effect = ops[name](state.library, args, Date.now()) ?? {};
+  const found = problems(state.library);
+  if (found.length) {
+    // Whatever went wrong, the library stays as it was.
+    state.library = JSON.parse(before);
+    return log('op', name, 'would have damaged the library:', found[0]);
+  }
   if (!QUIET.has(name) && JSON.stringify(state.library) !== before) {
     undo.push(before);
     redo = [];
@@ -204,8 +227,11 @@ const SYNC_EVERY_MINUTES = 24 * 60;
 const loadSync = async () => (await chrome.storage.local.get('sync')).sync;
 const saveSync = (settings) => chrome.storage.local.set({ sync: settings });
 
-/** Replaces the library, keeping the way back; open tabs find their nodes anew. */
+/** Replaces the library, keeping the way back; open tabs find their nodes anew. A damaged one is refused. */
 async function adopt(library) {
+  const found = problems(library);
+  if (found.length) throw new Error(`That library is damaged: ${found[0]}`);
+  loaded = true;
   undo.push(JSON.stringify(state.library));
   redo = [];
   state.library = library;
@@ -249,6 +275,22 @@ async function sync() {
   }
 }
 
+// --- Backups on this computer --------------------------------------------------
+// Every hour the library is put aside under `backup.<day>`, so each of the
+// last few days has the library as it last was that day. They guard against
+// our own mistakes, with no setup at all.
+
+const BACKUPS_KEPT = 7;
+async function backUp() {
+  const day = new Date().toISOString().slice(0, 10);
+  const { backups = [] } = await chrome.storage.local.get('backups');
+  if (!loaded) return;
+  const kept = [...new Set([...backups, day])].slice(-BACKUPS_KEPT);
+  await chrome.storage.local.set({ [`backup.${day}`]: JSON.stringify(core.shared(state.library)), backups: kept });
+  await chrome.storage.local.remove(backups.filter((old) => !kept.includes(old)).map((old) => `backup.${old}`));
+  log('backed up as', day);
+}
+
 // The quick way between the user's computers (see channel.js), through the
 // storage the browser keeps in sync. Its state is in local storage under `channel`.
 
@@ -263,20 +305,20 @@ const saveChannel = (ch) => chrome.storage.local.set({ channel: ch });
 /** Tells the other computers what changed here, and takes in what changed there. */
 async function exchange() {
   const ch = await loadChannel();
-  const before = JSON.stringify(state.library);
+  const next = structuredClone(state.library);
   try {
     const told = await channel.publish(cells, ch, core.shared(state.library), Date.now());
-    const lost = await channel.receive(cells, ch, state.library, Date.now(), core.shared);
+    const known = ch.published;
+    const lost = await channel.receive(cells, ch, next, Date.now(), core.shared);
     ch.lost ||= !told || lost;
+    if (JSON.stringify(next) !== JSON.stringify(state.library)) {
+      // What does not fit is not taken in (and then the others do not know it from us).
+      await adopt(next).catch((error) => ((ch.published = known), Promise.reject(error)));
+      log('took in changes from another computer');
+    }
   } catch (error) {
     log('exchange failed', error.message); // Over the browser's quota, most likely.
     ch.lost = true;
-  }
-  if (JSON.stringify(state.library) !== before) {
-    log('took in changes from another computer');
-    undo.push(before);
-    redo = [];
-    await reconcile();
   }
   await saveChannel(ch);
   // Out of step: only the full library, through GitHub, puts that right.
@@ -301,6 +343,7 @@ async function handle(message, sender) {
         library,
         binding: state.binding,
         audible: audible.map((tab) => state.binding[tab.id]?.node).filter(Boolean),
+        trouble,
         canUndo: undo.length > 0,
         canRedo: redo.length > 0,
       };
@@ -370,14 +413,25 @@ async function handle(message, sender) {
       // Everything at once: the quick exchange, then the full sync.
       await exchange();
       return sync();
-    case 'sync-history':
-      return github.history(await loadSync()).catch((error) => (log('history failed', error.message), []));
+    case 'sync-history': {
+      // The versions one can go back to: those saved on GitHub, then this computer's daily backups.
+      const settings = await loadSync();
+      const remote = settings?.repo ? await github.history(settings).catch((error) => (log('history failed', error.message), [])) : [];
+      const { backups = [] } = await chrome.storage.local.get('backups');
+      return [...remote, ...backups.toReversed().map((day) => ({ ref: `local:${day}`, at: day, local: true }))];
+    }
     case 'sync-restore': {
       // Goes back to a saved version. The next sync saves it as the newest.
-      const old = await github.pull(await loadSync(), message.ref);
-      if (old) await adopt(migrate(old.library));
+      const key = `backup.${message.ref.slice('local:'.length)}`;
+      const old = message.ref.startsWith('local:')
+        ? JSON.parse((await chrome.storage.local.get(key))[key])
+        : (await github.pull(await loadSync(), message.ref))?.library;
+      if (old) await adopt(migrate(old));
       return;
     }
+    case 'restore-file':
+      // A whole library from a backup file. Says what is wrong with it, if anything.
+      return adopt(migrate(message.library)).catch((error) => error.message);
     case 'show-tree':
       // The tree this window's panel shows: where its new tabs go.
       state.windows[message.windowId] = message.treeId;
@@ -408,7 +462,7 @@ chrome.commands.onCommand.addListener((command, tab) => {
 // Once a day the library is synced in full by itself (and whenever the user
 // asks); once a minute, and whenever another computer tells something, the
 // quick exchange runs.
-const TIMERS = { sync: [SYNC_EVERY_MINUTES, sync], exchange: [1, exchange] };
+const TIMERS = { sync: [SYNC_EVERY_MINUTES, sync], exchange: [1, exchange], backup: [60, backUp] };
 chrome.alarms.onAlarm.addListener((alarm) => TIMERS[alarm.name] && enqueue(alarm.name, TIMERS[alarm.name][1]));
 for (const [name, [minutes]] of Object.entries(TIMERS)) {
   chrome.alarms.get(name).then((alarm) => alarm || chrome.alarms.create(name, { periodInMinutes: minutes }));

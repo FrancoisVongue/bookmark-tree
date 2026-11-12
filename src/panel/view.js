@@ -2,7 +2,7 @@
 
 import { html, render, nothing } from '../vendor/lit-html/lit-html.js';
 import { repeat } from '../vendor/lit-html/directives/repeat.js';
-import { descendantsOf, isGroup, isNote, parentOf } from '../model.js';
+import { descendantsOf, gridOf, isGroup, isNote, parentOf } from '../model.js';
 import { t } from '../i18n.js';
 
 const svg = (path) => html`<svg viewBox="0 0 20 20" width="16" height="16"><path d=${path} /></svg>`;
@@ -177,6 +177,21 @@ function treeTabs(ui, current, action) {
   );
 }
 
+/** The table of trees: each in its cell, to click, drag to another cell, or (an empty cell) to start a tree in. */
+function treeGrid(ui) {
+  const { columns, cells } = gridOf(ui.library);
+  const current = ui.panes[ui.focus].tree;
+  const cellView = (id, cell) => {
+    const drop = ui.drop?.cell === cell ? 'drop' : '';
+    if (!id) return html`<button class="cell ${drop}" data-action="tree-add" data-cell=${cell} title=${t('newTree')}>${ICONS.add}</button>`;
+    const tree = ui.library.trees[id];
+    if (ui.renaming?.tree === id) return html`<input class="rename tree-name" .value=${tree.name} aria-label=${t('renameHint')} />`;
+    const state = `${id === current ? 'current' : ''} ${ui.drag?.tree === id ? 'dragging' : ''} ${drop}`;
+    return html`<button class="tab ${state}" data-action="tree-show" data-tree=${id} data-cell=${cell}>${tree.name}</button>`;
+  };
+  return html`<div class="grid" style="grid-template-columns:repeat(${columns}, minmax(0, 1fr))">${cells.map(cellView)}</div>`;
+}
+
 function menuView(menu) {
   return html`
     <div class="menu" role="menu" style="left:${menu.x}px; top:${menu.y}px">
@@ -254,7 +269,7 @@ const keysView = () =>
 
 function syncView(ui) {
   const { settings, versions, busy } = ui.overlay;
-  const when = (time) => new Date(time).toLocaleString();
+  const when = (time, local) => (local ? `${new Date(time).toLocaleDateString()} · ${t('localBackup')}` : new Date(time).toLocaleString());
   const status = settings.error
     ? html`<p class="hint error">${t('syncError', settings.error)}</p>`
     : html`<p class="hint">${settings.at ? t('syncLast', when(settings.at)) : t('syncHint')}</p>`;
@@ -268,9 +283,9 @@ function syncView(ui) {
     ${status} ${settings.outOfStep ? html`<p class="hint error">${t('outOfStep')}</p>` : ''}
     <div class="list">
       ${versions.map(
-        ({ ref, at }) => html`
+        ({ ref, at, local }) => html`
           <div class="row asleep">
-            <span class="title">${when(at)}</span>
+            <span class="title">${when(at, local)}</span>
             <button class="pill" data-action="sync-restore" data-ref=${ref} ?disabled=${busy}>${t('goToVersion')}</button>
           </div>
         `,
@@ -294,10 +309,7 @@ export function draw(container, ui) {
   render(
     html`
       <header class="bar">
-        <div class="tabs">
-          ${treeTabs(ui, ui.panes[ui.focus].tree, 'tree-show')}
-          <button class="tab" data-action="tree-add" title=${t('newTree')}>${ICONS.add}</button>
-        </div>
+        ${ui.trouble ? html`<p class="trouble">${ui.trouble}</p>` : nothing} ${treeGrid(ui)}
         <div class="tools">
           <label class="search">
             ${ICONS.search}
