@@ -6,6 +6,7 @@ import { addNode, descendantsOf, isGroup, isNote, migrate, moveNode, newId, tree
 import { QUIET, ops } from './ops.js';
 import { EMPTY, merge } from './merge.js';
 import * as github from './github.js';
+import * as channel from './channel.js';
 import * as core from './core.js';
 
 const log = (...args) => console.log('[tree]', ...args);
@@ -228,22 +229,58 @@ async function sync() {
         const merged = merge(base, state.library, migrate(remote.library), Date.now());
         if (JSON.stringify(merged) !== JSON.stringify(state.library)) await adopt(merged);
       }
-      const mine = JSON.stringify(state.library);
+      const mine = JSON.stringify(core.shared(state.library));
       const saved = remote && mine === (news ? JSON.stringify(remote.library) : settings.base);
       let version = remote?.version;
       try {
-        if (!saved) version = await github.push(settings, state.library, version, `Tree: ${new Date().toISOString()}`);
+        if (!saved) version = await github.push(settings, JSON.parse(mine), version, `Tree: ${new Date().toISOString()}`);
       } catch (error) {
         if (error instanceof github.Conflict && attempt < 3) continue;
         throw error;
       }
       log('synced', saved ? '(nothing to save)' : '(saved a version)', news ? '(took theirs in)' : '');
+      // The others get all this from the same place: it is not news for the quick way, and we are in step again.
+      await saveChannel({ ...(await loadChannel()), published: mine, lost: false });
       return saveSync({ ...settings, version, base: mine, at: Date.now(), error: undefined });
     }
   } catch (error) {
     log('sync failed', error.message);
     await saveSync({ ...settings, error: error.message });
   }
+}
+
+// The quick way between the user's computers (see channel.js), through the
+// storage the browser keeps in sync. Its state is in local storage under `channel`.
+
+const cells = {
+  get: () => chrome.storage.sync.get(null),
+  set: (more) => chrome.storage.sync.set(more),
+  remove: (keys) => chrome.storage.sync.remove(keys),
+};
+const loadChannel = async () => (await chrome.storage.local.get('channel')).channel ?? channel.newState(newId().slice(0, 8));
+const saveChannel = (ch) => chrome.storage.local.set({ channel: ch });
+
+/** Tells the other computers what changed here, and takes in what changed there. */
+async function exchange() {
+  const ch = await loadChannel();
+  const before = JSON.stringify(state.library);
+  try {
+    const told = await channel.publish(cells, ch, core.shared(state.library), Date.now());
+    const lost = await channel.receive(cells, ch, state.library, Date.now(), core.shared);
+    ch.lost ||= !told || lost;
+  } catch (error) {
+    log('exchange failed', error.message); // Over the browser's quota, most likely.
+    ch.lost = true;
+  }
+  if (JSON.stringify(state.library) !== before) {
+    log('took in changes from another computer');
+    undo.push(before);
+    redo = [];
+    await reconcile();
+  }
+  await saveChannel(ch);
+  // Out of step: only the full library, through GitHub, puts that right.
+  if (ch.lost) await sync();
 }
 
 /** Opens an empty tab as a new node: top-level, or a child / next sibling of `nodeId`. */
@@ -318,7 +355,7 @@ async function handle(message, sender) {
     }
     case 'sync-get': {
       const { token, base, ...shown } = (await loadSync()) ?? {};
-      return { ...shown, hasToken: !!token };
+      return { ...shown, hasToken: !!token, outOfStep: (await loadChannel()).lost };
     }
     case 'sync-set': {
       // A new place starts from nothing in common; an empty token field keeps the token.
@@ -327,7 +364,11 @@ async function handle(message, sender) {
       const settings = { ...(moved ? {} : old), repo: message.repo, api: message.api, path: 'tree.json' };
       return saveSync({ ...settings, token: message.token || old.token });
     }
+    case 'exchange':
+      return exchange();
     case 'sync-now':
+      // Everything at once: the quick exchange, then the full sync.
+      await exchange();
       return sync();
     case 'sync-history':
       return github.history(await loadSync()).catch((error) => (log('history failed', error.message), []));
@@ -364,9 +405,15 @@ chrome.commands.onCommand.addListener((command, tab) => {
   });
 });
 
-// Once a day the library is synced by itself (and whenever the user asks).
-chrome.alarms.onAlarm.addListener((alarm) => alarm.name === 'sync' && enqueue('sync', sync));
-chrome.alarms.get('sync').then((alarm) => alarm || chrome.alarms.create('sync', { periodInMinutes: SYNC_EVERY_MINUTES }));
+// Once a day the library is synced in full by itself (and whenever the user
+// asks); once a minute, and whenever another computer tells something, the
+// quick exchange runs.
+const TIMERS = { sync: [SYNC_EVERY_MINUTES, sync], exchange: [1, exchange] };
+chrome.alarms.onAlarm.addListener((alarm) => TIMERS[alarm.name] && enqueue(alarm.name, TIMERS[alarm.name][1]));
+for (const [name, [minutes]] of Object.entries(TIMERS)) {
+  chrome.alarms.get(name).then((alarm) => alarm || chrome.alarms.create(name, { periodInMinutes: minutes }));
+}
+chrome.storage.onChanged.addListener((changes, area) => area === 'sync' && enqueue('exchange', exchange));
 
 // Clicking the toolbar button shows or hides the panel.
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});

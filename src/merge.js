@@ -1,8 +1,21 @@
-// Bringing together two copies of the library that both changed since they
-// were last the same (`base`): mine, on this computer, and theirs, the one
-// kept elsewhere. The result is theirs with my changes made again on top.
+// Two copies of the library that both changed since they were last the same.
+//
+//   diff(base, mine)    what I changed since `base`, as plain data: a history
+//                       squeezed dry (what was added and then removed is not
+//                       in it at all)
+//   apply(theirs, d)    makes those changes again in another copy, as far as
+//                       that copy allows
+//   merge               = apply(theirs, diff(base, mine))
+//
 // Nothing is lost quietly: what only one side has stays, and what one side
-// deleted goes to the trash rather than away. Pure: no Chrome here.
+// deleted goes to the other's trash rather than away. Pure: no Chrome here.
+//
+//   d.nodes  { [id]: { node, keys } }   a new or changed node, and which of its fields changed
+//   d.trees  { [treeId]: { name, renamed, added,
+//                          put: [[id, parent, after, moved]],  places, top to bottom
+//                          out: [id],                          taken out of the tree
+//                          collapsed: { [id]: bool } } }
+//   d.gone   [treeId]                   trees deleted
 
 import { ROOT, descendantsOf, forgetLoose, inTree, kidsOf, moveNode, parentOf, placeNode, removeNode } from './model.js';
 
@@ -10,18 +23,7 @@ export const EMPTY = { nodes: {}, trees: {}, trash: [] };
 const NO_TREE = { children: {}, collapsed: {} };
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-/** One value out of three: mine if I changed it, otherwise theirs. */
-const pick = (base, mine, theirs) => (same(mine, base) ? theirs : mine);
-
-/** Field by field. */
-function pickEach(base, mine, theirs) {
-  const out = {};
-  for (const key of new Set([...Object.keys(mine), ...Object.keys(theirs)])) {
-    const value = pick(base[key], mine[key], theirs[key]);
-    if (value !== undefined) out[key] = value;
-  }
-  return out;
-}
+const keysOf = (...objects) => [...new Set(objects.flatMap((object) => Object.keys(object ?? {})))];
 
 /** Where a node sits: under which parent, after which sibling. */
 function placeOf(tree, id) {
@@ -31,62 +33,77 @@ function placeOf(tree, id) {
   return { parent, after: kids[kids.indexOf(id) - 1] };
 }
 
+function diffTree(was, tree, changed) {
+  const put = [];
+  for (const id of descendantsOf(tree, ROOT)) {
+    const now = placeOf(tree, id);
+    const moved = !same(placeOf(was, id), now);
+    // A changed node's place is told too: where it was deleted meanwhile, it comes back there.
+    if (moved || changed[id]) put.push([id, now.parent, now.after ?? null, moved]);
+  }
+  const collapsed = {};
+  for (const id of keysOf(was.collapsed, tree.collapsed)) {
+    if (!!was.collapsed[id] !== !!tree.collapsed[id]) collapsed[id] = !!tree.collapsed[id];
+  }
+  const out = descendantsOf(was, ROOT).filter((id) => !inTree(tree, id));
+  return { name: tree.name, renamed: tree.name !== was.name, put, out, collapsed };
+}
+
+/** What changed from `base` to `mine`. */
+export function diff(base, mine) {
+  const d = { nodes: {}, trees: {}, gone: Object.keys(base.trees).filter((id) => !mine.trees[id]) };
+  for (const [id, node] of Object.entries(mine.nodes)) {
+    const was = base.nodes[id];
+    if (!same(node, was)) d.nodes[id] = { node, keys: keysOf(node, was).filter((key) => !same(node[key], was?.[key])) };
+  }
+  for (const [treeId, tree] of Object.entries(mine.trees)) {
+    const entry = { ...diffTree(base.trees[treeId] ?? NO_TREE, tree, d.nodes), added: !base.trees[treeId] };
+    const quiet = !entry.added && !entry.renamed && !entry.put.length && !entry.out.length && !Object.keys(entry.collapsed).length;
+    if (!quiet) d.trees[treeId] = entry;
+  }
+  return d;
+}
+
+export const isEmpty = (d) => !Object.keys(d.nodes).length && !Object.keys(d.trees).length && !d.gone.length;
+
 /** Puts `id` under `parent`, right after sibling `after` (first, without one), as far as the tree allows. */
-function put(out, treeId, id, { parent, after }) {
+function put(out, treeId, id, parent, after) {
   const tree = out.trees[treeId];
   placeNode(out, treeId, id, parent);
-  if (parent !== ROOT && !inTree(tree, parent)) return; // My parent is not there: it stays where it is.
-  if (after !== undefined && parentOf(tree, after) === parent) moveNode(out, treeId, id, after, 'after');
-  else if (after !== undefined) moveNode(out, treeId, id, parent, parent === ROOT ? 'end' : 'inside');
+  if (parent !== ROOT && !inTree(tree, parent)) return; // The parent is not there: it stays where it is.
+  if (after !== null && parentOf(tree, after) === parent) moveNode(out, treeId, id, after, 'after');
+  else if (after !== null) moveNode(out, treeId, id, parent, parent === ROOT ? 'end' : 'inside');
   else if (parent !== ROOT) moveNode(out, treeId, id, parent, 'first');
   else if (kidsOf(tree, ROOT)[0] !== id) moveNode(out, treeId, id, kidsOf(tree, ROOT)[0], 'before');
 }
 
-/** Makes my changes to one tree again in the merged library. */
-function mergeTree(out, treeId, base, mine, at) {
-  const tree = out.trees[treeId];
-  // What I added or moved goes where I put it.
-  for (const id of descendantsOf(mine, ROOT)) {
-    if (!out.nodes[id]) continue; // They deleted it and I never touched it.
-    const [was, now] = [placeOf(base, id), placeOf(mine, id)];
-    if (inTree(tree, id) && same(was, now)) continue;
-    put(out, treeId, id, now);
+/** Makes the changes `d` in library `out` (and returns it). `at` stamps what lands in the trash. */
+export function apply(out, d, at) {
+  for (const [id, { node, keys }] of Object.entries(d.nodes)) {
+    const mine = out.nodes[id];
+    if (!mine) out.nodes[id] = structuredClone(node);
+    else for (const key of keys) node[key] === undefined ? delete mine[key] : (mine[key] = structuredClone(node[key]));
   }
-  // What I took out goes out.
-  for (const id of descendantsOf(base, ROOT)) {
-    if (!inTree(mine, id) && inTree(tree, id)) removeNode(out, treeId, id, at);
+  for (const [treeId, changes] of Object.entries(d.trees)) {
+    // A tree that is not here is made if it is new, or if things were put into it.
+    if (!out.trees[treeId] && !changes.added && !changes.put.length) continue;
+    const tree = (out.trees[treeId] ??= { id: treeId, name: changes.name, children: {}, collapsed: {} });
+    for (const [id, parent, after, moved] of changes.put) {
+      if (out.nodes[id] && (moved || !inTree(tree, id))) put(out, treeId, id, parent, after);
+    }
+    for (const id of changes.out) if (inTree(tree, id)) removeNode(out, treeId, id, at);
+    for (const [id, on] of Object.entries(changes.collapsed)) on ? (tree.collapsed[id] = true) : delete tree.collapsed[id];
+    if (changes.renamed) tree.name = changes.name;
   }
-  tree.collapsed = pickEach(base.collapsed, mine.collapsed, tree.collapsed);
-  tree.name = pick(base.name, mine.name, tree.name);
+  for (const treeId of d.gone) if (out.trees[treeId] && Object.keys(out.trees).length > 1) delete out.trees[treeId];
+  forgetLoose(out, at);
+  out.trash = out.trash.filter((entry) => !out.nodes[entry.node.id]);
+  return out;
 }
 
-/** The library that has both my changes and theirs since `base`. `at` stamps what lands in the trash. */
+/** The library that has both my changes and theirs since `base`. */
 export function merge(base, mine, theirs, at) {
-  const out = structuredClone(theirs);
-
-  for (const id of new Set([...Object.keys(mine.nodes), ...Object.keys(theirs.nodes)])) {
-    const [was, my, their] = [base.nodes[id], mine.nodes[id], theirs.nodes[id]];
-    if (my && their) out.nodes[id] = pickEach(was ?? {}, my, their);
-    else if (my && !same(my, was)) out.nodes[id] = structuredClone(my); // New, or changed after they deleted it.
-  }
-
-  for (const [treeId, tree] of Object.entries(mine.trees)) {
-    const was = base.trees[treeId];
-    if (!out.trees[treeId]) {
-      if (was && same(tree, was)) continue; // They deleted a tree I left alone.
-      out.trees[treeId] = { id: treeId, name: tree.name, children: {}, collapsed: {} };
-      mergeTree(out, treeId, NO_TREE, tree, at);
-    } else {
-      mergeTree(out, treeId, was ?? NO_TREE, tree, at);
-    }
-  }
-  // A tree I deleted goes, unless they changed it meanwhile.
-  for (const treeId in base.trees) {
-    const untouched = same(theirs.trees[treeId], base.trees[treeId]);
-    if (!mine.trees[treeId] && untouched && Object.keys(out.trees).length > 1) delete out.trees[treeId];
-  }
-
-  forgetLoose(out, at);
+  const out = apply(structuredClone(theirs), diff(base, mine), at);
   const binned = new Map([...out.trash, ...mine.trash].map((entry) => [entry.node.id, entry]));
   out.trash = [...binned.values()].filter((entry) => !out.nodes[entry.node.id]).sort((a, b) => a.at - b.at);
   return out;

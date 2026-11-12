@@ -265,7 +265,7 @@ function syncView(ui) {
       ${t('syncToken')}
       <input name="token" type="password" placeholder=${settings.hasToken ? t('syncTokenSaved') : 'github_pat_…'} />
     </label>
-    ${status}
+    ${status} ${settings.outOfStep ? html`<p class="hint error">${t('outOfStep')}</p>` : ''}
     <div class="list">
       ${versions.map(
         ({ ref, at }) => html`

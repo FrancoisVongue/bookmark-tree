@@ -268,5 +268,8 @@
   },
   "goToVersion": {
     "message": "Go to this version"
+  },
+  "outOfStep": {
+    "message": "This computer is out of step with your others. Sync with GitHub to catch up."
   }
 }

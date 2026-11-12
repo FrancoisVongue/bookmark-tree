@@ -40,6 +40,17 @@ const urlOf = (tab) => tab.pendingUrl || tab.url || '';
 
 const noteIdIn = (url) => url.match(/\/src\/note\/note\.html\?id=([\w-]+)/)?.[1];
 
+/**
+ * The library as other computers should see it: without the empty new tabs
+ * and notes of this one, which are nobody else's business (and leave no
+ * trace here either, once closed).
+ */
+export function shared(library) {
+  const copy = structuredClone(library);
+  for (const id in copy.nodes) dropIfEmpty(copy, id);
+  return copy;
+}
+
 /** The open tab showing `nodeId`, if any. */
 export function tabOf(state, nodeId) {
   for (const tabId in state.binding) if (state.binding[tabId].node === nodeId) return Number(tabId);
