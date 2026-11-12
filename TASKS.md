@@ -78,10 +78,10 @@
 ## До публикации (open source и Chrome Web Store)
 
 Open source:
-- [ ] `LICENSE` (код написан с нуля; MIT — обычный вариант).
-- [ ] README на английском: что это, скриншоты, установка, настройка синхронизации.
-- [ ] Текст лицензии MIT рядом с `src/vendor/tiptap/` (у lit-html лежит).
-- [ ] Своё название вместо «Tree».
+- [x] `LICENSE` (MIT).
+- [x] README на английском со скриншотом (`docs/panel.png`).
+- [x] Лицензии всего, что собрано в `tiptap.js`: `src/vendor/tiptap/LICENSES.txt`.
+- [ ] Название: репозиторий — `bookmark-tree`, README — «Bookmark Tree», в манифесте пока «Tree».
 - [ ] Решить, оставлять ли `TASKS.md` и `UX.md` на русском.
 
 Chrome Web Store (правила записаны по памяти — сверить со страницей магазина):

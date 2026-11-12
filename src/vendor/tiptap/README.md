@@ -1,8 +1,8 @@
 # Tiptap, bundled
 
 `tiptap.js` is the note editor's parts in one file, so the extension needs no
-build step. All parts are MIT licensed (Tiptap, ProseMirror, tiptap-markdown,
-markdown-it).
+build step. Its parts (Tiptap, ProseMirror, tiptap-markdown, markdown-it and
+what they need) keep their own licences, all permissive: see `LICENSES.txt`.
 
 To rebuild it, in an empty folder:
 
