@@ -114,6 +114,37 @@ await panel.locator('.pane').last().locator('.pane-head').click();
 await sleep(100);
 console.log('== focus moved to the pane with Other; the worker knows:', await shownTo());
 
+// 5. What a folded branch keeps in sight.
+await panel.locator('[data-action="pane-close"]').last().click();
+await sleep(300);
+await panel.locator('.grid .tab', { hasText: 'Main' }).click();
+for (const page of ctx.pages()) if (/newtab|about:blank/.test(page.url())) await page.close();
+await sleep(500);
+await msg({ type: 'op', op: 'add', args: { tree: 'main', nodes: [{ id: 's1', url: 'https://example.com/1', title: 'Asleep one' }, { id: 's2', url: 'https://example.com/2', title: 'Asleep two, marked' }, { id: 's3', url: 'https://example.com/3', title: 'Asleep three' }], target: await row('Page /child-of-a').getAttribute('data-id'), position: 'inside' } });
+await say('before folding: three sleeping pages deep in the branch');
+await row('Asleep two').click({ button: 'right' });
+await panel.locator('.menu button', { hasText: 'Keep in sight' }).click();
+await sleep(300);
+await row('Page /a').locator('.twisty').click();
+await say('folded: the open tabs and the marked page stay, one step under the branch; the count is of what is hidden');
+console.log('  kept rows:', await marks('kept'), '| count on the folded row:', await row('Page /a').locator('.badge').textContent());
+await shot('2-kept-light');
+await panel.emulateMedia({ colorScheme: 'dark' });
+await shot('3-kept-dark');
+await panel.emulateMedia({ colorScheme: 'light' });
+await kid.close();
+await say('one of the open tabs closed: its page is hidden with the rest');
+console.log('  count:', await row('Page /a').locator('.badge').textContent());
+// Removing the folded branch takes everything in it, kept in sight or not.
+const before = Object.keys((await msg({ type: 'get-state' })).library.nodes).length;
+await row('Page /a').hover();
+await row('Page /a').locator('[data-action="remove"]').click();
+await sleep(300);
+console.log('\n== removing the folded branch asks:', await panel.locator('.dialog.ask p').textContent().catch(() => 'NOTHING'));
+await panel.locator('.dialog .primary').click();
+await say('removed');
+console.log('  nodes gone:', before - Object.keys((await msg({ type: 'get-state' })).library.nodes).length);
+
 console.log('\nERRORS:', errors.length ? `\n${errors.join('\n')}` : 'none');
 await ctx.close();
 server.close();

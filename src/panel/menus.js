@@ -63,6 +63,7 @@ export function rowMenu(pane, id) {
     page && item('copyLink', () => navigator.clipboard.writeText(links())),
     item('changeIcon', () => ((ui.overlay = { kind: 'icons', ids }), redraw())),
     item('duplicate', () => op('duplicate', { tree, ids }), 'Ctrl+D'),
+    item(node.keep ? 'keepNot' : 'keep', () => op('keep', { ids, keep: !node.keep })),
     page && item(node.home ? 'unpin' : 'pin', () => op('pin', { ids, pinned: !node.home })),
     node.home && node.url !== node.home.url && item('goHome', () => send({ type: 'go-home', nodeId: id })),
     null,

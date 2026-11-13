@@ -178,7 +178,7 @@ function layOut() {
   for (const pane of [...ui.panes, picker()]) {
     if (!pane) continue;
     const searching = ui.query && pane !== picker();
-    pane.rows = searching ? found(rowsOf(library, pane.tree, true), ui.query) : rowsOf(library, pane.tree);
+    pane.rows = searching ? found(rowsOf(library, pane.tree, true), ui.query) : rowsOf(library, pane.tree, false, ui.live);
     pane.sel = new Set([...pane.sel].filter((id) => rowOf(pane, id)));
   }
   if (!rowOf(here(), ui.cursor)) ui.cursor = rowOf(here(), ui.activeId)?.id ?? here().rows[0]?.id;

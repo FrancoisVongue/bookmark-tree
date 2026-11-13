@@ -166,9 +166,9 @@
   background: var(--active-bg);
   box-shadow: inset 0 0 0 1px var(--accent);
 }
-.row.holds-active .badge {
-  background: var(--active-bg);
-  color: var(--active-text);
+/* A row kept in sight under a folded branch is not where it really sits: it has no branch of its own to fold. */
+.row.kept .twisty {
+  visibility: hidden;
 }
 .row.pinned .favicon {
   outline: 1px solid var(--dim);

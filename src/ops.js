@@ -130,6 +130,14 @@ export const ops = {
       else delete library.nodes[id].icon;
     }
   },
+  /** Keeps nodes in sight when the branch they are in is folded, or lets them be hidden with it. */
+  keep(library, { ids, keep }) {
+    for (const id of ids) {
+      if (!library.nodes[id]) continue;
+      if (keep) library.nodes[id].keep = true;
+      else delete library.nodes[id].keep;
+    }
+  },
   /** Pins a page to the address it shows now, or lets it go. */
   pin(library, { ids, pinned }) {
     for (const id of ids) {
