@@ -1,8 +1,10 @@
 // The one owner of the state. It hears what happens to tabs (facts), takes
 // commands from the panels, saves the result and tells the panels it changed.
-// It only ever asks the browser for three things: open, focus or close a tab.
+// What it asks of the browser in return is five things, all in `browser`
+// below: open a tab, show one, close some, send one to an address, give one
+// a window of its own. It never reorders tabs.
 
-import { addNode, descendantsOf, expire, goHome, goneOf, isGroup, isNote, migrate, moveNode, newId, problems, stamped, treeFor, validTree } from './model.js';
+import { descendantsOf, expire, goneOf, isGroup, isNote, migrate, newId, problems, treeFor, validTree } from './model.js';
 import { QUIET, ops } from './ops.js';
 import { apply, diff, takeIn } from './merge.js';
 import * as github from './github.js';
@@ -12,19 +14,32 @@ import { attend, placesOf } from './journal.js';
 
 const log = (...args) => console.log('[tree]', ...args);
 
+// Everything the worker asks the browser to do to tabs. (Asking what tabs there are is not doing.)
+const browser = {
+  /** A new tab: `{ windowId, url?, active?, index? }`; without an address, an empty one. */
+  open: (tab) => chrome.tabs.create(tab),
+  /** Brings a tab to the front; its window too, if that is not `windowId`. */
+  async show(tabId, windowId) {
+    const tab = await chrome.tabs.update(tabId, { active: true });
+    if (tab.windowId !== windowId) await chrome.windows.update(tab.windowId, { focused: true });
+  },
+  close: (tabIds) => chrome.tabs.remove(tabIds),
+  navigate: (tabId, url) => chrome.tabs.update(tabId, { url }),
+  /** Gives a tab a window of its own. */
+  detach: (tabId) => chrome.windows.create({ tabId }),
+};
+
 let state = core.createState();
 // Nothing is saved before the library has been read: an empty one must never replace the user's.
 let loaded = false;
 // What the user must be told: the library could not be read, or could not be saved.
 let trouble;
-// The user's changes that can be taken back, newest last: the library before and after each ({ before, after }, JSON).
+// The user's changes that can be taken back, newest last. Each is kept as what it changed, both ways
+// ({ back, forth }: see diff in merge.js) - not as the libraries before and after it, which are mostly the same.
 let undo = [];
 let redo = [];
 const UNDO_STEPS = 50;
 const UNDO_BYTES = 4_000_000;
-// Tabs whose node was just made top-level: if the browser then reports the
-// page that opened them, the node moves under it.
-const fresh = new Set();
 // Tab -> the tab whose page opened it. The browser reports this right around
 // the tab's creation, in either order.
 const openedFrom = new Map();
@@ -95,7 +110,7 @@ async function init() {
   }
   if (library) state.library = library;
   loaded = true;
-  if (session) ({ binding: state.binding, windows: state.windows, attention: state.attention, journal: state.journal = [], undo, redo } = session);
+  if (session) ({ binding: state.binding, windows: state.windows, attention: state.attention, journal: state.journal, undo, redo } = session);
   saved.library = JSON.stringify(state.library);
   log('init:', library ? 'library loaded' : 'new library', '|', session ? 'same session' : 'new session');
   expire(state.library, Date.now());
@@ -128,23 +143,12 @@ chrome.tabs.onCreated.addListener((created) => {
     // Read it again: the address is often not set yet when the event fires,
     // and the round trip gives the "opened from" report time to arrive.
     const tab = (await chrome.tabs.get(created.id).catch(() => null)) ?? created;
-    // A tab that comes from another tab with a page already in it was opened by that page, whichever
-    // way the browser tells it: a link (reported apart), or its menu ("search for the selected text").
-    // One that comes empty is a new tab the user asked for.
-    const arrived = !core.isBlank(tab.pendingUrl || tab.url);
-    const source = openedFrom.get(tab.id) ?? (arrived ? created.openerTabId : undefined);
+    const reported = openedFrom.get(tab.id);
     openedFrom.delete(tab.id);
-    const result = core.tabOpened(state, tab, source, windowTree(tab.windowId), Date.now());
-    // Its node was made just now: here or, if this event woke the worker, a moment ago,
-    // when the worker lined itself up with the open tabs and put it at the end of the tree.
-    const late = result === 'known' && state.binding[tab.id].loose;
-    if (late && source !== undefined) core.tabOpenedFrom(state, tab.id, source);
-    else if (result === 'new' || late) {
-      fresh.add(tab.id);
-      // Below the page the user was on. (A worker just woken does not know which tab was shown: where the user's attention was says it.)
-      core.tabOpenedBeside(state, tab.id, (beside !== tab.id && state.binding[beside]?.node) || state.attention?.node);
-    }
-    log('tab', tab.id, 'created ->', result, source === undefined ? `(beside tab ${beside})` : `(from tab ${source})`, tab.pendingUrl || tab.url);
+    // The page the user was on. (A worker just woken does not know which tab was shown: where the user's attention was says it.)
+    const shownNode = (beside !== tab.id && state.binding[beside]?.node) || state.attention?.node;
+    const result = core.tabCreated(state, tab, { opener: created.openerTabId, reported, shownNode, treeId: windowTree(tab.windowId), at: Date.now() });
+    log('tab', tab.id, 'created ->', result, `(opener ${created.openerTabId}, reported ${reported}, beside tab ${beside})`, tab.pendingUrl || tab.url);
   });
 });
 
@@ -153,7 +157,6 @@ chrome.webNavigation.onCreatedNavigationTarget.addListener(({ tabId, sourceTabId
   enqueue('tab opened from page', () => {
     if (state.binding[tabId] === undefined) return; // Not created yet: that handler uses the entry.
     openedFrom.delete(tabId);
-    if (!fresh.delete(tabId)) return;
     log('tab', tabId, 'was opened from tab', sourceTabId, '-> child:', core.tabOpenedFrom(state, tabId, sourceTabId));
   });
 });
@@ -167,7 +170,6 @@ chrome.tabs.onUpdated.addListener((tabId, change, tab) => {
 
 chrome.tabs.onRemoved.addListener((tabId) =>
   enqueue('tab closed', () => {
-    fresh.delete(tabId);
     openedFrom.delete(tabId);
     log('tab', tabId, 'closed, node', state.binding[tabId]?.node);
     core.tabClosed(state, tabId, Date.now());
@@ -188,31 +190,21 @@ async function closeTabs(ids) {
   const windows = new Set(all.filter((tab) => closing.has(tab.id)).map((tab) => tab.windowId));
   for (const windowId of windows) {
     if (all.filter((tab) => tab.windowId === windowId).every((tab) => closing.has(tab.id))) {
-      await chrome.tabs.create({ windowId });
+      await browser.open({ windowId });
     }
   }
-  await chrome.tabs.remove(ids).catch((error) => log('close failed', error.message));
+  await browser.close(ids).catch((error) => log('close failed', error.message));
 }
 
 /** After a change to the library: tabs of nodes that are gone close; the rest stay in a tree that holds them. */
-async function settle() {
-  const gone = [];
-  for (const [tabId, bound] of Object.entries(state.binding)) {
-    if (state.library.nodes[bound.node]) bound.tree = treeFor(state.library, bound.node, bound.tree);
-    else {
-      gone.push(Number(tabId));
-      delete state.binding[tabId];
-    }
-  }
-  await closeTabs(gone);
-}
+const settle = () => closeTabs(core.rebind(state));
 
 /** Keeps a step of undo: one of the user's changes, from the library as it was (`before`, JSON) to as it is. */
 function remember(before) {
-  undo.push({ before, after: JSON.stringify(state.library) });
+  const [was, now] = [JSON.parse(before), structuredClone(state.library)];
+  undo.push({ back: diff(now, was), forth: diff(was, now) });
   redo = [];
-  const size = () => undo.reduce((sum, step) => sum + step.before.length + step.after.length, 0);
-  while (undo.length > UNDO_STEPS || size() > UNDO_BYTES) undo.shift();
+  while (undo.length > UNDO_STEPS || JSON.stringify(undo).length > UNDO_BYTES) undo.shift();
 }
 
 /** Applies one of the user's changes, remembering it. */
@@ -234,20 +226,19 @@ async function change(name, args) {
   if (effect.keepTabs) await reconcile();
   else await settle();
   const tabId = core.tabOf(state, effect.navigate);
-  if (tabId !== undefined) await chrome.tabs.update(tabId, { url: state.library.nodes[effect.navigate].url });
+  if (tabId !== undefined) await browser.navigate(tabId, state.library.nodes[effect.navigate].url);
 }
 
 /**
- * Takes back the last of the user's changes (or, `forward`, makes it again):
- * that change only, on top of everything that has happened since - pages
- * opened, notes written. Open tabs stay open.
+ * Takes the last of the user's changes `back`, or makes the last one taken
+ * back again (`forth`): that change only, on top of everything that has
+ * happened since - pages opened, notes written. Open tabs stay open.
  */
-async function stepBack(forward = false) {
-  const [from, to] = forward ? [redo, undo] : [undo, redo];
+async function retrace(way) {
+  const [from, to] = way === 'back' ? [undo, redo] : [redo, undo];
   const step = from.pop();
   if (!step) return;
-  const [was, will] = forward ? [step.before, step.after] : [step.after, step.before];
-  const next = apply(structuredClone(state.library), diff(JSON.parse(was), JSON.parse(will)), Date.now());
+  const next = apply(structuredClone(state.library), step[way], Date.now());
   if (problems(next).length) return log('that step can no longer be taken:', problems(next)[0]);
   to.push(step);
   state.library = next;
@@ -266,17 +257,16 @@ async function activate({ nodeId, treeId, windowId, where }) {
   let tabId = core.tabOf(state, nodeId);
   if (tabId === undefined) {
     const url = isNote(node) ? chrome.runtime.getURL(core.notePath(nodeId)) : node.url;
-    const tab = await chrome.tabs.create({ windowId, url: core.isBlank(url) ? undefined : url, active: !where });
+    const tab = await browser.open({ windowId, url: core.isBlank(url) ? undefined : url, active: !where });
     tabId = tab.id;
     // Before its "created" event is handled, so no second node appears.
-    state.binding[tabId] = { node: nodeId, tree };
+    core.bind(state, tabId, nodeId, tree);
     log('woke node', nodeId, 'as tab', tabId);
   } else if (!where) {
-    const tab = await chrome.tabs.update(tabId, { active: true });
-    if (tab.windowId !== windowId) await chrome.windows.update(tab.windowId, { focused: true });
-    state.binding[tabId].tree = tree;
+    await browser.show(tabId, windowId);
+    core.shownIn(state, tabId, tree);
   }
-  if (where === 'window') await chrome.windows.create({ tabId });
+  if (where === 'window') await browser.detach(tabId);
 }
 
 // --- Keeping the library elsewhere ---------------------------------------------
@@ -308,37 +298,70 @@ async function adopt(library, asked = false) {
  * Brings this library and the saved one together: takes in what changed
  * there since the last time (see takeIn in merge.js), saves the result as
  * the next version. If someone saves in between, it starts over.
+ *
+ * It waits for the network outside the queue - tabs go on being heard and
+ * the panels answered meanwhile - and queues only what touches the state:
+ * taking theirs in, and noting what was saved. One sync runs at a time.
  */
-async function sync() {
+let syncing;
+const sync = () => (syncing ??= syncOnce().finally(() => (syncing = undefined)));
+
+async function syncOnce() {
   const settings = await loadSync();
   if (!loaded || !settings?.repo || !settings.token) return;
   try {
     for (let attempt = 1; ; attempt++) {
       const remote = await github.pull(settings);
       const news = remote && remote.version !== settings.version;
-      if (news) {
-        const base = settings.base && JSON.parse(settings.base);
-        const theirs = migrate(remote.library);
-        const told = goneOf(theirs).filter((id) => !(id in (base?.gone ?? {})));
-        const next = takeIn(structuredClone(state.library), base, theirs, told, Date.now());
-        if (JSON.stringify(next) !== JSON.stringify(state.library)) await adopt(next);
-      }
-      const mine = JSON.stringify(core.shared(state.library));
-      const saved = remote && mine === (news ? JSON.stringify(remote.library) : settings.base);
+      const mine = await enqueue('sync: take in', async () => {
+        if (news) {
+          const base = settings.base && JSON.parse(settings.base);
+          const theirs = migrate(remote.library);
+          const told = goneOf(theirs).filter((id) => !(id in (base?.gone ?? {})));
+          const next = takeIn(structuredClone(state.library), base, theirs, told, Date.now());
+          if (JSON.stringify(next) !== JSON.stringify(state.library)) await adopt(next);
+        }
+        return JSON.stringify(core.shared(state.library));
+      });
+      if (mine === undefined) throw new Error('What was saved there could not be taken in.');
+      const same = remote && mine === (news ? JSON.stringify(remote.library) : settings.base);
       let version = remote?.version;
       try {
-        if (!saved) version = await github.push(settings, JSON.parse(mine), version, `Tree: ${new Date().toISOString()}`);
+        if (!same) version = await github.push(settings, JSON.parse(mine), version, `Tree: ${new Date().toISOString()}`);
       } catch (error) {
         if (error instanceof github.Conflict && attempt < 3) continue;
         throw error;
       }
-      log('synced', saved ? '(nothing to save)' : '(saved a version)', news ? '(took theirs in)' : '');
-      return saveSync({ ...settings, version, base: mine, at: Date.now(), error: undefined });
+      log('synced', same ? '(nothing to save)' : '(saved a version)', news ? '(took theirs in)' : '');
+      return await noteSync(settings, { version, base: mine, at: Date.now(), error: undefined });
     }
   } catch (error) {
     log('sync failed', error.message);
-    await saveSync({ ...settings, error: error.message });
+    await noteSync(settings, { error: error.message });
   }
+}
+
+/** Writes down how a sync went - unless the user pointed the sync elsewhere meanwhile: then it tells nothing about the new place. */
+const noteSync = (settings, outcome) =>
+  enqueue('sync: note', async () => {
+    const now = await loadSync();
+    if (now?.repo === settings.repo && now.api === settings.api) await saveSync({ ...now, ...outcome });
+  });
+
+/** The versions one can go back to: those saved on GitHub, then this computer's backups. */
+async function versions() {
+  const settings = await loadSync();
+  const remote = settings?.repo ? await github.history(settings).catch((error) => (log('history failed', error.message), [])) : [];
+  const { backups = [], backedUpAt } = await chrome.storage.local.get(['backups', 'backedUpAt']);
+  const last = backedUpAt ? [{ ref: 'local:last', at: backedUpAt, local: true }] : [];
+  return [...remote, ...last, ...backups.toReversed().map((day) => ({ ref: `local:${day}`, at: day, local: true }))];
+}
+
+/** Goes back to a saved version. The next sync saves it as the newest. */
+async function goBackTo(ref) {
+  const key = `backup.${ref.slice('local:'.length)}`;
+  const old = ref.startsWith('local:') ? JSON.parse((await chrome.storage.local.get(key))[key]) : (await github.pull(await loadSync(), ref))?.library;
+  if (old) await enqueue('sync-restore', () => adopt(migrate(old), true));
 }
 
 // --- Backups on this computer --------------------------------------------------
@@ -368,16 +391,19 @@ const cells = {
   set: (items) => chrome.storage.sync.set(items),
   remove: (names) => chrome.storage.sync.remove(names),
 };
-const loadChannel = async () => (await chrome.storage.local.get('channel')).channel ?? channel.newState(newId());
+const loadChannel = async () => {
+  const kept = (await chrome.storage.local.get('channel')).channel;
+  return kept ? channel.migrate(kept) : channel.newState(newId());
+};
 // How many pages do not fit in the synced storage: those this computer keeps to itself, and another one does.
 let unsynced = { here: 0, elsewhere: 0 };
 // The library as it was when last told to the others (JSON): telling the same again is skipped.
-let told;
+let published;
 
 /** Takes in what the other computers changed, and tells them what changed here. */
 async function exchange() {
   if (!loaded) return; // A library that could not be read must not be told to anyone, nor replaced behind the user's back.
-  const ch = { gone: [], ...(await loadChannel()) }; // (`gone`: the state an older version kept had none.)
+  const ch = await loadChannel();
   try {
     const next = structuredClone(state.library);
     if (await channel.receive(cells, ch, next, Date.now())) {
@@ -387,8 +413,8 @@ async function exchange() {
     }
     core.keepFresh(state, Date.now());
     const mine = core.shared(state.library);
-    if (JSON.stringify(mine) !== told) unsynced.here = await channel.publish(cells, ch, mine);
-    told = JSON.stringify(mine);
+    if (JSON.stringify(mine) !== published) unsynced.here = await channel.publish(cells, ch, mine);
+    published = JSON.stringify(mine);
     unsynced.elsewhere = await channel.awayElsewhere(cells, ch);
     await chrome.storage.local.set({ channel: { ...ch, unsynced } });
   } catch (error) {
@@ -399,10 +425,8 @@ async function exchange() {
 /** Opens an empty tab as a new node: top-level, or a child / next sibling of `nodeId`. */
 async function newTab({ windowId, treeId, nodeId, as }) {
   treeId = validTree(state.library, treeId);
-  const tab = await chrome.tabs.create({ windowId });
-  const node = addNode(state.library, treeId, stamped({ id: newId(), url: '', title: '' }, Date.now()));
-  if (nodeId) moveNode(state.library, treeId, node.id, nodeId, as === 'child' ? 'inside' : 'after');
-  state.binding[tab.id] = { node: node.id, tree: treeId };
+  const tab = await browser.open({ windowId });
+  core.tabAsked(state, tab, { treeId, nodeId, as, at: Date.now() });
 }
 
 async function handle(message, sender) {
@@ -425,9 +449,9 @@ async function handle(message, sender) {
     case 'op':
       return change(message.op, message.args);
     case 'undo':
-      return stepBack();
+      return retrace('back');
     case 'redo':
-      return stepBack(true);
+      return retrace('forth');
     case 'activate':
       return activate(message);
     case 'new-tab':
@@ -454,19 +478,13 @@ async function handle(message, sender) {
       const tabId = core.tabOf(state, message.nodeId);
       return closeTabs(tabId === undefined ? [] : [tabId]);
     }
-    case 'go-home': {
+    case 'go-home':
       // A page returns to the address it first had (see `home` in model.js).
-      const node = library.nodes[message.nodeId];
-      const tabId = core.tabOf(state, message.nodeId);
-      if (!node?.home) return;
-      if (tabId === undefined) goHome(node);
-      else await chrome.tabs.update(tabId, { url: node.home.url });
-      return;
-    }
+      return change('home', { id: message.nodeId });
     case 'open-link': {
       // A link clicked in a note: a new tab, and a child of the note.
       const from = sender.tab;
-      const tab = await chrome.tabs.create({ url: message.url, windowId: from.windowId, index: from.index + 1 });
+      const tab = await browser.open({ url: message.url, windowId: from.windowId, index: from.index + 1 });
       core.tabOpened(state, tab, from.id, undefined, Date.now());
       return;
     }
@@ -483,27 +501,6 @@ async function handle(message, sender) {
     }
     case 'exchange':
       return exchange();
-    case 'sync-now':
-      // Everything at once: the quick exchange, then the full sync.
-      await exchange();
-      return sync();
-    case 'sync-history': {
-      // The versions one can go back to: those saved on GitHub, then this computer's daily backups.
-      const settings = await loadSync();
-      const remote = settings?.repo ? await github.history(settings).catch((error) => (log('history failed', error.message), [])) : [];
-      const { backups = [], backedUpAt } = await chrome.storage.local.get(['backups', 'backedUpAt']);
-      const last = backedUpAt ? [{ ref: 'local:last', at: backedUpAt, local: true }] : [];
-      return [...remote, ...last, ...backups.toReversed().map((day) => ({ ref: `local:${day}`, at: day, local: true }))];
-    }
-    case 'sync-restore': {
-      // Goes back to a saved version. The next sync saves it as the newest.
-      const key = `backup.${message.ref.slice('local:'.length)}`;
-      const old = message.ref.startsWith('local:')
-        ? JSON.parse((await chrome.storage.local.get(key))[key])
-        : (await github.pull(await loadSync(), message.ref))?.library;
-      if (old) await adopt(migrate(old), true);
-      return;
-    }
     case 'restore-file':
       // A whole library from a backup file. Says what is wrong with it, if anything.
       return adopt(migrate(message.library), true).catch((error) => error.message);
@@ -513,10 +510,21 @@ async function handle(message, sender) {
   }
 }
 
+// Commands that wait for GitHub do so outside the queue, and queue only what they then do to the state.
+const unqueued = {
+  // Everything at once: the quick exchange, then the full sync.
+  'sync-now': () => enqueue('exchange', exchange).then(sync),
+  'sync-history': versions,
+  'sync-restore': ({ ref }) => goBackTo(ref),
+};
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'changed') return;
   if (message.type !== 'get-state') log('command', message);
-  enqueue(message.op ?? message.type, () => handle(message, sender)).then(sendResponse);
+  const done = unqueued[message.type]
+    ? unqueued[message.type](message).catch((error) => console.error('[tree]', message.type, error))
+    : enqueue(message.op ?? message.type, () => handle(message, sender));
+  done.then(sendResponse);
   return true;
 });
 
@@ -542,8 +550,8 @@ chrome.commands.onCommand.addListener((command, tab) => {
 // Once a day the library is synced in full by itself (and whenever the user
 // asks); once a minute, and whenever another computer writes something, the
 // quick exchange runs.
-const TIMERS = { sync: [SYNC_EVERY_MINUTES, sync], exchange: [1, exchange], backup: [60, backUp] };
-chrome.alarms.onAlarm.addListener((alarm) => TIMERS[alarm.name] && enqueue(alarm.name, TIMERS[alarm.name][1]));
+const TIMERS = { sync: [SYNC_EVERY_MINUTES, sync], exchange: [1, () => enqueue('exchange', exchange)], backup: [60, () => enqueue('backup', backUp)] };
+chrome.alarms.onAlarm.addListener((alarm) => TIMERS[alarm.name]?.[1]());
 for (const [name, [minutes]] of Object.entries(TIMERS)) {
   chrome.alarms.get(name).then((alarm) => alarm || chrome.alarms.create(name, { periodInMinutes: minutes }));
 }

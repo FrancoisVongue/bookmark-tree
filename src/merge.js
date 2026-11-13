@@ -18,11 +18,11 @@
 //                          put: [[id, parent, after, moved]],  places, top to bottom
 //                          out: [id],                          taken out of the tree
 //                          collapsed: { [id]: bool } } }
-//   d.gone   [treeId]                   trees deleted
+//   d.felled [treeId]                   trees deleted
 //   d.grid   the table of trees, if it changed (taken whole)
 //   d.plan   { put: [[id, after]], out: [id] }   entries of the plan put in (or moved), top to bottom; taken out
 
-import { ROOT, descendantsOf, forgetLoose, goneOf, inTree, kidsOf, moveNode, parentOf, placeNode, planOf, removeNode, setPlan } from './model.js';
+import { ROOT, descendantsOf, forgetLoose, goneOf, inTree, kidsOf, moveNode, newTree, parentOf, placeNode, planOf, removeNode, removeTree, setCollapsed, setPlan } from './model.js';
 
 export const EMPTY = { nodes: {}, trees: {}, trash: [] };
 const NO_TREE = { children: {}, collapsed: {} };
@@ -30,19 +30,21 @@ const NO_TREE = { children: {}, collapsed: {} };
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const keysOf = (...objects) => [...new Set(objects.flatMap((object) => Object.keys(object ?? {})))];
 
-/** Where a node sits: under which parent, after which sibling. */
-function placeOf(tree, id) {
-  const parent = parentOf(tree, id);
-  if (parent === undefined) return undefined;
-  const kids = kidsOf(tree, parent);
-  return { parent, after: kids[kids.indexOf(id) - 1] };
+/** Where each node of a tree sits: under which parent, after which sibling. (All at once: a diff asks it of every node.) */
+function placesIn(tree) {
+  const places = new Map();
+  for (const parent in tree.children) {
+    tree.children[parent].forEach((id, at, kids) => places.has(id) || places.set(id, { parent, after: kids[at - 1] }));
+  }
+  return places;
 }
 
 function diffTree(was, tree, changed) {
+  const [before, after] = [placesIn(was), placesIn(tree)];
   const put = [];
   for (const id of descendantsOf(tree, ROOT)) {
-    const now = placeOf(tree, id);
-    const moved = !same(placeOf(was, id), now);
+    const now = after.get(id);
+    const moved = !same(before.get(id), now);
     // A changed node's place is told too: where it was deleted meanwhile, it comes back there.
     if (moved || changed[id]) put.push([id, now.parent, now.after ?? null, moved]);
   }
@@ -50,7 +52,7 @@ function diffTree(was, tree, changed) {
   for (const id of keysOf(was.collapsed, tree.collapsed)) {
     if (!!was.collapsed[id] !== !!tree.collapsed[id]) collapsed[id] = !!tree.collapsed[id];
   }
-  const out = descendantsOf(was, ROOT).filter((id) => !inTree(tree, id));
+  const out = descendantsOf(was, ROOT).filter((id) => !after.has(id));
   return { name: tree.name, renamed: tree.name !== was.name, icon: tree.icon, redrawn: tree.icon !== was.icon, put, out, collapsed };
 }
 
@@ -86,7 +88,7 @@ export function only(library, ids) {
 
 /** What changed from `base` to `mine`. */
 export function diff(base, mine) {
-  const d = { nodes: {}, trees: {}, gone: Object.keys(base.trees).filter((id) => !mine.trees[id]) };
+  const d = { nodes: {}, trees: {}, felled: Object.keys(base.trees).filter((id) => !mine.trees[id]) };
   for (const [id, node] of Object.entries(mine.nodes)) {
     const was = base.nodes[id];
     if (!same(node, was)) d.nodes[id] = { node, keys: keysOf(node, was).filter((key) => !same(node[key], was?.[key])) };
@@ -102,7 +104,7 @@ export function diff(base, mine) {
   return d;
 }
 
-export const isEmpty = (d) => !Object.keys(d.nodes).length && !Object.keys(d.trees).length && !d.gone.length && !d.grid && !d.plan;
+export const isEmpty = (d) => !Object.keys(d.nodes).length && !Object.keys(d.trees).length && !d.felled.length && !d.grid && !d.plan;
 
 /** Puts `id` under `parent`, right after sibling `after` (first, without one), as far as the tree allows. */
 function put(out, treeId, id, parent, after) {
@@ -125,16 +127,16 @@ export function apply(out, d, at) {
   for (const [treeId, changes] of Object.entries(d.trees)) {
     // A tree that is not here is made if it is new, or if things were put into it.
     if (!out.trees[treeId] && !changes.added && !changes.put.length) continue;
-    const tree = (out.trees[treeId] ??= { id: treeId, name: changes.name, children: {}, collapsed: {} });
+    const tree = (out.trees[treeId] ??= newTree(treeId, changes.name));
     for (const [id, parent, after, moved] of changes.put) {
       if (out.nodes[id] && (moved || !inTree(tree, id))) put(out, treeId, id, parent, after);
     }
     for (const id of changes.out) if (inTree(tree, id)) removeNode(out, treeId, id, at);
-    for (const [id, on] of Object.entries(changes.collapsed)) on ? (tree.collapsed[id] = true) : delete tree.collapsed[id];
+    for (const [id, on] of Object.entries(changes.collapsed)) setCollapsed(out, treeId, id, on);
     if (changes.renamed) tree.name = changes.name;
     if (changes.redrawn) tree.icon = changes.icon;
   }
-  for (const treeId of d.gone) if (out.trees[treeId] && Object.keys(out.trees).length > 1) delete out.trees[treeId];
+  for (const treeId of d.felled) removeTree(out, treeId, at);
   if (d.grid) out.grid = structuredClone(d.grid);
   if (d.plan) {
     let plan = planOf(out).filter((id) => !d.plan.out.includes(id));

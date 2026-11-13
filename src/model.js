@@ -9,25 +9,22 @@
 //                  once it leaves it: the way back. A `pinned` page goes back
 //                  there by itself when its tab closes. A node with `note`
 //                  (markdown text) is a note, not a page.
-//   library.trees  { [treeId]: { id, name, children, collapsed } }  where it sits
+//   library.trees  { [treeId]: { id, name, icon?, children, collapsed } }  where it sits
+//   library.grid   { columns, rows, cells: [treeId | null] }  where each tree
+//                  sits in the table of trees at the top of the panel
+//   library.plan   [nodeId]  what the user means to open next, in order
+//   library.trash  [{ node, at }]  nodes the user deleted, newest last; they
+//                  are in no tree and can be put back for a while
+//   library.gone   { [nodeId]: day }  what was deleted, and the day it was: so
+//                  that other computers can be told (see channel.js). It is
+//                  not the trash: emptying the trash leaves it as it is.
+//   library.version  the shape all this is in: see migrate
 //
 // A tree stores structure only: `children` maps a parent id (or ROOT) to the
 // ordered ids of its children, `collapsed` marks folded nodes. Content lives
 // in `nodes`, so one node can sit in several trees. Everything is plain JSON:
-// it is saved, exported and (later) synced as is.
-//
-//
-//   library.trash  [{ node, at }]  nodes the user deleted, newest last; they
-//                  are in no tree and can be put back for a while.
-//
-//   library.gone   { [nodeId]: day }  what was deleted, and the day it was: so
-//                  that other computers can be told (see channel.js). It is
-//                  not the trash: emptying the trash leaves it as it is.
-//
-//   library.plan   [nodeId]  what the user means to open next, in order
-//
-//   library.grid   { columns, rows, cells: [treeId | null] }  where each tree
-//                  sits in the table of trees at the top of the panel
+// it is saved and backed up as it is, and merged with other copies of itself
+// (merge.js) however they reach this computer.
 //
 // Functions change the library they are given and return what they found.
 
@@ -35,15 +32,18 @@ const VERSION = 2; // Of the shape of a library: see migrate.
 export const ROOT = 'root';
 export const MAIN = 'main';
 
+/** A tree with nothing in it. */
+export const newTree = (id, name) => ({ id, name, children: {}, collapsed: {} });
+
 export function createLibrary() {
-  return { version: VERSION, nodes: {}, trees: { [MAIN]: { id: MAIN, name: 'Main', children: {}, collapsed: {} } }, trash: [], gone: {} };
+  return { version: VERSION, nodes: {}, trees: { [MAIN]: newTree(MAIN, 'Main') }, trash: [], gone: {} };
 }
 
 /** A new id: 12 letters, 72 random bits. Short, because ids are most of what does not squeeze. */
-export function newId() {
-  const bytes = crypto.getRandomValues(new Uint8Array(9));
-  return btoa(String.fromCharCode(...bytes)).replaceAll('+', '-').replaceAll('/', '_');
-}
+export const newId = () => lettersOf(crypto.getRandomValues(new Uint8Array(9)));
+
+/** Bytes as letters that are safe anywhere a name goes: four letters for every three bytes. */
+export const lettersOf = (bytes) => btoa(String.fromCharCode(...bytes)).replaceAll('+', '-').replaceAll('/', '_');
 
 export const DAY = 24 * 3600 * 1000;
 /** The day (counted from 1970) a node was last used: its tab opened or closed, or else the node added. */
@@ -52,8 +52,8 @@ export const freshOf = (node) => node.touched ?? Math.floor((node.added ?? 0) / 
 /** `node`, marked as added to the library at time `at` (left as it is when the time is not known). */
 export const stamped = (node, at) => (at === undefined ? node : { ...node, added: at });
 
-/** Makes the address a page is at its home: where it belongs, by the user's word. */
-export function settle(node) {
+/** Makes the address a page is at its home: where it belongs. */
+export function homeHere(node) {
   node.home = { url: node.url, title: node.title };
 }
 
@@ -162,6 +162,16 @@ export function parentOf(tree, id) {
 }
 
 export const inTree = (tree, id) => parentOf(tree, id) !== undefined;
+
+/**
+ * Every node of a tree with its parent, as a Map. For a pass over many
+ * nodes: `parentOf` looks through the whole tree each time it is asked.
+ */
+export function parentsOf(tree) {
+  const parents = new Map();
+  for (const parent in tree.children) for (const kid of tree.children[parent]) if (!parents.has(kid)) parents.set(kid, parent);
+  return parents;
+}
 
 /** `id`'s descendants, depth first. */
 export function descendantsOf(tree, id) {
@@ -276,6 +286,17 @@ export function removeNode(library, treeId, id, at) {
   delete tree.children[id];
   delete tree.collapsed[id];
   if (!Object.values(library.trees).some((t) => inTree(t, id))) forgetLoose(library, at);
+  return true;
+}
+
+/**
+ * Deletes a tree, at time `at`; the nodes no other tree holds go to the
+ * trash. The last tree stays: there is always one. Says whether it did.
+ */
+export function removeTree(library, treeId, at) {
+  if (!library.trees[treeId] || Object.keys(library.trees).length < 2) return false;
+  delete library.trees[treeId];
+  forgetLoose(library, at);
   return true;
 }
 

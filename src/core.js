@@ -1,11 +1,12 @@
 // How the library reacts to what happens in the browser. Pure: no Chrome here.
 //
 //   state.library   the user's nodes and trees (see model.js); kept for good
-//   state.binding   { [tabId]: { node, tree, loose? } } - which node each open
+//   state.binding   { [tabId]: { node, tree, unplaced? } } - which node each open
 //                   tab shows, and in which tree it was opened (links opened
-//                   from it become its children there); `loose` marks a tab
-//                   whose place nobody chose. True only on this computer,
-//                   for this browser session
+//                   from it become its children there); `unplaced` marks a tab
+//                   whose place nobody chose yet: it stands where new tabs go
+//                   by default. True only on this computer, for this
+//                   browser session
 //   state.windows   { [windowId]: treeId } - the tree each window's panel shows
 //   state.attention, state.journal   where the user is and was (see journal.js)
 //
@@ -20,6 +21,7 @@ import {
   createLibrary,
   freshOf,
   goHome,
+  homeHere,
   inTree,
   isGroup,
   isNote,
@@ -29,7 +31,6 @@ import {
   parentOf,
   placeNode,
   removeNode,
-  settle,
   stamped,
   treeFor,
   validTree,
@@ -62,6 +63,40 @@ export function shared(library) {
 export function tabOf(state, nodeId) {
   for (const tabId in state.binding) if (state.binding[tabId].node === nodeId) return Number(tabId);
   return undefined;
+}
+
+// --- Which tab shows which node ------------------------------------------------
+// The binding is kept here and nowhere else: a tab is tied to a node that
+// exists, in a tree that holds it.
+
+/** Ties a tab to a node, shown in `tree`. `unplaced`: nobody chose the node's place yet. */
+export function bind(state, tabId, node, tree, unplaced = false) {
+  state.binding[tabId] = unplaced ? { node, tree, unplaced } : { node, tree };
+}
+
+/** The tree a tab's node is shown in becomes `tree` (the user went to it there). */
+export function shownIn(state, tabId, tree) {
+  state.binding[tabId].tree = tree;
+}
+
+/**
+ * After the library changed under the open tabs: each stays tied to its
+ * node, in a tree that still holds it. A tab whose node is gone is let go
+ * of; the ids of those tabs are returned, for the caller to close them or
+ * give them nodes anew.
+ */
+export function rebind(state) {
+  const { library, binding } = state;
+  const orphans = [];
+  for (const tabId in binding) {
+    const bound = binding[tabId];
+    if (library.nodes[bound.node]) bound.tree = treeFor(library, bound.node, bound.tree);
+    else {
+      orphans.push(Number(tabId));
+      delete binding[tabId];
+    }
+  }
+  return orphans;
 }
 
 const liveIds = (state) => new Set(Object.values(state.binding).map((bound) => bound.node));
@@ -123,7 +158,7 @@ export function tabOpened(state, tab, sourceTabId, treeId = MAIN, at) {
   treeId = validTree(library, treeId);
   const url = urlOf(tab);
   const wake = (id) => {
-    binding[tab.id] = { node: id, tree: treeFor(library, id, treeId) };
+    bind(state, tab.id, id, treeFor(library, id, treeId));
     touch(library.nodes[id], at);
     return 'woken';
   };
@@ -138,7 +173,7 @@ export function tabOpened(state, tab, sourceTabId, treeId = MAIN, at) {
   const source = binding[sourceTabId];
   if (source && inTree(library.trees[source.tree], source.node)) {
     const node = addNode(library, source.tree, stamped({ id: newId(), url, title: tab.title ?? '' }, at), source.node);
-    binding[tab.id] = { node: node.id, tree: source.tree };
+    bind(state, tab.id, node.id, source.tree);
     return 'child';
   }
 
@@ -146,7 +181,7 @@ export function tabOpened(state, tab, sourceTabId, treeId = MAIN, at) {
   if (asleep) return wake(asleep.id);
 
   const node = addNode(library, treeId, stamped({ id: newId(), url, title: tab.title ?? '' }, at));
-  binding[tab.id] = { node: node.id, tree: treeId, loose: true };
+  bind(state, tab.id, node.id, treeId, true);
   return 'new';
 }
 
@@ -164,12 +199,52 @@ export function tabOpenedBeside(state, tabId, nodeId) {
   return moveNode(state.library, bound.tree, bound.node, nodeId, 'after');
 }
 
-/** The browser reported, after the fact, that `tabId` was opened from `sourceTabId`'s page. */
+/**
+ * An empty tab the user asked for by name - a button of the panel, a key:
+ * a new node at the end of `treeId`, or a child or the next sibling of
+ * `nodeId`. Its place was chosen.
+ */
+export function tabAsked(state, tab, { treeId, nodeId, as, at }) {
+  const node = addNode(state.library, treeId, stamped({ id: newId(), url: '', title: '' }, at));
+  if (nodeId) moveNode(state.library, treeId, node.id, nodeId, as === 'child' ? 'inside' : 'after');
+  bind(state, tab.id, node.id, treeId);
+}
+
+/**
+ * A tab was created: its node is made, or found, and put where the tab came
+ * from. What is known of that:
+ *   reported   the tab whose page opened it, when the browser said so apart (a link)
+ *   opener     the tab it was opened from, as the tab itself says
+ *   shownNode  the node the user was at
+ *   treeId     the tree the window's panel shows
+ * A tab that comes from another tab with a page already in it was opened by
+ * that page, whichever way the browser tells it - a link, or its own menu
+ * ("search for the selected text") - and is its child. One that comes empty
+ * is a new tab the user asked for: it goes below the node they were at.
+ * Returns what `tabOpened` does.
+ */
+export function tabCreated(state, tab, { opener, reported, shownNode, treeId, at }) {
+  const source = reported ?? (isBlank(urlOf(tab)) ? undefined : opener);
+  const result = tabOpened(state, tab, source, treeId, at);
+  // Its node was made just now: here or, if this event woke the worker, a moment ago,
+  // when the state was lined up with the open tabs and it was put at the end of the tree.
+  const late = result === 'known' && state.binding[tab.id].unplaced;
+  if (late && source !== undefined) tabOpenedFrom(state, tab.id, source);
+  else if (result === 'new' || late) tabOpenedBeside(state, tab.id, shownNode);
+  return result;
+}
+
+/**
+ * The browser reported, after the fact, that `tabId` was opened from
+ * `sourceTabId`'s page: its node moves under that page's. Only if nobody
+ * chose its place yet; and now somebody has.
+ */
 export function tabOpenedFrom(state, tabId, sourceTabId) {
   const { library, binding } = state;
   const bound = binding[tabId];
   const source = binding[sourceTabId];
-  if (!bound || !source) return false;
+  if (!bound?.unplaced || !source) return false;
+  delete bound.unplaced;
   if (bound.tree !== source.tree) {
     placeNode(library, source.tree, bound.node, source.node);
     removeNode(library, bound.tree, bound.node);
@@ -193,18 +268,18 @@ export function tabChanged(state, tab) {
   // (A tab the user placed under another node stays where it was put.) The
   // user is in this tree: if the node lives in another one only, it is
   // shown here too, at the end - the same node, not a copy.
-  const loose = isBlank(node.url) && (bound.loose || parentOf(library.trees[bound.tree], node.id) === ROOT);
-  const asleep = loose && sleeperAt(state, url);
+  const adrift = isBlank(node.url) && (bound.unplaced || parentOf(library.trees[bound.tree], node.id) === ROOT);
+  const asleep = adrift && sleeperAt(state, url);
   if (asleep && dropIfEmpty(library, node.id)) {
     placeNode(library, bound.tree, asleep.id);
-    binding[tab.id] = { node: asleep.id, tree: bound.tree };
+    bind(state, tab.id, asleep.id, bound.tree);
     return tabChanged(state, tab);
   }
   if (isOurs(url) && dropIfEmpty(library, node.id)) {
     delete binding[tab.id];
     return;
   }
-  if (url && url !== node.url && !node.home && !isBlank(node.url)) settle(node);
+  if (url && url !== node.url && !node.home && !isBlank(node.url)) homeHere(node);
   node.url = url || node.url;
   node.title = tab.title ?? node.title;
 }
@@ -238,12 +313,8 @@ export function tabReplaced(state, addedId, removedId) {
 export function reconcile(state, tabs, treeOf = () => MAIN, at) {
   const { library, binding } = state;
   const open = new Set(tabs.map((tab) => String(tab.id)));
-  for (const tabId in binding) {
-    const bound = binding[tabId];
-    if (!open.has(tabId)) tabClosed(state, tabId, at);
-    else if (!library.nodes[bound.node]) delete binding[tabId];
-    else bound.tree = treeFor(library, bound.node, bound.tree);
-  }
+  for (const tabId in binding) if (!open.has(tabId)) tabClosed(state, tabId, at);
+  rebind(state); // A tab let go of here gets a node anew below.
   // Empty tabs the browser closed without telling us (it quit, or crashed).
   const live = liveIds(state);
   for (const id in library.nodes) if (!live.has(id)) dropIfEmpty(library, id);

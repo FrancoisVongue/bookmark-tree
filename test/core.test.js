@@ -8,6 +8,7 @@ import {
   reconcile,
   tabChanged,
   tabClosed,
+  tabCreated,
   tabOf,
   tabOpened,
   tabOpenedBeside,
@@ -287,4 +288,23 @@ test('a new tab opened while on a page inside a folded branch goes right below t
   tabOpenedBeside(state, 5, c);
   assert.deepEqual(state.library.trees[MAIN].children[ROOT], [a, last]);
   assert.deepEqual(state.library.trees[MAIN].children[b], [c, state.binding[5].node]);
+});
+
+test('where a new tab goes, from what is known of where it came from', () => {
+  const state = createState();
+  tabOpened(state, tab(1, 'a'));
+  const a = state.binding[1].node;
+  const from = (id, name, known) => tabCreated(state, name ? tab(id, name) : tab(id), { shownNode: a, ...known });
+  assert.equal(from(2, 'link', { reported: 1, opener: 1 }), 'child'); // A link: the browser reported the page.
+  assert.equal(from(3, 'search', { opener: 1 }), 'child'); // The browser's own menu: it comes with a page, from a tab.
+  assert.equal(from(4, undefined, { opener: 1 }), 'new'); // Empty: a new tab the user asked for, below where they were.
+  assert.equal(outline(state), 'a\n  link\n  search\nNew Tab');
+  // The report that a page opened the tab comes after the tab: its node moves under that page, once.
+  assert.equal(tabOpenedFrom(state, 4, 3), true);
+  assert.equal(tabOpenedFrom(state, 4, 1), false);
+  assert.equal(outline(state), 'a\n  link\n  search\n    New Tab');
+  // The worker woke on this very tab and had already lined itself up with it: it is still put where it came from.
+  tabOpened(state, tab(5, 'late'));
+  assert.equal(from(5, 'late', { opener: 2 }), 'known');
+  assert.equal(outline(state), 'a\n  link\n    late\n  search\n    New Tab');
 });

@@ -9,7 +9,9 @@
 // the way somewhere leave no trace. So a visit is written down when it ends -
 // which also means the journal never holds the place the user is at, only
 // the places to go back to. Like the binding of tabs, it is true for this
-// browser session only, and is no part of the library. Pure: no Chrome here.
+// browser session only and is kept apart from the library. One thing it
+// does to the library: a page the user has been at leaves the plan of what
+// to open next. Pure: no Chrome here.
 
 import { unplanNodes } from './model.js';
 
@@ -22,7 +24,7 @@ export function attend(state, tabId, at) {
   const now = state.binding[tabId];
   if (was?.node === now?.node) return;
   if (was && at - was.since >= DWELL) {
-    const others = (state.journal ?? []).filter((entry) => entry.node !== was.node);
+    const others = state.journal.filter((entry) => entry.node !== was.node);
     state.journal = [{ node: was.node, tree: was.tree, at }, ...others].slice(0, KEPT);
     unplanNodes(state.library, [was.node]); // Been there: it is no longer something to open next.
   }
@@ -31,5 +33,5 @@ export function attend(state, tabId, at) {
 
 /** The places to go back to, newest first: without the one the user is at, and without nodes that are gone. */
 export function placesOf(state) {
-  return (state.journal ?? []).filter((entry) => state.library.nodes[entry.node] && entry.node !== state.attention?.node);
+  return state.journal.filter((entry) => state.library.nodes[entry.node] && entry.node !== state.attention?.node);
 }

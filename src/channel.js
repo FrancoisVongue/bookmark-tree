@@ -24,14 +24,13 @@
 //     p.<name>       a piece of squeezed text (a group may take several)
 //     away.<device>  how many pages that computer keeps to itself
 //   kept on this computer (`ch`):
-//     { device, head, clock, seen, gone, mine, before: { clock, seen } }
+//     { device, head, clock, seen, gone, before: { clock, seen } }
 //       head, clock, seen, gone   the snapshot last taken in or written: its id and
 //                                 clock, its library (JSON), the deletions it named
-//       mine                      whether I wrote it
 //       before                    the last snapshot taken in from elsewhere: what
 //                                 my own ones since were made from
 
-import { DAY, ROOT, freshOf, goneOf, kidsOf, parentOf, planOf } from './model.js';
+import { ROOT, freshOf, goneOf, kidsOf, lettersOf, parentsOf, planOf } from './model.js';
 import { EMPTY, diff, isEmpty, only, takeIn } from './merge.js';
 
 export const BUDGET = 90_000; // Of the 102,400 bytes the browser allows.
@@ -39,23 +38,25 @@ const PIECE = 7000; // The browser allows 8192 per item, its name included.
 const MONTH = 30;
 
 export const newState = (device) => ({ device, gone: [], clock: {} });
+/** What an older version kept of the channel, in today's shape. The one place that knows the old ones. */
+export const migrate = ({ mine, ...ch }) => ({ ...newState(ch.device), ...ch });
 
 /** Whether a snapshot with clock `later` was made knowing the one with clock `earlier`. */
 const knows = (later, earlier) => Object.entries(earlier ?? {}).every(([device, n]) => (later?.[device] ?? 0) >= n);
 
 // --- Squeezing -----------------------------------------------------------------
 
-const text64 = (bytes) => btoa(Array.from(bytes, (byte) => String.fromCharCode(byte)).join(''));
+const bytes64 = (bytes) => btoa(Array.from(bytes, (byte) => String.fromCharCode(byte)).join(''));
 const through = (data, stream) => new Response(new Blob([data]).stream().pipeThrough(stream));
 
-const pack = async (text) => text64(new Uint8Array(await through(text, new CompressionStream('deflate-raw')).arrayBuffer()));
+const pack = async (text) => bytes64(new Uint8Array(await through(text, new CompressionStream('deflate-raw')).arrayBuffer()));
 const unpack = (packed) =>
   through(Uint8Array.from(atob(packed), (char) => char.charCodeAt(0)), new DecompressionStream('deflate-raw')).text();
 
 /** A short name for a text, the same for the same text. */
 async function nameOf(text) {
   const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)));
-  return text64(hash.slice(0, 9)).replaceAll('+', '-').replaceAll('/', '_');
+  return lettersOf(hash.slice(0, 9));
 }
 
 /** Squeezes `value` and cuts it into pieces, which go into `items`; gives the pieces' names. */
@@ -83,8 +84,9 @@ async function load(names, all) {
 function withParents(library, ids) {
   const all = new Set(ids);
   for (const tree of Object.values(library.trees)) {
+    const parents = parentsOf(tree);
     for (const id of ids) {
-      for (let up = parentOf(tree, id); up && up !== ROOT && !all.has(up); up = parentOf(tree, up)) all.add(up);
+      for (let up = parents.get(id); up && up !== ROOT && !all.has(up); up = parents.get(up)) all.add(up);
     }
   }
   return all;
@@ -159,7 +161,7 @@ async function read(all) {
   const library = { nodes: Object.fromEntries(nodes.map((node) => [node.id, node])), trees: Object.fromEntries(trees.map((tree) => [tree.id, tree])), trash: [] };
   if (top.grid) library.grid = top.grid;
   if (top.plan) library.plan = top.plan.map((n) => nodes[n].id);
-  return { id: head.id, clock: head.clock ?? {}, library, gone: top.gone };
+  return { id: head.id, clock: head.clock, library, gone: top.gone };
 }
 
 // --- The exchange --------------------------------------------------------------
@@ -183,8 +185,10 @@ export async function receive(cells, ch, library, at) {
   takeIn(library, base && JSON.parse(base), remote.library, remote.gone.filter((id) => !ch.gone.includes(id)), at);
   // The clocks join: what I wrote meanwhile is still to be told, on top of this.
   const clock = { ...remote.clock };
-  for (const [device, n] of Object.entries(ch.clock ?? {})) clock[device] = Math.max(clock[device] ?? 0, n);
-  Object.assign(ch, { head: remote.id, clock, seen: JSON.stringify(remote.library), gone: remote.gone, mine: false });
+  for (const [device, n] of Object.entries(ch.clock)) clock[device] = Math.max(clock[device] ?? 0, n);
+  const seen = JSON.stringify(remote.library);
+  // Kept twice: what I write next is made from this, and whoever wrote at the same time made theirs from it too.
+  Object.assign(ch, { head: remote.id, clock, seen, gone: remote.gone, before: { clock, seen } });
   return JSON.stringify(library) !== was;
 }
 
@@ -199,12 +203,11 @@ export async function publish(cells, ch, library, budget) {
   if (news) {
     // Pieces nobody points at any more go first, to make room; then the new ones, with the head.
     const stale = Object.keys(all).filter((name) => !name.startsWith('away.') && !(name in mine.items));
-    const fresh = Object.fromEntries(Object.entries(mine.items).filter(([name]) => !(name in all)));
+    const unwritten = Object.fromEntries(Object.entries(mine.items).filter(([name]) => !(name in all)));
     await cells.remove(stale);
-    const clock = { ...ch.clock, [ch.device]: (ch.clock?.[ch.device] ?? 0) + 1 };
-    await cells.set({ ...fresh, head: { ...mine.head, clock } });
-    if (!ch.mine) ch.before = { clock: ch.clock, seen: ch.seen };
-    Object.assign(ch, { head: mine.head.id, clock, seen: JSON.stringify(mine.library), gone: mine.gone, mine: true });
+    const clock = { ...ch.clock, [ch.device]: (ch.clock[ch.device] ?? 0) + 1 };
+    await cells.set({ ...unwritten, head: { ...mine.head, clock } });
+    Object.assign(ch, { head: mine.head.id, clock, seen: JSON.stringify(mine.library), gone: mine.gone });
   }
   if (all[`away.${ch.device}`] !== mine.hidden) await cells.set({ [`away.${ch.device}`]: mine.hidden });
   return mine.hidden;
