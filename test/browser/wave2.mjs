@@ -130,7 +130,7 @@ await open(`${base}/sound`);
 await sleep(1500);
 await panel.bringToFront();
 await sleep(500);
-console.log('\n== sound: waves on the row:', await panel.locator('.row .mark .waves').count());
+console.log('\n== sound: waves along the row:', await panel.locator('.row.playing .sound').count(), '| moving:', await panel.locator('.sound').evaluate((el) => getComputedStyle(el).animationName));
 await shot('6-sound');
 
 console.log('\nERRORS:', errors.length ? `\n${errors.join('\n')}` : 'none');

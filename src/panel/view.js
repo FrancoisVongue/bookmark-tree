@@ -5,32 +5,29 @@ import { repeat } from '../vendor/lit-html/directives/repeat.js';
 import { descendantsOf, gridOf, isGroup, isNote, parentOf, planOf } from '../model.js';
 import { t } from '../i18n.js';
 
-const svg = (path) => html`<svg viewBox="0 0 20 20" width="16" height="16"><path fill-rule="evenodd" d=${path} /></svg>`;
+// One family of icons: lines of one weight on a 20-unit grid. (Two are solid: an arrow that small and three dots have no outline to speak of.)
+const line = (path) => html`<svg class="line" viewBox="0 0 20 20" width="16" height="16"><path d=${path} /></svg>`;
+const solid = (path) => html`<svg viewBox="0 0 20 20" width="16" height="16"><path d=${path} /></svg>`;
 const ICONS = {
-  chevron: svg('M7 5l6 5-6 5z'),
-  close: svg('M5.3 4.2 10 8.9l4.7-4.7 1.1 1.1L11.1 10l4.7 4.7-1.1 1.1L10 11.1l-4.7 4.7-1.1-1.1L8.9 10 4.2 5.3z'),
-  sleep: svg('M11.2 4.4a5.6 5.6 0 1 0 4.4 9A4.8 4.8 0 0 1 11.2 4.4z'),
-  trash: svg('M8 3.5h4l.8 1.3H16v1.5H4V4.8h3.2zM5.2 7.6h9.6l-.7 7.9a1.5 1.5 0 0 1-1.5 1.4H7.4a1.5 1.5 0 0 1-1.5-1.4zm1.6 1.5.6 6.3h5.2l.6-6.3z'),
-  keep: svg('M10 5.5c3.4 0 6 2.6 7 4.5-1 1.900-3.6 4.5-7 4.500S4 11.900 3 10c1-1.900 3.600-4.500 7-4.500zm0 1.500a3 3 0 1 0 0 6 3 3 0 0 0 0-6zm0 1.600a1.400 1.400 0 1 1 0 2.800 1.400 1.400 0 0 1 0-2.800z'),
-  locate: svg('M9.25 2h1.5v2.6a5.5 5.5 0 0 1 4.65 4.65H18v1.5h-2.6a5.5 5.5 0 0 1-4.65 4.65V18h-1.5v-2.6a5.5 5.5 0 0 1-4.65-4.65H2v-1.5h2.6A5.5 5.5 0 0 1 9.25 4.6zM10 6a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm0 2.4a1.6 1.6 0 1 1 0 3.2 1.6 1.6 0 0 1 0-3.2z'),
-  add: svg('M9.2 4h1.6v5.2H16v1.6h-5.2V16H9.2v-5.2H4V9.2h5.2z'),
-  home: svg('M10 3 3 9.2h2V16h3.6v-4h2.8v4H15V9.2h2z'),
-  more: svg('M4.5 8.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm5.5 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm5.5 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z'),
-  group: svg('M3 5.5A1.5 1.5 0 0 1 4.5 4h3.3l1.6 1.8h6.1A1.5 1.5 0 0 1 17 7.3v7.2a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 14.5z'),
-  note: svg('M5 3h7l3 3v11H5zm1.6 1.6v10.8h6.8V7h-2.6V4.6zM8 9h4v1.4H8zm0 2.8h4v1.4H8z'),
-  undo: svg('M8.5 4 3.5 8.5l5 4.5V10c3 0 5 1 6.5 4-.3-4.5-2.8-7.3-6.5-7.6z'),
-  next: svg('M4 9.2h8.6L9.4 6l1.1-1.1L15.6 10l-5.1 5.1L9.4 14l3.2-3.2H4z'),
-  clock: svg('M10 3a7 7 0 1 1 0 14 7 7 0 0 1 0-14zm0 1.6a5.4 5.4 0 1 0 0 10.8 5.4 5.4 0 0 0 0-10.8zm-.7 2h1.4v3.1l2.3 1.4-.7 1.2-3-1.8z'),
-  search: svg('M8.7 3a5.7 5.7 0 0 1 4.5 9.2l3.6 3.5-1.1 1.1-3.6-3.5A5.7 5.7 0 1 1 8.7 3zm0 1.6a4.1 4.1 0 1 0 0 8.2 4.1 4.1 0 0 0 0-8.2z'),
-  splitRow: svg('M3 4h14v12H3zm1.5 1.5v9h4.7v-9zm6.3 0v9h4.7v-9z'),
-  splitColumn: svg('M3 4h14v12H3zm1.5 1.5v3.7h11V5.5zm0 5.3v3.7h11v-3.7z'),
-  shared: svg('M7 4h9v9h-2V6H7zM4 7h9v9H4zm1.6 1.6v5.8h5.800V8.6z'),
+  chevron: solid('M7 5l6 5-6 5z'),
+  more: solid('M4.5 8.6a1.4 1.4 0 1 1 0 2.8 1.4 1.4 0 0 1 0-2.8zm5.5 0a1.4 1.4 0 1 1 0 2.8 1.4 1.4 0 0 1 0-2.8zm5.5 0a1.4 1.4 0 1 1 0 2.8 1.4 1.4 0 0 1 0-2.8z'),
+  close: line('M5.5 5.5l9 9M14.5 5.5l-9 9'),
+  sleep: line('M15 11.6A5.8 5.8 0 0 1 8.400 5a5.800 5.800 0 1 0 6.600 6.600z'),
+  trash: line('M4.500 6h11M8 6V4.500h4V6M6 6l.6 9.500h6.800L14 6M8.700 9v3.700M11.300 9v3.700'),
+  keep: line('M2.500 10S5.500 5.500 10 5.500 17.500 10 17.500 10s-3 4.500-7.500 4.500S2.500 10 2.500 10zM10 8.200a1.800 1.800 0 1 0 0 3.600 1.800 1.800 0 0 0 0-3.600z'),
+  locate: line('M10 2.500V5M10 15v2.500M2.500 10H5M15 10h2.500M10 5.500a4.500 4.500 0 1 0 0 9 4.500 4.500 0 0 0 0-9zM10 9.700v.6'),
+  add: line('M10 4.500v11M4.500 10h11'),
+  home: line('M3.500 9.500 10 4l6.500 5.500M5.500 8.500V16h9V8.500'),
+  group: line('M3.500 6A1.500 1.500 0 0 1 5 4.500h2.700l1.600 1.800H15a1.500 1.500 0 0 1 1.500 1.500V14a1.500 1.500 0 0 1-1.500 1.500H5A1.500 1.500 0 0 1 3.500 14z'),
+  note: line('M6 3.500h5.500l3 3v10H6zM11.500 3.500v3h3M8.500 10.500h3.500M8.500 13.500h3.500'),
+  undo: line('M7.500 5 4 8.500 7.500 12M4 8.500h7.500a3.800 3.800 0 0 1 0 7.600H9.500'),
+  next: line('M4.500 10h11M11 5.500l4.500 4.500L11 14.500'),
+  clock: line('M10 3.500a6.500 6.500 0 1 0 0 13 6.500 6.500 0 0 0 0-13zM10 6.500V10l2.500 1.500'),
+  search: line('M8.800 3.800a5 5 0 1 0 0 10 5 5 0 0 0 0-10zM12.500 12.500 16.200 16.200'),
+  splitRow: line('M3.500 4.500h13v11h-13zM10 4.500v11'),
+  splitColumn: line('M3.500 4.500h13v11h-13zM3.500 10h13'),
+  shared: line('M7.500 4.500h8v8M4.500 7.500h8v8h-8z'),
 };
-
-// Sound, said quietly: waves, not a loudspeaker.
-const WAVES = html`<svg class="waves" viewBox="0 0 20 20" width="16" height="16">
-  <path d="M6.5 8.2a2.6 2.6 0 0 1 0 3.6M9.6 6.2a5.4 5.4 0 0 1 0 7.6M12.7 4.2a8.2 8.2 0 0 1 0 11.6" />
-</svg>`;
 
 // The icons offered, eight to a row. No table fits everyone's work, so two
 // rows are about no subject at all (marks, colours), and the dialog takes
@@ -89,6 +86,7 @@ function rowView(row, pane, ui, { leads, included }, lit) {
     row.kids && 'parent',
     row.collapsed && 'collapsed',
     node.home && 'pinned',
+    ui.audible.has(row.id) && 'playing',
     lit && 'lit',
     ui.drag?.kind === 'rows' && ui.drag.from === pane.tree && ui.drag.ids.includes(row.id) && 'dragging',
     drop && `drop-${drop}`,
@@ -104,8 +102,9 @@ function rowView(row, pane, ui, { leads, included }, lit) {
       aria-selected=${pane.sel.has(row.id)}
       tabindex=${pane === ui.panes[ui.focus] && row.id === ui.cursor ? 0 : -1}
       style="--depth:${row.depth}; --lit:${lit || 0}"
-      title=${[title, node.url, node.added && t('addedOn', new Date(node.added).toLocaleDateString())].filter(Boolean).join('\n')}
+      title=${[title, node.url, ui.audible.has(row.id) && t('playing'), node.added && t('addedOn', new Date(node.added).toLocaleDateString())].filter(Boolean).join('\n')}
     >
+      ${ui.audible.has(row.id) ? html`<span class="sound"></span>` : ''}
       <button class="twisty" data-action="collapse" tabindex="-1" title=${t(row.collapsed ? 'expand' : 'collapse')}>
         ${ICONS.chevron}
       </button>
@@ -113,7 +112,6 @@ function rowView(row, pane, ui, { leads, included }, lit) {
       ${editing
         ? html`<input class="rename" .value=${editing.field === 'url' ? node.url : title} aria-label=${t('renameHint')} />`
         : html`<span class="title">${title}</span>`}
-      ${ui.audible.has(row.id) ? html`<span class="mark" title=${t('playing')}>${WAVES}</span>` : ''}
       ${node.keep ? html`<span class="mark" title=${t('kept')}>${ICONS.keep}</span>` : ''}
       ${shared ? html`<span class="mark" title=${t('alsoIn', shared.join(', '))}>${ICONS.shared}</span>` : ''}
       ${row.hidden ? html`<span class="badge">${row.hidden}</span>` : ''}
@@ -347,11 +345,11 @@ function planView(ui) {
 /** Draws the panel from `ui` (see screen.js). */
 export function draw(container, ui) {
   if (!ui.library) return;
-  const tool = (action, icon, title, disabled = false) =>
-    html`<button class="act shown" data-action=${action} title=${title} ?disabled=${disabled}>${ICONS[icon]}</button>`;
+  const tool = (action, icon, title, { disabled = false, place = '' } = {}) =>
+    html`<button class="act shown ${place}" data-action=${action} title=${title} ?disabled=${disabled}>${ICONS[icon]}</button>`;
   // A split button looks pressed while the trees lie its way.
   const split = (way, icon) =>
-    html`<button class="act shown" data-action="split-${way}" title=${t(icon)} aria-pressed=${ui.panes.length > 1 && ui.split === way}>
+    html`<button class="act shown ${way === 'row' ? 'apart' : ''}" data-action="split-${way}" title=${t(icon)} aria-pressed=${ui.panes.length > 1 && ui.split === way}>
       ${ICONS[icon]}
     </button>`;
   render(
@@ -359,16 +357,16 @@ export function draw(container, ui) {
       <header class="bar">
         ${ui.trouble ? html`<p class="trouble">${ui.trouble}<button data-action="settings">${t('restoreBackup')}</button></p>` : nothing}
         ${treeGrid(ui)}
+        <label class="search">
+          ${ICONS.search}
+          <input type="search" placeholder=${t('search')} .value=${ui.query} aria-label=${t('search')} />
+        </label>
         <div class="tools">
-          <label class="search">
-            ${ICONS.search}
-            <input type="search" placeholder=${t('search')} .value=${ui.query} aria-label=${t('search')} />
-          </label>
-          ${tool('show-active', 'locate', t('showActive'), !ui.activeTree)} ${tool('new-tab', 'add', t('newTab'))}
-          ${tool('new-group', 'group', `${t('newGroup')} (Ctrl+G)`)}
+          ${tool('new-tab', 'add', t('newTab'))} ${tool('new-group', 'group', `${t('newGroup')} (Ctrl+G)`)}
           ${tool('new-note', 'note', `${t('newNote')} (Ctrl+M)`)}
-          ${tool('undo', 'undo', `${t('undo')} (Ctrl+Z)`, !ui.canUndo)} ${split('row', 'splitRow')}
-          ${split('column', 'splitColumn')} ${tool('more', 'more', t('more'))}
+          ${tool('undo', 'undo', `${t('undo')} (Ctrl+Z)`, { disabled: !ui.canUndo, place: 'apart' })}
+          ${tool('show-active', 'locate', t('showActive'), { disabled: !ui.activeTree, place: 'apart' })}
+          ${split('row', 'splitRow')} ${split('column', 'splitColumn')} ${tool('more', 'more', t('more'), { place: 'end' })}
         </div>
       </header>
       ${planView(ui)}
