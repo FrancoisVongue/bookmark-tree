@@ -60,6 +60,12 @@ const actions = {
     localStorage.setItem('unsyncedClosed', ui.unsynced.kind);
     refresh();
   },
+  'journal-go': ({ el }) => cmd.revisit(el.dataset.node, el.dataset.tree),
+  'journal-toggle': () => {
+    ui.journalOpen = !ui.journalOpen;
+    localStorage.setItem('journalOpen', ui.journalOpen ? 'yes' : 'no');
+    redraw();
+  },
   'overlay-close': closeOverlay,
   yes: () => {
     const { run } = ui.overlay;
@@ -171,6 +177,7 @@ async function main() {
     if (message?.type === 'changed') refresh();
   });
   chrome.tabs.onActivated.addListener((info) => info.windowId === ui.windowId && refresh());
+  setInterval(() => ui.journal.length && redraw(), 30_000); // "5 min ago" grows old by itself.
   await refresh();
   log('ready, window', ui.windowId, '|', ui.panes.map((pane) => `${pane.tree}: ${pane.rows.length} rows`).join(', '));
 }

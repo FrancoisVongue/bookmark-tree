@@ -32,6 +32,7 @@ const KEYS = [
   ['', 'actionTitle', '_execute_action'],
   ['Ctrl+Shift+Enter', 'newChild', 'new-child'],
   ['Ctrl+Enter', 'newSibling', 'new-sibling'],
+  ['', 'journalBack', 'journal-back'],
   ['Ctrl+G', 'newGroup'],
   ['Ctrl+M', 'newNote'],
   ['Ctrl+F', 'search'],

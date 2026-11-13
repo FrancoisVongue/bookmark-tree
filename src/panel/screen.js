@@ -20,6 +20,8 @@ export const ui = {
   activeId: undefined, // The node of this window's current tab,
   activeTree: undefined, // and the tree that tab is in.
   trouble: undefined, // What the worker could not do: read the library, or save it.
+  journal: [], // Where the user was before this, newest first: [{ node, tree, at }] (see journal.js).
+  journalOpen: localStorage.getItem('journalOpen') === 'yes', // The whole list, or only its first line.
   // Pages that do not fit in the synced storage: { kind: 'here' | 'elsewhere', count }, unless the user closed that notice.
   unsynced: undefined,
   canUndo: false,
@@ -151,6 +153,7 @@ function found(rows, query) {
 function take(state, active) {
   ui.library = migrate(state.library);
   ui.trouble = state.trouble;
+  ui.journal = state.journal;
   // Of the two things to say, the one about more pages.
   const { here, elsewhere } = state.unsynced;
   const kind = here + elsewhere === 0 ? undefined : here >= elsewhere ? 'here' : 'elsewhere';
