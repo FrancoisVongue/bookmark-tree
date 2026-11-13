@@ -17,17 +17,20 @@ import {
   addNode,
   descendantsOf,
   forgetLoose,
+  goHome,
   gridOf,
+  homeHere,
   isNote,
   kidsOf,
   moveNode,
+  newTree,
   parentOf,
   placeNode,
   planNodes,
   removeNode,
+  removeTree,
   renameNode,
   setCollapsed,
-  settle,
   stamped,
   unplanNodes,
 } from './model.js';
@@ -124,12 +127,19 @@ export const ops = {
     const t = library.trees[tree];
     t.collapsed = collapsed ? Object.fromEntries(Object.keys(t.children).filter((id) => id !== ROOT).map((id) => [id, true])) : {};
   },
+  /** Takes a page back to its home; its tab, if it has one, goes there. */
+  home(library, { id }) {
+    const node = library.nodes[id];
+    if (!node?.home) return;
+    goHome(node);
+    return { navigate: id };
+  },
   /** A sleeping page's address, typed by hand. */
   address(library, { id, url }) {
     const node = library.nodes[id];
     if (!node || isNote(node) || !url?.trim()) return;
     node.url = url.trim();
-    settle(node); // Typed by hand: this is where the page belongs now.
+    homeHere(node); // Typed by hand: this is where the page belongs now.
     return { navigate: id };
   },
   rename(library, { id, name }) {
@@ -155,7 +165,7 @@ export const ops = {
     for (const id of ids) {
       const node = library.nodes[id];
       if (!node || isNote(node)) continue;
-      if (pinned) (settle(node), (node.pinned = true));
+      if (pinned) (homeHere(node), (node.pinned = true));
       else delete node.pinned;
     }
   },
@@ -176,7 +186,7 @@ export const ops = {
   },
   /** A new tree; in cell `cell` of the table of trees, or the first free one. */
   'tree-add'(library, { id, name, cell }) {
-    library.trees[id] = { id, name, children: {}, collapsed: {} };
+    library.trees[id] = newTree(id, name);
     if (cell !== undefined) ops['grid-move'](library, { tree: id, cell });
   },
   /** Moves a tree to a cell of the table; a tree already there takes the place left. */
@@ -206,10 +216,7 @@ export const ops = {
     else delete library.trees[tree].icon;
   },
   'tree-remove'(library, { tree }, at) {
-    if (Object.keys(library.trees).length < 2) return;
-    delete library.trees[tree];
-    forgetLoose(library, at);
-    return { keepTabs: true };
+    if (removeTree(library, tree, at)) return { keepTabs: true };
   },
   /** Puts deleted nodes back, at the end of `tree`. */
   restore(library, { tree, ids }) {
@@ -233,7 +240,7 @@ export const ops = {
 };
 
 /** These are not worth a step of undo. */
-export const QUIET = new Set(['collapse', 'collapse-all', 'note-text']);
+export const QUIET = new Set(['collapse', 'collapse-all', 'home', 'note-text']);
 
 /** One tree with the nodes it holds, as a file to keep or carry elsewhere. */
 export function exportTree(library, treeId) {

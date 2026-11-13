@@ -214,3 +214,12 @@ test('a deletion is noted apart from the trash: emptying the trash keeps it, a r
   const older = { nodes: {}, trees: lib.trees, trash: [{ node: { id: 'z' }, at: 3 * DAY }] };
   assert.deepEqual(migrate(older).gone, { z: 3 });
 });
+
+test('going home: the page is back at the address it first had, and its tab is asked to go there', () => {
+  const lib = library('a');
+  assert.equal(ops.home(lib, { id: 'a' }), undefined); // It never left.
+  lib.nodes.a.home = { url: 'https://a/', title: 'a' };
+  Object.assign(lib.nodes.a, { url: 'https://elsewhere/', title: 'Elsewhere' });
+  assert.deepEqual(ops.home(lib, { id: 'a' }), { navigate: 'a' });
+  assert.deepEqual([lib.nodes.a.url, lib.nodes.a.title], ['https://a/', 'a']);
+});

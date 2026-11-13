@@ -4,7 +4,7 @@
 // below: open a tab, show one, close some, send one to an address, give one
 // a window of its own. It never reorders tabs.
 
-import { descendantsOf, expire, goHome, goneOf, isGroup, isNote, migrate, newId, problems, treeFor, validTree } from './model.js';
+import { descendantsOf, expire, goneOf, isGroup, isNote, migrate, newId, problems, treeFor, validTree } from './model.js';
 import { QUIET, ops } from './ops.js';
 import { apply, diff, takeIn } from './merge.js';
 import * as github from './github.js';
@@ -110,7 +110,7 @@ async function init() {
   }
   if (library) state.library = library;
   loaded = true;
-  if (session) ({ binding: state.binding, windows: state.windows, attention: state.attention, journal: state.journal = [], undo, redo } = session);
+  if (session) ({ binding: state.binding, windows: state.windows, attention: state.attention, journal: state.journal, undo, redo } = session);
   saved.library = JSON.stringify(state.library);
   log('init:', library ? 'library loaded' : 'new library', '|', session ? 'same session' : 'new session');
   expire(state.library, Date.now());
@@ -230,15 +230,15 @@ async function change(name, args) {
 }
 
 /**
- * Takes back the last of the user's changes (or, `forward`, makes it again):
- * that change only, on top of everything that has happened since - pages
- * opened, notes written. Open tabs stay open.
+ * Takes the last of the user's changes `back`, or makes the last one taken
+ * back again (`forth`): that change only, on top of everything that has
+ * happened since - pages opened, notes written. Open tabs stay open.
  */
-async function stepBack(forward = false) {
-  const [from, to] = forward ? [redo, undo] : [undo, redo];
+async function retrace(way) {
+  const [from, to] = way === 'back' ? [undo, redo] : [redo, undo];
   const step = from.pop();
   if (!step) return;
-  const next = apply(structuredClone(state.library), forward ? step.forth : step.back, Date.now());
+  const next = apply(structuredClone(state.library), step[way], Date.now());
   if (problems(next).length) return log('that step can no longer be taken:', problems(next)[0]);
   to.push(step);
   state.library = next;
@@ -391,16 +391,19 @@ const cells = {
   set: (items) => chrome.storage.sync.set(items),
   remove: (names) => chrome.storage.sync.remove(names),
 };
-const loadChannel = async () => (await chrome.storage.local.get('channel')).channel ?? channel.newState(newId());
+const loadChannel = async () => {
+  const kept = (await chrome.storage.local.get('channel')).channel;
+  return kept ? channel.migrate(kept) : channel.newState(newId());
+};
 // How many pages do not fit in the synced storage: those this computer keeps to itself, and another one does.
 let unsynced = { here: 0, elsewhere: 0 };
 // The library as it was when last told to the others (JSON): telling the same again is skipped.
-let told;
+let published;
 
 /** Takes in what the other computers changed, and tells them what changed here. */
 async function exchange() {
   if (!loaded) return; // A library that could not be read must not be told to anyone, nor replaced behind the user's back.
-  const ch = { gone: [], ...(await loadChannel()) }; // (`gone`: the state an older version kept had none.)
+  const ch = await loadChannel();
   try {
     const next = structuredClone(state.library);
     if (await channel.receive(cells, ch, next, Date.now())) {
@@ -410,8 +413,8 @@ async function exchange() {
     }
     core.keepFresh(state, Date.now());
     const mine = core.shared(state.library);
-    if (JSON.stringify(mine) !== told) unsynced.here = await channel.publish(cells, ch, mine);
-    told = JSON.stringify(mine);
+    if (JSON.stringify(mine) !== published) unsynced.here = await channel.publish(cells, ch, mine);
+    published = JSON.stringify(mine);
     unsynced.elsewhere = await channel.awayElsewhere(cells, ch);
     await chrome.storage.local.set({ channel: { ...ch, unsynced } });
   } catch (error) {
@@ -446,9 +449,9 @@ async function handle(message, sender) {
     case 'op':
       return change(message.op, message.args);
     case 'undo':
-      return stepBack();
+      return retrace('back');
     case 'redo':
-      return stepBack(true);
+      return retrace('forth');
     case 'activate':
       return activate(message);
     case 'new-tab':
@@ -475,15 +478,9 @@ async function handle(message, sender) {
       const tabId = core.tabOf(state, message.nodeId);
       return closeTabs(tabId === undefined ? [] : [tabId]);
     }
-    case 'go-home': {
+    case 'go-home':
       // A page returns to the address it first had (see `home` in model.js).
-      const node = library.nodes[message.nodeId];
-      const tabId = core.tabOf(state, message.nodeId);
-      if (!node?.home) return;
-      if (tabId === undefined) goHome(node);
-      else await browser.navigate(tabId, node.home.url);
-      return;
-    }
+      return change('home', { id: message.nodeId });
     case 'open-link': {
       // A link clicked in a note: a new tab, and a child of the note.
       const from = sender.tab;
