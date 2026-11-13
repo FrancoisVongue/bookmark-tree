@@ -3,9 +3,10 @@
 //   diff(base, mine)    what I changed since `base`, as plain data: a history
 //                       squeezed dry (what was added and then removed is not
 //                       in it at all)
-//   apply(theirs, d)    makes those changes again in another copy, as far as
+//   apply(copy, d)      makes those changes again in another copy, as far as
 //                       that copy allows
-//   merge               = apply(theirs, diff(base, mine))
+//   takeIn              = apply(mine, diff(base, theirs)), with care for
+//                       what `theirs` does not speak of
 //
 // Nothing is lost quietly: what only one side has stays, and what one side
 // deleted goes to the other's trash rather than away. (One thing is taken
@@ -21,7 +22,7 @@
 //   d.grid   the table of trees, if it changed (taken whole)
 //   d.plan   { put: [[id, after]], out: [id] }   entries of the plan put in (or moved), top to bottom; taken out
 
-import { ROOT, descendantsOf, forgetLoose, inTree, kidsOf, moveNode, parentOf, placeNode, planOf, removeNode, setPlan } from './model.js';
+import { ROOT, descendantsOf, forgetLoose, goneOf, inTree, kidsOf, moveNode, parentOf, placeNode, planOf, removeNode, setPlan } from './model.js';
 
 export const EMPTY = { nodes: {}, trees: {}, trash: [] };
 const NO_TREE = { children: {}, collapsed: {} };
@@ -149,10 +150,20 @@ export function apply(out, d, at) {
   return out;
 }
 
-/** The library that has both my changes and theirs since `base`. */
-export function merge(base, mine, theirs, at) {
-  const out = apply(structuredClone(theirs), diff(base, mine), at);
-  const binned = new Map([...out.trash, ...mine.trash].map((entry) => [entry.node.id, entry]));
-  out.trash = [...binned.values()].filter((entry) => !out.nodes[entry.node.id]).sort((a, b) => a.at - b.at);
-  return out;
+/**
+ * Takes into `library` what changed elsewhere: from `base`, the state both
+ * sides last knew, to `theirs`. This is the one way two copies come
+ * together, whatever carried `theirs` here.
+ *
+ * `theirs` may be only a part of their library: what it does not mention it
+ * says nothing about. So nothing is deleted here for being absent there -
+ * only the nodes `told` (ids), which they said they deleted. Without a
+ * `base` the two have no past in common and are simply put together; what
+ * was deleted here stays deleted even so.
+ */
+export function takeIn(library, base, theirs, told, at) {
+  const deleted = base ? told : [...goneOf(library), ...told];
+  apply(library, diff(only(base ?? EMPTY, new Set(Object.keys(theirs.nodes))), theirs), at);
+  for (const id of deleted) for (const tree in library.trees) removeNode(library, tree, id, at);
+  return library;
 }

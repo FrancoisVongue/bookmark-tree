@@ -31,8 +31,8 @@
 //       before                    the last snapshot taken in from elsewhere: what
 //                                 my own ones since were made from
 
-import { DAY, ROOT, freshOf, goneOf, kidsOf, parentOf, planOf, removeNode } from './model.js';
-import { EMPTY, apply, diff, isEmpty, only } from './merge.js';
+import { DAY, ROOT, freshOf, goneOf, kidsOf, parentOf, planOf } from './model.js';
+import { EMPTY, diff, isEmpty, only, takeIn } from './merge.js';
 
 export const BUDGET = 90_000; // Of the 102,400 bytes the browser allows.
 const PIECE = 7000; // The browser allows 8192 per item, its name included.
@@ -180,12 +180,7 @@ export async function receive(cells, ch, library, at) {
   // Else we share no past: a first meeting.
   const base = knows(remote.clock, ch.clock) ? ch.seen : ch.before && knows(remote.clock, ch.before.clock) ? ch.before.seen : undefined;
   const was = JSON.stringify(library);
-  // With no past in common the two are simply put together - but not what I deleted myself: that stays deleted.
-  const deleted = base === undefined ? goneOf(library) : [];
-  apply(library, changes(parsed(base), remote.library), at);
-  for (const id of [...deleted, ...remote.gone.filter((id) => !ch.gone.includes(id))]) {
-    for (const tree in library.trees) removeNode(library, tree, id, at);
-  }
+  takeIn(library, base && JSON.parse(base), remote.library, remote.gone.filter((id) => !ch.gone.includes(id)), at);
   // The clocks join: what I wrote meanwhile is still to be told, on top of this.
   const clock = { ...remote.clock };
   for (const [device, n] of Object.entries(ch.clock ?? {})) clock[device] = Math.max(clock[device] ?? 0, n);

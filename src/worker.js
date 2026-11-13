@@ -2,9 +2,9 @@
 // commands from the panels, saves the result and tells the panels it changed.
 // It only ever asks the browser for three things: open, focus or close a tab.
 
-import { addNode, descendantsOf, expire, isGroup, isNote, migrate, moveNode, newId, problems, stamped, treeFor, validTree } from './model.js';
+import { addNode, descendantsOf, expire, goneOf, isGroup, isNote, migrate, moveNode, newId, problems, stamped, treeFor, validTree } from './model.js';
 import { QUIET, ops } from './ops.js';
-import { EMPTY, apply, diff, merge } from './merge.js';
+import { apply, diff, takeIn } from './merge.js';
 import * as github from './github.js';
 import * as channel from './channel.js';
 import * as core from './core.js';
@@ -305,9 +305,9 @@ async function adopt(library, asked = false) {
 }
 
 /**
- * Brings this library and the saved one together: takes theirs, makes my
- * changes again on top (see merge.js), saves the result as the next version.
- * If someone saves in between, it starts over.
+ * Brings this library and the saved one together: takes in what changed
+ * there since the last time (see takeIn in merge.js), saves the result as
+ * the next version. If someone saves in between, it starts over.
  */
 async function sync() {
   const settings = await loadSync();
@@ -317,9 +317,11 @@ async function sync() {
       const remote = await github.pull(settings);
       const news = remote && remote.version !== settings.version;
       if (news) {
-        const base = settings.base ? JSON.parse(settings.base) : EMPTY;
-        const merged = merge(base, state.library, migrate(remote.library), Date.now());
-        if (JSON.stringify(merged) !== JSON.stringify(state.library)) await adopt(merged);
+        const base = settings.base && JSON.parse(settings.base);
+        const theirs = migrate(remote.library);
+        const told = goneOf(theirs).filter((id) => !(id in (base?.gone ?? {})));
+        const next = takeIn(structuredClone(state.library), base, theirs, told, Date.now());
+        if (JSON.stringify(next) !== JSON.stringify(state.library)) await adopt(next);
       }
       const mine = JSON.stringify(core.shared(state.library));
       const saved = remote && mine === (news ? JSON.stringify(remote.library) : settings.base);
