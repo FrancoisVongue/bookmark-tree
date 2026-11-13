@@ -14,10 +14,7 @@ const actions = {
   sleep: ({ pane, id }) => send({ type: 'sleep', ids: targets(pane, id), treeId: pane.tree }),
   remove: ({ pane, id }) => cmd.remove(pane, id),
   home: ({ id }) => send({ type: 'go-home', nodeId: id }),
-  undo: () => {
-    ui.toast = undefined;
-    send({ type: 'undo' });
-  },
+  undo: () => cmd.undo(),
   // Back to where the current tab is: its tree, its row.
   'show-active': async () => {
     showActiveTree();

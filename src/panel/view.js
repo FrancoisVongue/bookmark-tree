@@ -220,7 +220,7 @@ function treeGrid(ui) {
 
 function menuView(menu) {
   return html`
-    <div class="menu" role="menu" style="left:${menu.x}px; top:${menu.y}px">
+    <div class="menu" role="menu" tabindex="-1" style="left:${menu.x}px; top:${menu.y}px">
       ${menu.items.map((item) =>
         item
           ? html`<button role="menuitem" ?disabled=${item.disabled} @click=${item.run}>
@@ -233,7 +233,7 @@ function menuView(menu) {
 }
 
 const dialog = (content, more = '') =>
-  html`<div class="overlay" data-action="overlay-close"><div class="dialog ${more}">${content}</div></div>`;
+  html`<div class="overlay" data-action="overlay-close"><div class="dialog ${more}" tabindex="-1">${content}</div></div>`;
 
 function pickerView(ui) {
   const picker = ui.overlay;
@@ -398,7 +398,8 @@ export function draw(container, ui) {
         : nothing}
       ${ui.toast
         ? html`<div class="toast">
-            <span>${ui.toast}</span><button class="pill" data-action="undo">${t('undo')}</button>
+            <span>${ui.toast.text}</span>
+            ${ui.toast.undo ? html`<button class="pill" data-action="undo">${t('undo')}</button>` : nothing}
           </div>`
         : nothing}
       ${ui.drag?.label ? html`<div class="ghost">${ui.drag.label}</div>` : nothing}

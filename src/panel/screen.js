@@ -48,7 +48,7 @@ export const ui = {
   //   { kind: 'icons', ids } or { ..., tree }    the table of icons, for nodes or for a tree
   //   { kind: 'ask', question, yes, run }        a question before something is lost
   overlay: undefined,
-  toast: undefined, // What was just done, with a way back.
+  toast: undefined, // { text, undo }: what was just done, and whether "Undo" would take it back.
   tight: undefined, // The step between two rows of one level, in pixels (see place()).
   pointer: undefined, // { pane, y }: where the pointer is over a tree, in a dense tree (see spread()).
 };
@@ -177,6 +177,7 @@ export function redraw() {
   }
   spread();
   draw(app, ui);
+  settleFocus();
 }
 
 // Scrolling brings other rows in sight. (The event does not bubble: it is caught on its way down.)
@@ -230,30 +231,45 @@ export const targets = (pane, id) =>
 export const branches = (pane, id) =>
   targets(pane, id).flatMap((each) => (rowOf(pane, each)?.collapsed ? [each, ...under(pane, each)] : [each]));
 
-/** Keeps the keyboard on the tree when nothing else has it. */
-function holdKeys() {
-  const busy = ui.renaming || ui.overlay || ui.menu;
-  if (!busy && !app.contains(document.activeElement)) rowEl(here(), ui.cursor)?.focus({ preventScroll: true });
+/** What is open on top of the trees, if anything: a menu, a dialog, a name being typed. The keys are its, not the rows'. */
+export const onTop = () => ui.menu ?? ui.overlay ?? ui.renaming;
+
+/**
+ * Puts the keyboard where the screen says it belongs. The one place that
+ * decides it, after every drawing: in what is open on top (unless it is
+ * there already); else, when nothing in the panel has it, on the row the
+ * cursor is on.
+ */
+function settleFocus() {
+  const within = (selector) => app.querySelector(selector)?.contains(document.activeElement);
+  if (ui.renaming) return; // Its field took the keyboard when it appeared (see startRename).
+  if (ui.menu) return within('.menu') || app.querySelector('.menu')?.focus();
+  // A question waits on its "yes", the table of icons in its field, a pane to choose from on itself.
+  const first = { ask: '.primary', icons: '.any' }[ui.overlay?.kind] ?? '';
+  if (ui.overlay) return within('.dialog') || app.querySelector(`.dialog ${first}`)?.focus();
+  if (!app.contains(document.activeElement) || document.activeElement === app) rowEl(here(), ui.cursor)?.focus({ preventScroll: true });
 }
+
+// The frame around the row the keyboard is on is for those who use the keyboard: it shows after a key, and goes with a press of the mouse.
+addEventListener('keydown', (event) => ['Shift', 'Control', 'Alt', 'Meta'].includes(event.key) || app.classList.add('keys'), true);
+addEventListener('pointerdown', () => app.classList.remove('keys'), true);
 
 export function closeOverlay() {
   ui.overlay = undefined;
   redraw();
-  holdKeys();
 }
 
 /** Asks before something is lost: `run` happens only on a yes (the button named `yes`). */
 export function ask(question, yes, run) {
   ui.overlay = { kind: 'ask', question, yes, run };
-  redraw();
-  app.querySelector('.dialog .primary').focus(); // So Enter says yes.
+  redraw(); // (The keyboard goes to "yes": see settleFocus.)
 }
 
 let toastTimer;
-/** Tells what was just done, for a few seconds, with a way back. */
-export function say(text) {
+/** Tells what was just done, for a few seconds - with a way back (`undo`) when what was done is a step that can be undone. */
+export function say(text, undo = false) {
   clearTimeout(toastTimer);
-  ui.toast = text;
+  ui.toast = { text, undo };
   redraw();
   toastTimer = setTimeout(() => ((ui.toast = undefined), redraw()), 6000);
 }
@@ -284,8 +300,8 @@ const textOf = (id) => {
 
 /**
  * The rows that answer the search (see find.js) and the rows above them
- * that lead there; and, when nothing answered it exactly, how it was read:
- * { rows, loose: { how, as } | undefined }.
+ * that lead there; the first of those that answer it; and, when nothing
+ * answered it exactly, how it was read: { rows, first, loose: { how, as } | undefined }.
  */
 function found(rows, query) {
   const { hits, how, as } = find(rows, query, (row) => textOf(row.id));
@@ -297,7 +313,7 @@ function found(rows, query) {
     out.unshift(row);
     need = row.depth;
   }
-  return { rows: out, loose: how === 'exact' ? undefined : { how, as } };
+  return { rows: out, first: out.find((row) => hit.has(row))?.id, loose: how === 'exact' ? undefined : { how, as } };
 }
 
 const JOURNAL_SHOWN = 8; // Places in the unfolded journal at first; "more" shows the rest.
@@ -324,6 +340,7 @@ function take(state, active) {
   ui.activeTree = state.binding[active?.id]?.tree;
 }
 
+let cursorWas = {}; // { tree, at }: where the cursor stood when the screen was last laid out.
 /** Each pane's rows; panes, selections and the cursor that point at things now gone are let go. */
 function layOut() {
   const { library } = ui;
@@ -334,12 +351,15 @@ function layOut() {
   for (const pane of [...ui.panes, picker()]) {
     if (!pane) continue;
     const searching = ui.query && pane !== picker();
-    const { rows, loose } = searching ? found(rowsOf(library, pane.tree, true), ui.query) : { rows: rowsOf(library, pane.tree, false, ui.live) };
-    Object.assign(pane, { rows, loose });
+    const { rows, first, loose } = searching ? found(rowsOf(library, pane.tree, true), ui.query) : { rows: rowsOf(library, pane.tree, false, ui.live) };
+    Object.assign(pane, { rows, loose, first: first ?? rows[0]?.id });
     place(pane);
     pane.sel = new Set([...pane.sel].filter((id) => rowOf(pane, id)));
   }
-  if (!rowOf(here(), ui.cursor)) ui.cursor = rowOf(here(), ui.activeId)?.id ?? here().rows[0]?.id;
+  // The cursor's row is gone (removed, folded away): the cursor stays where it was, on the row now there. In another tree it starts from the current tab.
+  const same = cursorWas.tree === here().tree && cursorWas.at >= 0;
+  if (!rowOf(here(), ui.cursor)) ui.cursor = same ? here().rows[Math.min(cursorWas.at, here().rows.length - 1)]?.id : (rowOf(here(), ui.activeId)?.id ?? here().rows[0]?.id);
+  cursorWas = { tree: here().tree, at: here().rows.findIndex((row) => row.id === ui.cursor) };
   if (ui.renaming?.id && !rowOf(ui.renaming.pane, ui.renaming.id)) ui.renaming = undefined;
 }
 
@@ -403,7 +423,6 @@ export function arrange() {
   findShared();
   remember();
   redraw();
-  holdKeys();
 }
 
 let coming; // A refresh about to start: all who ask before it does share it.

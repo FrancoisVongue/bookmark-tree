@@ -593,3 +593,16 @@
     transition: none;
   }
 }
+
+/* The frame around the row the keyboard is on shows only to those using the keyboard (see settleFocus in screen.js). */
+#app:not(.keys) .row:focus-visible {
+  outline: none;
+}
+.menu:focus,
+.dialog:focus {
+  outline: none;
+}
+.menu button:focus-visible {
+  outline: none;
+  background: var(--hover);
+}

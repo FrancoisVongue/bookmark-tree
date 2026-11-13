@@ -1,6 +1,6 @@
 // The keyboard.
 
-import { app, arrange, closeOverlay, focusRow, here, idAt, op, paneAt, picker, redraw, rowOf, send, targets, ui } from './screen.js';
+import { app, arrange, closeOverlay, focusRow, here, idAt, onTop, op, paneAt, redraw, rowOf, targets, ui } from './screen.js';
 import { endDrag } from './drag.js';
 import * as cmd from './commands.js';
 
@@ -12,20 +12,17 @@ addEventListener('keydown', (event) => {
     else if (event.key === 'Escape') cmd.endRename(false);
     return;
   }
-  if (event.target.closest?.('.dialog input') && event.key !== 'Escape') {
-    // Typing in a form; in the table of icons, Enter takes what was typed.
-    if (event.key === 'Enter' && event.target.closest('.icons')) cmd.setIcon(event.target.value);
-    return;
-  }
+  // What is open on top has the keys; none of them reaches the rows under it.
+  if (ui.menu) return menuKey(event);
+  if (ui.overlay) return dialogKey(event);
+  if (event.target.closest?.('.search')) return searchKey(event);
   if (event.key === 'Enter' && event.target.closest?.('.journal-search')) {
     // The first place found is the one meant.
     const [first] = ui.places.shown;
     return first && cmd.revisit(first.node, first.tree);
   }
   if (event.key === 'Escape') {
-    if (ui.overlay?.kind === 'ask') return closeOverlay(); // "No" to a question, and nothing else.
     if (ui.drag) endDrag();
-    ui.menu = undefined;
     for (const pane of ui.panes) pane.sel.clear();
     if (ui.query || ui.journalQuery) {
       Object.assign(ui, { query: '', journalQuery: '' });
@@ -34,8 +31,8 @@ addEventListener('keydown', (event) => {
     return closeOverlay();
   }
   const everywhere = {
-    z: () => send({ type: event.shiftKey ? 'redo' : 'undo' }),
-    y: () => send({ type: 'redo' }),
+    z: () => cmd.undo(event.shiftKey),
+    y: () => cmd.undo(true),
     f: () => app.querySelector('.search input').select(),
     g: () => cmd.newGroup(here(), rowOf(here(), ui.cursor)?.id),
     m: () => cmd.newNote(here()),
@@ -48,7 +45,7 @@ addEventListener('keydown', (event) => {
   // (A row scrolled far out of sight is not in the page, and the keys then come from the page itself: they are for the row the keyboard was on.)
   const id = idAt(event.target) ?? (event.target === document.body ? ui.cursor : undefined);
   const pane = paneAt(event.target) ?? here();
-  if (!id || !pane || pane === picker()) return;
+  if (!id || !pane || onTop()) return;
   const tree = pane.tree;
   const ids = targets(pane, id);
   const index = pane.rows.findIndex((row) => row.id === id);
@@ -88,6 +85,41 @@ addEventListener('keydown', (event) => {
   event.preventDefault();
   key();
 });
+
+/** In a menu: the arrows walk its items, Enter and Space are the item's own, Esc closes it. */
+function menuKey(event) {
+  if (event.key === 'Enter' || event.key === ' ') return;
+  event.preventDefault();
+  if (event.key === 'Escape') return cmd.closeMenu();
+  const items = [...app.querySelectorAll('.menu button:not(:disabled)')];
+  const at = items.indexOf(document.activeElement);
+  ({ ArrowDown: items[(at + 1) % items.length], ArrowUp: items.at(at - 1 < 0 ? -1 : at - 1), Home: items[0], End: items.at(-1) })[event.key]?.focus();
+}
+
+/** In a dialog: Esc closes it, Tab stays inside, Enter in the field of the table of icons takes what was typed. The rest is the dialog's own. */
+function dialogKey(event) {
+  if (event.key === 'Escape') return closeOverlay();
+  if (event.key === 'Enter' && event.target.closest?.('.icons input')) return cmd.setIcon(event.target.value);
+  if (event.key !== 'Tab') return;
+  event.preventDefault();
+  const stops = [...app.querySelectorAll('.dialog button:not(:disabled), .dialog input')];
+  const at = stops.indexOf(document.activeElement);
+  stops.at(event.shiftKey ? (at < 1 ? -1 : at - 1) : (at + 1) % stops.length)?.focus();
+}
+
+/** In the search field: down goes to the first row found, Enter opens it, Esc ends the search; both give the keyboard back to the tree. */
+function searchKey(event) {
+  const pane = here();
+  if (event.key === 'Escape') {
+    ui.query = '';
+    arrange();
+    return focusRow(pane, ui.cursor);
+  }
+  if (!pane.first || !['ArrowDown', 'Enter'].includes(event.key)) return;
+  event.preventDefault();
+  focusRow(pane, pane.first);
+  if (event.key === 'Enter') cmd.open(pane, pane.first);
+}
 
 // Pasting addresses adds them as sleeping pages, after the row the keyboard is on.
 addEventListener('paste', (event) => {

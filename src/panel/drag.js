@@ -102,7 +102,7 @@ function updateDrop() {
 async function moveRows({ ids, from }, { pane, tree = pane.tree, targetId, position = 'end' }) {
   const moved = new Set(ids.flatMap((id) => [id, ...descendantsOf(ui.library.trees[from], id)]));
   await op('move', { tree, from, ids, target: targetId, position, take: true });
-  if (tree !== from) say(t('movedTo', ui.library.trees[tree].name, moved.size));
+  if (tree !== from) say(t('movedTo', ui.library.trees[tree].name, moved.size), true);
 }
 
 /** While dragging: scroll the pane near its top and bottom edges, and follow the wheel. */
