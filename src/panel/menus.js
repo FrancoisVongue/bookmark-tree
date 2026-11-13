@@ -4,6 +4,7 @@ import { gridOf, isGroup, isNote, planOf } from '../model.js';
 import { t } from '../i18n.js';
 import { here, openBeside, openMenu, rename, rowOf, targets, ui, under } from './screen.js';
 import * as cmd from './commands.js';
+import { keyOf } from './keymap.js';
 
 const item = (label, run, hint, disabled = false) => ({ label: t(label), hint, disabled, run });
 
@@ -24,27 +25,27 @@ export function rowMenu(pane, id) {
     item('openAll', () => cmd.wake(pane, ids), '', !anyLive(pane, ids, false)),
     item('sleepShort', () => cmd.sleep(pane, ids), '', !anyLive(pane, ids)),
     null,
-    item('newChild', () => cmd.newTab(pane, id, 'child'), 'Ctrl+Shift+Enter'),
-    item('newSibling', () => cmd.newTab(pane, id, 'sibling'), 'Ctrl+Enter'),
-    item('newGroup', () => cmd.newGroup(pane, id), 'Ctrl+G'),
-    item('newNote', () => cmd.newNote(pane, id), 'Ctrl+M'),
+    item('newChild', () => cmd.newTab(pane, id, 'child'), keyOf('newChild')),
+    item('newSibling', () => cmd.newTab(pane, id, 'sibling'), keyOf('newSibling')),
+    item('newGroup', () => cmd.newGroup(pane, id), keyOf('newGroup')),
+    item('newNote', () => cmd.newNote(pane, id), keyOf('newNote')),
     null,
-    item('rename', () => cmd.startRename({ id, pane }), 'F2'),
+    item('rename', () => cmd.startRename({ id, pane }), keyOf('rename')),
     page && item('editAddress', () => cmd.startRename({ id, pane, field: 'url' })),
     page && item('copyLink', () => cmd.copyLinks(ids)),
     item('changeIcon', () => cmd.chooseIcon({ ids })),
-    item('duplicate', () => cmd.duplicate(pane, ids), 'Ctrl+D'),
+    item('duplicate', () => cmd.duplicate(pane, ids), keyOf('duplicate')),
     !isGroup(node) && item(planned ? 'planRemove' : 'planAdd', () => cmd.plan(ids, !planned)),
     item(node.keep ? 'keepNot' : 'keep', () => cmd.keep(ids, !node.keep)),
     page && item(node.pinned ? 'unpin' : 'pin', () => cmd.pin(ids, !node.pinned)),
     node.home && node.url !== node.home.url && item('goHome', () => cmd.goHome(id)),
     null,
-    item('indent', () => cmd.indent(pane, ids), 'Tab'),
-    item('outdent', () => cmd.outdent(pane, ids), 'Shift+Tab'),
+    item('indent', () => cmd.indent(pane, ids), keyOf('indent')),
+    item('outdent', () => cmd.outdent(pane, ids), keyOf('outdent')),
     item('addFromTreeHere', () => cmd.openPicker(pane, id), '', !hasOtherTrees()),
     null,
-    item(rowOf(pane, id).collapsed ? 'removeBranch' : 'remove', () => cmd.remove(pane, id), 'Del'),
-    item('deleteEverywhere', () => cmd.remove(pane, id, true), 'Shift+Del'),
+    item(rowOf(pane, id).collapsed ? 'removeBranch' : 'remove', () => cmd.remove(pane, id), keyOf('remove')),
+    item('deleteEverywhere', () => cmd.remove(pane, id, true), keyOf('deleteEverywhere')),
   ];
 }
 
@@ -72,7 +73,7 @@ export function mainMenu() {
     return item(label, () => cmd.resizeGrid(next), '', next.columns * next.rows < trees || next.columns > 6);
   };
   return [
-    item('redo', () => cmd.undo(true), 'Ctrl+Shift+Z', !ui.canRedo),
+    item('redo', () => cmd.undo(true), keyOf('redo'), !ui.canRedo),
     null,
     item('collapseAll', () => cmd.collapseAll(here(), true)),
     item('expandAll', () => cmd.collapseAll(here(), false)),

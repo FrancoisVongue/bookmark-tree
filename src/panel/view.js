@@ -4,6 +4,7 @@ import { html, render, nothing } from '../vendor/lit-html/lit-html.js';
 import { repeat } from '../vendor/lit-html/directives/repeat.js';
 import { descendantsOf, gridOf, isGroup, isNote, parentOf, planOf } from '../model.js';
 import { t } from '../i18n.js';
+import { keyOf } from './keymap.js';
 
 // One family of icons: lines of one weight on a 20-unit grid. (Two are solid: an arrow that small and three dots have no outline to speak of.)
 const line = (path) => html`<svg class="line" viewBox="0 0 20 20" width="16" height="16"><path d=${path} /></svg>`;
@@ -385,9 +386,9 @@ export function draw(container, ui) {
           <input type="search" placeholder=${t('search')} .value=${ui.query} aria-label=${t('search')} />
         </label>
         <div class="tools">
-          ${tool('new-tab', 'add', t('newTab'))} ${tool('new-group', 'group', `${t('newGroup')} (Ctrl+G)`)}
-          ${tool('new-note', 'note', `${t('newNote')} (Ctrl+M)`)}
-          ${tool('undo', 'undo', `${t('undo')} (Ctrl+Z)`, { disabled: !ui.canUndo })}
+          ${tool('new-tab', 'add', t('newTab'))} ${tool('new-group', 'group', `${t('newGroup')} (${keyOf('newGroup')})`)}
+          ${tool('new-note', 'note', `${t('newNote')} (${keyOf('newNote')})`)}
+          ${tool('undo', 'undo', `${t('undo')} (${keyOf('undo')})`, { disabled: !ui.canUndo })}
           ${tool('show-active', 'locate', t('showActive'), { disabled: !ui.activeTree })}
           ${split('row', 'splitRow')} ${split('column', 'splitColumn')} ${tool('more', 'more', t('more'), { place: 'end' })}
         </div>

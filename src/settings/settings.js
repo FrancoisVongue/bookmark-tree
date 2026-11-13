@@ -8,6 +8,7 @@ import { fromHtml, fromOutline } from '../bookmarks.js';
 import { t } from '../i18n.js';
 import { askForBookmarks, pickFile, saveFile } from '../page.js';
 import { askView, iconView, titleOf } from '../panel/view.js';
+import { LISTED, keyOf } from '../panel/keymap.js';
 
 const app = document.getElementById('app');
 const send = (message) => chrome.runtime.sendMessage(message).catch((error) => console.log('[tree settings]', message.type, error.message));
@@ -26,28 +27,6 @@ const page = {
   said: undefined, // { text, undo } - what was just done, and whether it can be undone.
   asking: undefined, // { question, yes, run } - a question before something is lost.
 };
-
-/** What each key does. The browser-wide ones (the third item names the command) can be changed by the user. */
-const KEYS = [
-  ['', 'actionTitle', '_execute_action'],
-  ['Ctrl+Shift+Enter', 'newChild', 'new-child'],
-  ['Ctrl+Enter', 'newSibling', 'new-sibling'],
-  ['', 'journalBack', 'journal-back'],
-  ['Ctrl+G', 'newGroup'],
-  ['Ctrl+M', 'newNote'],
-  ['Ctrl+F', 'search'],
-  ['↑ ↓ ← →', 'keysMove'],
-  ['Shift+↑ ↓ · Ctrl+A', 'keysSelect'],
-  ['Enter', 'keysOpen'],
-  ['F2', 'rename'],
-  ['Tab · Shift+Tab', 'keysIndent'],
-  ['Ctrl+D', 'duplicate'],
-  ['Ctrl+V', 'keysPaste'],
-  ['Del', 'remove'],
-  ['Shift+Del', 'deleteEverywhere'],
-  ['Ctrl+Z · Ctrl+Shift+Z', 'keysUndo'],
-  ['Esc', 'keysEscape'],
-];
 
 // --- From the worker's state to the page ---------------------------------------
 
@@ -286,8 +265,9 @@ const keysView = () =>
   html`<section>
     <h2>${t('shortcuts')}</h2>
     <div class="keys">
-      ${KEYS.map(([keys, what, command]) => {
-        const all = [command && (page.keys[command] || t('keysNotSet')), keys].filter(Boolean);
+      ${LISTED.map(([what, names, command]) => {
+        // The browser-wide key as it is set now, then the panel's own.
+        const all = [command && (page.keys[command] || t('keysNotSet')), ...names.map(keyOf)].filter(Boolean);
         return html`<kbd>${all.join(' · ')}</kbd><span>${t(what)}</span>`;
       })}
     </div>
