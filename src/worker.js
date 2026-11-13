@@ -2,7 +2,7 @@
 // commands from the panels, saves the result and tells the panels it changed.
 // It only ever asks the browser for three things: open, focus or close a tab.
 
-import { addNode, descendantsOf, isGroup, isNote, migrate, moveNode, newId, problems, stamped, treeFor, validTree } from './model.js';
+import { addNode, descendantsOf, expire, isGroup, isNote, migrate, moveNode, newId, problems, stamped, treeFor, validTree } from './model.js';
 import { QUIET, ops } from './ops.js';
 import { EMPTY, apply, diff, merge } from './merge.js';
 import * as github from './github.js';
@@ -22,7 +22,6 @@ let undo = [];
 let redo = [];
 const UNDO_STEPS = 50;
 const UNDO_BYTES = 4_000_000;
-const TRASH_DAYS = 30;
 // Tabs whose node was just made top-level: if the browser then reports the
 // page that opened them, the node moves under it.
 const fresh = new Set();
@@ -99,8 +98,7 @@ async function init() {
   if (session) ({ binding: state.binding, windows: state.windows, attention: state.attention, journal: state.journal = [], undo, redo } = session);
   saved.library = JSON.stringify(state.library);
   log('init:', library ? 'library loaded' : 'new library', '|', session ? 'same session' : 'new session');
-  const keepFrom = Date.now() - TRASH_DAYS * 24 * 3600 * 1000;
-  state.library.trash = state.library.trash.filter((entry) => entry.at > keepFrom);
+  expire(state.library, Date.now());
   await reconcile();
   await backUp();
   unsynced = (await loadChannel()).unsynced ?? unsynced;

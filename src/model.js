@@ -18,6 +18,10 @@
 //   library.trash  [{ node, at }]  nodes the user deleted, newest last; they
 //                  are in no tree and can be put back for a while.
 //
+//   library.gone   { [nodeId]: day }  what was deleted, and the day it was: so
+//                  that other computers can be told (see channel.js). It is
+//                  not the trash: emptying the trash leaves it as it is.
+//
 //   library.plan   [nodeId]  what the user means to open next, in order
 //
 //   library.grid   { columns, rows, cells: [treeId | null] }  where each tree
@@ -29,7 +33,7 @@ export const ROOT = 'root';
 export const MAIN = 'main';
 
 export function createLibrary() {
-  return { nodes: {}, trees: { [MAIN]: { id: MAIN, name: 'Main', children: {}, collapsed: {} } }, trash: [] };
+  return { nodes: {}, trees: { [MAIN]: { id: MAIN, name: 'Main', children: {}, collapsed: {} } }, trash: [], gone: {} };
 }
 
 /** A new id: 12 letters, 72 random bits. Short, because ids are most of what does not squeeze. */
@@ -127,6 +131,8 @@ export function gridOf(library) {
 /** Brings a library saved by an older version to today's shape. The one place that knows old shapes. */
 export function migrate(library) {
   library.trash ??= [];
+  // Before deletions were kept apart, the trash was all that told of them.
+  library.gone ??= Object.fromEntries(library.trash.map((entry) => [entry.node.id, Math.floor(entry.at / DAY)]));
   return library;
 }
 
@@ -210,16 +216,34 @@ export function moveNode(library, treeId, id, target, position) {
 }
 
 /**
- * Forgets nodes that no tree holds. Given the time `at`, they go to the
- * trash, stamped with it; without it they are gone for good.
+ * Forgets nodes that no tree holds. Given the time `at`, the user deleted
+ * them: they go to the trash, stamped with it, and are noted as gone.
+ * Without it they leave no trace (an empty tab, a node no tree ever held).
  */
 export function forgetLoose(library, at) {
   const held = new Set(Object.values(library.trees).flatMap((tree) => Object.values(tree.children).flat()));
   for (const id in library.nodes) {
     if (held.has(id)) continue;
-    if (at !== undefined) library.trash.push({ node: library.nodes[id], at });
+    if (at !== undefined) {
+      library.trash.push({ node: library.nodes[id], at });
+      (library.gone ??= {})[id] = Math.floor(at / DAY);
+    }
     delete library.nodes[id];
   }
+}
+
+/** The ids of what was deleted and has not come back, in order. */
+export const goneOf = (library) => Object.keys(library.gone ?? {}).filter((id) => !library.nodes[id]).sort();
+
+const KEPT_DAYS = 30;
+/**
+ * Lets go of what is too old to matter, at time `at`: what has been in the
+ * trash for a month, and the notes of deletions a month old (every computer
+ * that was to hear of them has, or has been away too long to be believed).
+ */
+export function expire(library, at) {
+  library.trash = library.trash.filter((entry) => entry.at > at - KEPT_DAYS * DAY);
+  library.gone = Object.fromEntries(goneOf(library).filter((id) => library.gone[id] > Math.floor(at / DAY) - KEPT_DAYS).map((id) => [id, library.gone[id]]));
 }
 
 /**

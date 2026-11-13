@@ -204,9 +204,13 @@ export const ops = {
   /** Puts deleted nodes back, at the end of `tree`. */
   restore(library, { tree, ids }) {
     const back = new Set(ids);
-    for (const { node } of library.trash.filter((entry) => back.has(entry.node.id))) addNode(library, tree, node);
+    for (const { node } of library.trash.filter((entry) => back.has(entry.node.id))) {
+      addNode(library, tree, node);
+      delete library.gone?.[node.id];
+    }
     library.trash = library.trash.filter((entry) => !back.has(entry.node.id));
   },
+  /** Empties the trash. That these nodes were deleted stays known (library.gone). */
   'trash-empty'(library) {
     library.trash = [];
   },

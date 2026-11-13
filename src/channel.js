@@ -31,7 +31,7 @@
 //       before                    the last snapshot taken in from elsewhere: what
 //                                 my own ones since were made from
 
-import { DAY, ROOT, freshOf, kidsOf, parentOf, planOf, removeNode } from './model.js';
+import { DAY, ROOT, freshOf, goneOf, kidsOf, parentOf, planOf, removeNode } from './model.js';
 import { EMPTY, apply, diff, isEmpty, only } from './merge.js';
 
 export const BUDGET = 90_000; // Of the 102,400 bytes the browser allows.
@@ -121,7 +121,7 @@ async function encode(library, ids, gone) {
  * `budget` bytes, else as many of its freshest nodes as do.
  */
 export async function snapshot(library, budget = BUDGET) {
-  const gone = library.trash.map((entry) => entry.node.id).sort();
+  const gone = goneOf(library);
   const fresh = Object.values(library.nodes)
     .sort((a, b) => freshOf(b) - freshOf(a) || (a.id < b.id ? -1 : 1))
     .map((node) => node.id);
@@ -180,9 +180,11 @@ export async function receive(cells, ch, library, at) {
   // Else we share no past: a first meeting.
   const base = knows(remote.clock, ch.clock) ? ch.seen : ch.before && knows(remote.clock, ch.before.clock) ? ch.before.seen : undefined;
   const was = JSON.stringify(library);
+  // With no past in common the two are simply put together - but not what I deleted myself: that stays deleted.
+  const deleted = base === undefined ? goneOf(library) : [];
   apply(library, changes(parsed(base), remote.library), at);
-  for (const id of remote.gone) {
-    if (!ch.gone.includes(id)) for (const tree in library.trees) removeNode(library, tree, id, at);
+  for (const id of [...deleted, ...remote.gone.filter((id) => !ch.gone.includes(id))]) {
+    for (const tree in library.trees) removeNode(library, tree, id, at);
   }
   // The clocks join: what I wrote meanwhile is still to be told, on top of this.
   const clock = { ...remote.clock };

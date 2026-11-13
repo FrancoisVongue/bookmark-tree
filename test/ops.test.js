@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MAIN, ROOT, addNode, createLibrary, gridOf, planOf, problems, rowsOf } from '../src/model.js';
+import { MAIN, ROOT, addNode, createLibrary, expire, goneOf, gridOf, migrate, planOf, problems, rowsOf } from '../src/model.js';
 import { exportTree, ops } from '../src/ops.js';
 
 /** A library from an outline: two spaces of indentation per level, ids are the names. */
@@ -181,4 +181,20 @@ test('the plan: pages in the order to open them, each once; a group is not plann
   ops.unplan(lib, { ids: ['c', 'a', 'b'] });
   assert.equal('plan' in lib, false);
   assert.deepEqual(problems(lib), []);
+});
+
+test('a deletion is noted apart from the trash: emptying the trash keeps it, a restore takes it back, a month lets it go', () => {
+  const lib = library('a\nb\nc');
+  const DAY = 24 * 3600 * 1000;
+  ops.delete(lib, { ids: ['a', 'b'] }, 10 * DAY);
+  ops.remove(lib, { tree: MAIN, ids: ['c'] }, 20 * DAY);
+  assert.deepEqual(lib.gone, { a: 10, b: 10, c: 20 });
+  ops.restore(lib, { tree: MAIN, ids: ['b'] });
+  ops['trash-empty'](lib);
+  assert.deepEqual(goneOf(lib), ['a', 'c']);
+  expire(lib, 41 * DAY); // a was deleted 31 days ago, c 21.
+  assert.deepEqual(lib.gone, { c: 20 });
+  // A library from before deletions were noted: its trash is what tells of them.
+  const older = { nodes: {}, trees: lib.trees, trash: [{ node: { id: 'z' }, at: 3 * DAY }] };
+  assert.deepEqual(migrate(older).gone, { z: 3 });
 });

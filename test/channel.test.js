@@ -213,3 +213,30 @@ test('the plan goes through the synced storage, in order', async () => {
   await rounds(store, [a, b]);
   assert.equal('plan' in b.library, false);
 });
+
+test('what was deleted stays deleted: an emptied trash, a computer back from afar, a copy from before', async () => {
+  const store = sharedStore();
+  const [a, b] = [computer('a'), computer('b')];
+  for (const id of ['x', 'y', 'c']) add(a, id);
+  await rounds(store, [a, b]);
+  const old = structuredClone(a.library); // A backup from before, still with c.
+  // b goes away. a deletes c, empties the trash, and goes on writing.
+  ops.delete(a.library, { ids: ['c'] }, 5 * DAY);
+  ops['trash-empty'](a.library);
+  await exchange(store, a);
+  add(a, 'n');
+  await exchange(store, a);
+  // b comes back, c still in its tree, with a change of its own.
+  ops.rename(b.library, { id: 'x', name: 'X' });
+  await rounds(store, [b, a]);
+  assert.equal(outline(a), 'x y n');
+  assert.equal(outline(b), 'x y n');
+  assert.equal(a.library.nodes.x.name, 'X');
+  assert.deepEqual(a.library.trash, []);
+  // A third computer starts from the old backup: nothing in common with what is stored.
+  const late = computer('late');
+  late.library = old;
+  await rounds(store, [late, a]);
+  assert.equal(outline(a), 'x y n');
+  assert.equal(outline(late), 'x y n');
+});
