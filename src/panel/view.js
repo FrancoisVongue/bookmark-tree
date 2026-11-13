@@ -4,6 +4,8 @@ import { html, render, nothing } from '../vendor/lit-html/lit-html.js';
 import { repeat } from '../vendor/lit-html/directives/repeat.js';
 import { descendantsOf, gridOf, isGroup, isNote, parentOf, planOf } from '../model.js';
 import { t } from '../i18n.js';
+import { toastView } from '../parts.js';
+import { keyOf } from './keymap.js';
 
 // One family of icons: lines of one weight on a 20-unit grid. (Two are solid: an arrow that small and three dots have no outline to speak of.)
 const line = (path) => html`<svg class="line" viewBox="0 0 20 20" width="16" height="16"><path d=${path} /></svg>`;
@@ -32,7 +34,7 @@ const ICONS = {
 // The icons offered, eight to a row. No table fits everyone's work, so two
 // rows are about no subject at all (marks, colours), and the dialog takes
 // any emoji or letter typed by hand.
-export const EMOJI = [
+const EMOJI = [
   '⭐ ❤️ 🔥 ✅ ❌ ⚠️ ❓ 💡', // marks
   '🔴 🟠 🟡 🟢 🔵 🟣 🟤 🟥', // colours
   '📌 🔒 🔑 🔔 🎯 🚀 📅 ⏰', // what matters, and when
@@ -55,7 +57,10 @@ export const titleOf = (node) =>
   node.name || (isNote(node) ? firstLine(node.note) || t('note') : node.title || node.url || t('untitled'));
 
 /** Away from its home: the address it first had, or was pinned to. */
-const isAway = (node) => node.home && node.url !== node.home.url;
+export const isAway = (node) => node.home && node.url !== node.home.url;
+
+/** What removing a row is called: a folded row goes with all it hides. (What it does is `branches` in screen.js.) */
+export const removeLabel = (row) => (row.collapsed ? 'removeBranch' : 'remove');
 
 export function iconView(node) {
   if (node.icon) return html`<span class="favicon emoji">${node.icon}</span>`;
@@ -79,12 +84,12 @@ function rowView(row, pane, ui, { leads, included }, lit) {
     live ? 'live' : 'asleep',
     isGroup(node) && 'group',
     row.id === ui.activeId && 'active',
-    row.kept && 'kept',
     leads.has(row.id) && 'leads',
     pane.sel.has(row.id) && 'selected',
     included?.has(row.id) && 'included',
     row.kids && 'parent',
     row.collapsed && 'collapsed',
+    row.kept && 'kept', // (No style of its own: the scenarios tell such rows by it.)
     node.pinned && 'pinned',
     ui.audible.has(row.id) && 'playing',
     lit && 'lit',
@@ -102,7 +107,7 @@ function rowView(row, pane, ui, { leads, included }, lit) {
       role="treeitem"
       aria-level=${row.depth + 1}
       aria-selected=${pane.sel.has(row.id)}
-      tabindex=${pane === ui.panes[ui.focus] && row.id === ui.cursor ? 0 : -1}
+      tabindex=${pane === ui.focus && row.id === ui.cursor ? 0 : -1}
       style="--depth:${row.depth}; --lit:${lit || 0}; --gap:${row.gap}px; margin-top:${-row.pull}px; transform:translateY(${row.shift}px)"
       title=${[title, node.url, ui.audible.has(row.id) && t('playing'), node.added && t('addedOn', new Date(node.added).toLocaleDateString())].filter(Boolean).join('\n')}
     >
@@ -124,7 +129,7 @@ function rowView(row, pane, ui, { leads, included }, lit) {
             <span class="acts">
               ${isAway(node) && !node.pinned ? home('') : ''} ${act('child', 'add', t('newChild'))}
               ${live ? act('sleep', 'sleep', t('sleep')) : ''}
-              ${act('remove', 'trash', t(row.collapsed ? 'removeBranch' : 'remove'), 'danger')}
+              ${act('remove', 'trash', t(removeLabel(row)), 'danger')}
             </span>
           `}
     </div>
@@ -162,7 +167,7 @@ function paneView(pane, index, ui) {
   const way = { leads: leadsToActive(pane, ui) };
   const guide = litGuide(pane.rows, ui.activeId);
   const picking = pane === ui.overlay;
-  const focused = pane === ui.panes[ui.focus];
+  const focused = pane === ui.focus;
   const tree = ui.library.trees[pane.tree];
   // In the picker a chosen node brings its subtree along: show that.
   way.included = picking ? new Set([...pane.sel].flatMap((id) => descendantsOf(tree, id))) : undefined;
@@ -170,7 +175,7 @@ function paneView(pane, index, ui) {
     ${index > 0 ? html`<div class="divider" data-divider=${index}></div>` : ''}
     <section
       class="pane ${focused ? 'focused' : ''} ${ui.drop?.pane === pane && ui.drop.position === 'end' ? 'drop-end' : ''}"
-      data-pane=${index}
+      data-pane=${pane.id}
       style="flex-grow:${pane.size ?? 1}"
     >
       ${ui.panes.length > 1 && !picking
@@ -198,20 +203,19 @@ function paneView(pane, index, ui) {
 
 const treeLabel = (tree) => (tree.icon ? `${tree.icon} ${tree.name}` : tree.name);
 
-function treeTabs(ui, current, action) {
-  return Object.values(ui.library.trees).map((tree) =>
-    ui.renaming?.tree === tree.id
-      ? html`<input class="rename tree-name" .value=${tree.name} aria-label=${t('renameHint')} />`
-      : html`<button class="tab ${tree.id === current ? 'current' : ''}" data-action=${action} data-tree=${tree.id}>
-          <span>${treeLabel(tree)}</span>
-        </button>`,
+/** The trees to pick from, as tabs. */
+const treeTabs = (trees, current) =>
+  trees.map(
+    (tree) =>
+      html`<button class="tab ${tree.id === current ? 'current' : ''}" data-action="picker-tree" data-tree=${tree.id}>
+        <span>${treeLabel(tree)}</span>
+      </button>`,
   );
-}
 
 /** The table of trees: each in its cell, to click, drag to another cell, or (an empty cell) to start a tree in. */
 function treeGrid(ui) {
   const { columns, cells } = gridOf(ui.library);
-  const current = ui.panes[ui.focus].tree;
+  const current = ui.focus.tree;
   const cellView = (id, cell) => {
     const drop = ui.drop?.cell === cell ? 'drop' : '';
     if (!id) return html`<button class="cell ${drop}" data-action="tree-add" data-cell=${cell} title=${t('newTree')}>${ICONS.add}</button>`;
@@ -245,11 +249,10 @@ function pickerView(ui) {
   const picker = ui.overlay;
   const { pane, id } = picker.into;
   const where = id ? t('addInto', titleOf(ui.library.nodes[id])) : t('addToEnd', ui.library.trees[pane.tree].name);
-  const sources = { ...ui, library: { ...ui.library, trees: { ...ui.library.trees } } };
-  delete sources.library.trees[pane.tree]; // Not from the tree they go to.
+  const sources = Object.values(ui.library.trees).filter((tree) => tree.id !== pane.tree); // Not from the tree they go to.
   return dialog(html`
     <h2>${where}</h2>
-    <div class="tabs">${treeTabs(sources, picker.tree, 'picker-tree')}</div>
+    <div class="tabs">${treeTabs(sources, picker.tree)}</div>
     ${paneView(picker, 'picker', ui)}
     <footer>
       <button data-action="overlay-close">${t('cancel')}</button>
@@ -261,19 +264,6 @@ function pickerView(ui) {
   `);
 }
 
-/** A question with two answers. The settings page asks the same way. */
-export const askView = ({ question, yes }) =>
-  dialog(
-    html`
-      <p>${question}</p>
-      <footer>
-        <button data-action="overlay-close">${t('cancel')}</button>
-        <button class="primary" data-action="yes">${yes}</button>
-      </footer>
-    `,
-    'ask',
-  );
-
 const iconsView = () =>
   dialog(
     html`
@@ -284,7 +274,7 @@ const iconsView = () =>
     'icons',
   );
 
-const OVERLAYS = { picker: pickerView, icons: iconsView, ask: (ui) => askView(ui.overlay) };
+const OVERLAYS = { picker: pickerView, icons: iconsView };
 
 const AGO = new Intl.RelativeTimeFormat(undefined, { style: 'narrow' });
 /** How long ago, in a word or two. */
@@ -296,9 +286,29 @@ function ago(at) {
 }
 
 /**
- * The journal of attention, at the bottom: the place the user was at before
- * this one, a click away; unfolded, all the places before it.
+ * A strip: one line that folds out into a list of places. The journal (what
+ * is behind, under the trees) and the plan (what is ahead, above them) are
+ * the same thing with different places in it.
+ *   name      'journal' | 'plan': its class, and the action of its fold button, `<name>-toggle`
+ *   open      whether the list is unfolded (`whole`: the heading is shown even while folded)
+ *   first     the place shown in the heading's stead while folded; `count`: how many more there are
+ *   body      what is under the heading while unfolded
  */
+function strip({ name, icon, heading, open, whole = open, first, count, body, foldable = true, more = '' }) {
+  const fold = foldable ? act(`${name}-toggle`, 'chevron', t(`${name}${open ? 'Fold' : 'Unfold'}`), 'shown fold') : nothing;
+  return html`
+    <section class="strip ${name} ${open ? 'open' : ''} ${more}">
+      <div class="strip-head">
+        <span class="favicon glyph">${ICONS[icon]}</span>
+        ${whole ? html`<span class="title">${heading}</span>` : first}
+        ${!whole && count ? html`<span class="when">+${count}</span>` : nothing} ${fold}
+      </div>
+      ${whole ? body : nothing}
+    </section>
+  `;
+}
+
+/** The journal, at the bottom: where the user was before this, a click away; unfolded, the latest places, to search in. */
 function journalView(ui) {
   if (!ui.journal.length) return nothing;
   const place = ({ node, tree, at }) => html`
@@ -307,62 +317,54 @@ function journalView(ui) {
       <span class="when">${ago(at)}</span>
     </button>
   `;
-  const fold = act('journal-toggle', 'chevron', t(ui.journalOpen ? 'journalFold' : 'journalUnfold'), 'shown');
-  return html`
-    <footer class="journal ${ui.journalOpen ? 'open' : ''}">
-      <div class="journal-head">
-        <span class="favicon glyph">${ICONS.clock}</span>
-        ${ui.journalOpen ? html`<span class="title">${t('journal')}</span>` : place(ui.journal[0])} ${fold}
+  return strip({
+    name: 'journal',
+    icon: 'clock',
+    heading: t('journal'),
+    open: ui.open.journal,
+    first: place(ui.journal[0]),
+    body: html`
+      <input class="journal-search" type="search" placeholder=${t('journalSearch')} aria-label=${t('journalSearch')} .value=${ui.journalQuery} />
+      ${looseView(ui.places.loose)}
+      <div class="places">
+        ${ui.places.shown.map(place)}
+        ${ui.places.shown.length ? nothing : html`<p class="loose">${t('nothingFound')}</p>`}
+        ${ui.places.more ? html`<button class="pill" data-action="journal-more">${t('journalMore', ui.places.more)}</button>` : nothing}
       </div>
-      ${ui.journalOpen
-        ? html`
-            <input class="journal-search" type="search" placeholder=${t('journalSearch')} aria-label=${t('journalSearch')} .value=${ui.journalQuery} />
-            ${looseView(ui.places.loose)}
-            <div class="places">
-              ${ui.places.shown.map(place)}
-              ${ui.places.shown.length ? nothing : html`<p class="loose">${t('nothingFound')}</p>`}
-              ${ui.places.more ? html`<button class="pill" data-action="journal-more">${t('journalMore', ui.places.more)}</button>` : nothing}
-            </div>
-          `
-        : nothing}
-    </footer>
-  `;
+    `,
+  });
 }
 
 /**
  * The plan, at the top: what to open next, a click away; unfolded, all that
- * is planned, in order (dragging changes it). It is the journal's other
- * half - what is ahead above the tree, what is behind below it - and, like
- * the journal, never holds the page the user is at.
+ * is planned, in order (dragging changes it). Like the journal, it never
+ * holds the page the user is at.
  */
 function planView(ui) {
   const ids = planOf(ui.library).filter((id) => id !== ui.activeId);
   // Nothing planned takes no room - until something is dragged that could be.
   if (!ids.length && !['rows', 'plan'].includes(ui.drag?.kind)) return nothing;
+  // An entry is a button to go there, and beside it a button to take it off the plan.
   const entry = (id) => html`
-    <div
-      class="place ${ui.drop?.plan && ui.drop.before === id ? 'drop-before' : ''}"
-      role="button"
-      data-action="plan-go"
-      data-node=${id}
-      title=${t('planGo')}
-    >
-      ${iconView(ui.library.nodes[id])}<span class="title">${titleOf(ui.library.nodes[id])}</span>
+    <div class="place ${ui.drop?.plan && ui.drop.before === id ? 'drop-before' : ''}" data-node=${id}>
+      <button class="go" data-action="plan-go" data-node=${id} title=${t('planGo')}>
+        ${iconView(ui.library.nodes[id])}<span class="title">${titleOf(ui.library.nodes[id])}</span>
+      </button>
       ${act('unplan', 'close', t('planRemove'))}
     </div>
   `;
-  const whole = ui.planOpen || !ids.length; // The heading, then the list; else the first entry in the heading's place.
-  const fold = ids.length ? act('plan-toggle', 'chevron', t(ui.planOpen ? 'planFold' : 'planUnfold'), 'shown') : nothing;
-  return html`
-    <section class="journal plan ${ui.planOpen ? 'open' : ''} ${ui.drop?.plan && !ui.drop.before ? 'drop-end' : ''}">
-      <div class="journal-head">
-        <span class="favicon glyph">${ICONS.next}</span>
-        ${whole ? html`<span class="title">${t(ids.length ? 'plan' : 'planDrop')}</span>` : entry(ids[0])}
-        ${!whole && ids.length > 1 ? html`<span class="when">+${ids.length - 1}</span>` : nothing} ${fold}
-      </div>
-      ${whole && ids.length ? html`<div class="places">${ids.map(entry)}</div>` : nothing}
-    </section>
-  `;
+  return strip({
+    name: 'plan',
+    icon: 'next',
+    heading: t(ids.length ? 'plan' : 'planDrop'),
+    open: ui.open.plan,
+    whole: ui.open.plan || !ids.length,
+    first: ids.length ? entry(ids[0]) : nothing,
+    count: ids.length - 1,
+    body: ids.length ? html`<div class="places">${ids.map(entry)}</div>` : nothing,
+    foldable: ids.length > 0,
+    more: `ahead ${ui.drop?.plan && !ui.drop.before ? 'drop-end' : ''}`,
+  });
 }
 
 /** Draws the panel from `ui` (see screen.js). */
@@ -385,22 +387,17 @@ export function draw(container, ui) {
           <input type="search" placeholder=${t('search')} .value=${ui.query} aria-label=${t('search')} />
         </label>
         <div class="tools">
-          ${tool('new-tab', 'add', t('newTab'))} ${tool('new-group', 'group', `${t('newGroup')} (Ctrl+G)`)}
-          ${tool('new-note', 'note', `${t('newNote')} (Ctrl+M)`)}
-          ${tool('undo', 'undo', `${t('undo')} (Ctrl+Z)`, { disabled: !ui.canUndo })}
+          ${tool('new-tab', 'add', t('newTab'))} ${tool('new-group', 'group', `${t('newGroup')} (${keyOf('newGroup')})`)}
+          ${tool('new-note', 'note', `${t('newNote')} (${keyOf('newNote')})`)}
+          ${tool('undo', 'undo', `${t('undo')} (${keyOf('undo')})`, { disabled: !ui.canUndo })}
           ${tool('show-active', 'locate', t('showActive'), { disabled: !ui.activeTree })}
           ${split('row', 'splitRow')} ${split('column', 'splitColumn')} ${tool('more', 'more', t('more'), { place: 'end' })}
         </div>
       </header>
       ${planView(ui)}
-      <main class="panes split-${ui.split}">${ui.panes.map((pane, index) => paneView(pane, index, ui))}</main>
+      <main class="panes split-${ui.split}">${repeat(ui.panes, (pane) => pane.id, (pane, index) => paneView(pane, index, ui))}</main>
       ${ui.toast
-        ? html`<div class="toasts">
-            <div class="toast">
-              <span>${ui.toast.text}</span>
-              ${ui.toast.undo ? html`<button class="pill" data-action="undo">${t('undo')}</button>` : nothing}
-            </div>
-          </div>`
+        ? html`<div class="toasts">${toastView(ui.toast)}</div>`
         : nothing}
       ${journalView(ui)}
       ${ui.notice

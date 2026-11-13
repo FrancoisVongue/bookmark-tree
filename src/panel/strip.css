@@ -1,6 +1,6 @@
-/* The journal of attention, at the bottom of the panel (see journalView in view.js). */
+/* The strips: one line that folds out into a list of places (see strip in view.js) - the journal under the trees, the plan above them. */
 
-.journal {
+.strip {
   flex: none;
   display: flex;
   flex-direction: column;
@@ -9,24 +9,24 @@
   padding: 2px 6px;
   color: var(--dim);
 }
-.journal-head {
+.strip-head {
   display: flex;
   align-items: center;
   gap: 6px;
-  height: 28px;
+  height: var(--control);
   padding-left: 6px;
 }
-.journal-head > .title {
+.strip-head > .title {
   flex: 1;
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 /* The chevron points up while folded (there is more above), down while open. */
-.journal [data-action='journal-toggle'] svg {
+.strip .fold svg {
   transform: rotate(-90deg);
 }
-.journal.open [data-action='journal-toggle'] svg {
+.strip.open .fold svg {
   transform: rotate(90deg);
 }
 .places {
@@ -54,13 +54,6 @@
 .place:hover {
   background: var(--hover);
 }
-.place .title {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .place .when {
   flex: none;
   color: var(--dim);
@@ -68,19 +61,26 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* The plan mirrors the journal: at the top, what is ahead; its list unfolds downwards. */
-.plan {
+/* The strip of what is ahead mirrors the one of what is behind: it is at the top, and its list unfolds downwards. */
+.strip.ahead {
   border-top: 0;
   border-bottom: 1px solid var(--badge);
 }
-.plan [data-action='plan-toggle'] svg {
+.strip.ahead .fold svg {
   transform: rotate(90deg);
 }
-.plan.open [data-action='plan-toggle'] svg {
+.strip.ahead.open .fold svg {
   transform: rotate(-90deg);
 }
-.plan .place {
-  cursor: pointer;
+/* A place of the plan is two buttons: the one that goes there takes the room, the one that takes it off the plan stands at the end. */
+.place .go {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+  text-align: left;
 }
 .place:hover .act {
   display: grid;
@@ -89,7 +89,7 @@
 .place.drop-before {
   box-shadow: 0 -2px 0 var(--accent);
 }
-.plan.drop-end {
+.strip.drop-end {
   box-shadow: inset 0 -2px 0 var(--accent);
 }
 

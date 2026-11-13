@@ -7,7 +7,9 @@ import { validTree } from '../model.js';
 import { fromHtml, fromOutline } from '../bookmarks.js';
 import { t } from '../i18n.js';
 import { askForBookmarks, pickFile, saveBackup } from '../page.js';
-import { askView, iconView, titleOf } from '../panel/view.js';
+import { ask, toastView } from '../parts.js';
+import { iconView, titleOf } from '../panel/view.js';
+import { LISTED, keyOf } from '../panel/keymap.js';
 
 const app = document.getElementById('app');
 const send = (message) => chrome.runtime.sendMessage(message).catch((error) => console.log('[tree settings]', message.type, error.message));
@@ -24,30 +26,7 @@ const page = {
   keys: {}, // The browser-wide shortcuts as they are set now: { [command]: keys }.
   busy: false,
   said: undefined, // { text, undo } - what was just done, and whether it can be undone.
-  asking: undefined, // { question, yes, run } - a question before something is lost.
 };
-
-/** What each key does. The browser-wide ones (the third item names the command) can be changed by the user. */
-const KEYS = [
-  ['', 'actionTitle', '_execute_action'],
-  ['Ctrl+Shift+Enter', 'newChild', 'new-child'],
-  ['Ctrl+Enter', 'newSibling', 'new-sibling'],
-  ['', 'journalBack', 'journal-back'],
-  ['Ctrl+G', 'newGroup'],
-  ['Ctrl+M', 'newNote'],
-  ['Ctrl+F', 'search'],
-  ['↑ ↓ ← →', 'keysMove'],
-  ['Shift+↑ ↓ · Ctrl+A', 'keysSelect'],
-  ['Enter', 'keysOpen'],
-  ['F2', 'rename'],
-  ['Tab · Shift+Tab', 'keysIndent'],
-  ['Ctrl+D', 'duplicate'],
-  ['Ctrl+V', 'keysPaste'],
-  ['Del', 'remove'],
-  ['Shift+Del', 'deleteEverywhere'],
-  ['Ctrl+Z · Ctrl+Shift+Z', 'keysUndo'],
-  ['Esc', 'keysEscape'],
-];
 
 // --- From the worker's state to the page ---------------------------------------
 
@@ -73,18 +52,6 @@ function say(text, undo = false) {
   page.said = { text, undo };
   draw();
   saidTimer = setTimeout(() => ((page.said = undefined), draw()), 8000);
-}
-
-/** Asks before something is lost: `run` happens only on a yes (the button named `yes`). */
-function ask(question, yes, run) {
-  page.asking = { question, yes, run };
-  draw();
-  app.querySelector('.dialog .primary').focus(); // So Enter says yes.
-}
-
-function closeQuestion() {
-  page.asking = undefined;
-  draw();
 }
 
 /** Does something that takes a while with the buttons held, then shows everything afresh. */
@@ -120,10 +87,9 @@ async function importFile() {
     if (text.trimStart().startsWith('<')) return await addTree(fromOutline(fromHtml(text), file.name.replace(/(\.bookmarks)?\.[^.]*$/, ''), uuid));
     const data = JSON.parse(text);
     if (data.trees) {
-      return ask(t('askRestore'), t('restoreYes'), async () => {
-        const refused = await send({ type: 'restore-file', library: data });
-        say(refused ?? t('restored'), !refused);
-      });
+      if (!(await ask(t('askRestore'), t('restoreYes')))) return;
+      const refused = await send({ type: 'restore-file', library: data });
+      return say(refused ?? t('restored'), !refused);
     }
     if (!data.nodes || !data.tree?.children) throw new Error('not a tree file');
     await addTree(data);
@@ -164,17 +130,11 @@ const actions = {
   // The whole library, as a file to keep somewhere safe.
   backup: () => saveBackup(page.library),
   restore: ({ node }) => op('restore', { tree: page.tree, ids: [node] }),
-  'trash-empty': () =>
-    ask(t('askEmptyTrash', page.library.trash.length), t('emptyTrash'), async () => {
-      await op('trash-empty');
-      say(t('trashEmptied'), true);
-    }),
-  yes: () => {
-    const { run } = page.asking;
-    closeQuestion();
-    run();
+  'trash-empty': async () => {
+    if (!(await ask(t('askEmptyTrash', page.library.trash.length), t('emptyTrash')))) return;
+    await op('trash-empty');
+    say(t('trashEmptied'), true);
   },
-  'overlay-close': closeQuestion,
   'keys-change': () => chrome.tabs.create({ url: 'chrome://extensions/shortcuts' }),
   undo: () => {
     page.said = undefined;
@@ -184,13 +144,7 @@ const actions = {
 
 app.addEventListener('click', (event) => {
   const el = event.target.closest('[data-action]');
-  // A click inside a dialog lands on the overlay behind it too: that is not "close".
-  const inside = el?.dataset.action === 'overlay-close' && event.target !== el;
-  if (el && !el.disabled && !inside) actions[el.dataset.action]({ ...el.dataset });
-});
-
-addEventListener('keydown', (event) => {
-  if (event.key === 'Escape' && page.asking) closeQuestion();
+  if (el && !el.disabled) actions[el.dataset.action]({ ...el.dataset });
 });
 
 // --- What it looks like --------------------------------------------------------
@@ -286,8 +240,9 @@ const keysView = () =>
   html`<section>
     <h2>${t('shortcuts')}</h2>
     <div class="keys">
-      ${KEYS.map(([keys, what, command]) => {
-        const all = [command && (page.keys[command] || t('keysNotSet')), keys].filter(Boolean);
+      ${LISTED.map(([what, names, command]) => {
+        // The browser-wide key as it is set now, then the panel's own.
+        const all = [command && (page.keys[command] || t('keysNotSet')), ...names.map(keyOf)].filter(Boolean);
         return html`<kbd>${all.join(' · ')}</kbd><span>${t(what)}</span>`;
       })}
     </div>
@@ -301,13 +256,7 @@ function draw() {
       <h1>${t('settingsTitle')}</h1>
       ${page.trouble ? html`<p class="trouble">${page.trouble}</p>` : nothing}
       ${syncView()} ${versionsView()} ${filesView()} ${trashView()} ${appearanceView()} ${keysView()}
-      ${page.said
-        ? html`<div class="toast">
-            <span>${page.said.text}</span>
-            ${page.said.undo ? html`<button class="pill" data-action="undo">${t('undo')}</button>` : nothing}
-          </div>`
-        : nothing}
-      ${page.asking ? askView(page.asking) : nothing}
+      ${page.said ? toastView(page.said) : nothing}
     `,
     app,
   );

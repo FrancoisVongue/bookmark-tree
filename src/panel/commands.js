@@ -4,9 +4,10 @@ import { isGroup, newId, treeFor } from '../model.js';
 import { exportTree } from '../ops.js';
 import { toHtml, toOutline } from '../bookmarks.js';
 import { t } from '../i18n.js';
+import { ask } from '../parts.js';
 import { askForBookmarks, saveFile } from '../page.js';
 import { titleOf } from './view.js';
-import { app, arrange, ask, branches, closeOverlay, here, newPane, op, redraw, refresh, rowEl, rowOf, say, send, setFocus, ui, under } from './screen.js';
+import { branches, closeOverlay, endRenaming, here, op, openOverlay, pick, picker, refresh, rename, rowOf, say, send, show, ui, under, unsay } from './screen.js';
 
 export const activate = (pane, id, where) =>
   send({ type: 'activate', nodeId: id, treeId: pane.tree, windowId: ui.windowId, where });
@@ -15,10 +16,29 @@ export const toggle = (pane, id) => op('collapse', { tree: pane.tree, id, collap
 
 /** Back to a place from the journal: its tree is shown, its page opened (again, if it sleeps). */
 export function revisit(id, tree) {
-  here().tree = treeFor(ui.library, id, tree);
+  show(here(), treeFor(ui.library, id, tree));
   activate(here(), id);
-  arrange();
 }
+
+/** Closes the tabs of nodes and of all under them (the nodes stay, asleep); `wake` opens them again. */
+export const sleep = (pane, ids) => send({ type: 'sleep', ids, treeId: pane.tree });
+export const wake = (pane, ids) => send({ type: 'wake', ids, treeId: pane.tree, windowId: ui.windowId });
+/** Closes the tab of one node only. */
+export const sleepOne = (id) => send({ type: 'sleep-one', nodeId: id });
+/** Takes a page that went elsewhere back to its own address. */
+export const goHome = (id) => send({ type: 'go-home', nodeId: id });
+
+export const indent = (pane, ids) => op('indent', { tree: pane.tree, ids });
+export const outdent = (pane, ids) => op('outdent', { tree: pane.tree, ids });
+export const collapseAll = (pane, collapsed) => op('collapse-all', { tree: pane.tree, collapsed });
+export const plan = (ids, planned) => op(planned ? 'plan' : 'unplan', { ids });
+export const keep = (ids, kept) => op('keep', { ids, keep: kept });
+export const pin = (ids, pinned) => op('pin', { ids, pinned });
+export const copyLinks = (ids) => navigator.clipboard.writeText(ids.map((id) => ui.library.nodes[id].url).join('\n'));
+/** Opens the table of icons for nodes ({ ids }) or for a tree ({ tree }). */
+export const chooseIcon = (what) => openOverlay({ kind: 'icons', ...what });
+/** Gives the table of trees another size. */
+export const resizeGrid = (size) => op('grid-size', size);
 
 /** Copies of nodes and of all that is under them, right after them. */
 export function duplicate(pane, ids) {
@@ -51,7 +71,7 @@ export async function newGroup(pane, target) {
 export async function newTree(cell) {
   const id = crypto.randomUUID();
   await op('tree-add', { id, name: t('newTree'), cell });
-  here().tree = id;
+  show(here(), id);
   await refresh();
   startRename({ tree: id });
 }
@@ -66,35 +86,15 @@ export function remove(pane, id, everywhere = false) {
     await (everywhere ? op('delete', { ids }) : op('remove', { tree: pane.tree, ids }));
     say(t('removed', ids.length), true);
   };
-  if (ids.length === 1) return go();
-  if (everywhere) ask(t('askDelete', ids.length), t('deleteYes'), go);
-  else ask(t('askRemove', ids.length, ui.library.trees[pane.tree].name), t('removeYes'), go);
+  const sure = ids.length === 1 || (everywhere ? ask(t('askDelete', ids.length), t('deleteYes')) : ask(t('askRemove', ids.length, ui.library.trees[pane.tree].name), t('removeYes')));
+  return Promise.resolve(sure).then((yes) => yes && go());
 }
 
 /** Deletes a tree, once the user has said yes. */
-export function removeTree(treeId) {
-  ask(t('askDeleteTree', ui.library.trees[treeId].name), t('deleteYes'), async () => {
-    await op('tree-remove', { tree: treeId });
-    say(t('treeDeleted'), true);
-  });
-}
-
-/**
- * The two split buttons. With one tree shown, either shows a second beside
- * it (the same tree, until another is chosen in the table). With several, the
- * button of the way they lie now leaves only the focused one; the other
- * button turns them.
- */
-export function split(way) {
-  if (ui.panes.length === 1) {
-    ui.panes.push(newPane(here().tree));
-    setFocus(ui.panes[1]);
-  } else if (ui.split === way) {
-    ui.panes = [here()];
-    ui.focus = 0;
-  }
-  ui.split = way;
-  arrange();
+export async function removeTree(treeId) {
+  if (!(await ask(t('askDeleteTree', ui.library.trees[treeId].name), t('deleteYes')))) return;
+  await op('tree-remove', { tree: treeId });
+  say(t('treeDeleted'), true);
 }
 
 /**
@@ -102,10 +102,20 @@ export function split(way) {
  * `pane`'s tree too: under row `id`, or at the end of the tree without one.
  */
 export function openPicker(pane, id) {
-  const other = Object.keys(ui.library.trees).find((treeId) => treeId !== pane.tree);
-  ui.overlay = { kind: 'picker', ...newPane(other), into: { pane, id } };
-  arrange();
+  pick(Object.keys(ui.library.trees).find((treeId) => treeId !== pane.tree), { pane, id });
 }
+
+/** What is chosen in the picker is shown where it was opened for too - or, with `take`, moves there. */
+export function addPicked(take) {
+  const { tree, sel, into } = picker();
+  const { pane, id } = into;
+  op('move', { tree: pane.tree, from: tree, ids: [...sel], target: id, position: id ? 'inside' : 'end', take });
+  if (id) op('collapse', { tree: pane.tree, id, collapsed: false }); // So what was added is seen.
+  closeOverlay();
+}
+
+/** New sleeping pages after row `target`, or at the end of the tree. */
+export const addPages = (pane, nodes, target) => op('add', { tree: pane.tree, nodes, target, position: target ? 'after' : 'end' });
 
 /** Addresses in a piece of text, one per line, as new sleeping pages. */
 export function pagesIn(text) {
@@ -126,45 +136,25 @@ export function setIcon(text) {
 
 /** Takes the last step back (or, with `again`, makes it again). The notice of what was done goes: its "Undo" was this. */
 export function undo(again = false) {
-  ui.toast = undefined;
+  unsay();
   send({ type: again ? 'redo' : 'undo' });
-}
-
-/** Closes the menu; the keyboard goes back to the row. */
-export function closeMenu() {
-  ui.menu = undefined;
-  redraw();
 }
 
 // --- Renaming (and typing an address) ------------------------------------------
 
-export function startRename(what) {
-  ui.renaming = what;
-  redraw();
-  const input = app.querySelector('.rename');
-  input?.focus();
-  input?.select();
-  if (input) input.scrollLeft = 0; // All of it is selected, and its beginning is what is seen.
-}
+export const startRename = rename;
 
 export function endRename(save) {
-  const renaming = ui.renaming;
-  if (!renaming) return;
-  const text = app.querySelector('.rename')?.value ?? '';
-  ui.renaming = undefined;
-  redraw();
-  if (renaming.tree) {
-    if (save) op('tree-rename', { tree: renaming.tree, name: text });
-    return;
-  }
+  const { renaming, text } = endRenaming();
+  if (!renaming || !save) return;
+  if (renaming.tree) return op('tree-rename', { tree: renaming.tree, name: text });
   const node = ui.library.nodes[renaming.id];
-  if (save && renaming.field === 'url') {
+  if (renaming.field === 'url') {
     if (text !== node.url) op('address', { id: renaming.id, url: text });
-  } else if (save && text !== titleOf(node)) {
+  } else if (text !== titleOf(node)) {
     // Typing the page's own title back means "no name of my own".
     op('rename', { id: renaming.id, name: text === node.title ? '' : text });
   }
-  rowEl(renaming.pane, renaming.id)?.focus();
 }
 
 // --- A tree as a file, as bookmarks; the rest is on the settings page ----------

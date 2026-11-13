@@ -2,6 +2,8 @@
 
 :root {
   color-scheme: light dark;
+  --danger: #d93025; /* What cannot be taken lightly: an error, a removal. */
+  --control: 28px; /* The height of a field, a button with words, a strip's heading. */
   --bg: #fff;
   --text: #1f1f1f;
   --dim: #6b6f6d;
@@ -10,8 +12,6 @@
   --active-text: #041e49;
   --accent: #0b57d0;
   --badge: #e9eef6;
-  --row: 30px;
-  --indent: 18px;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -127,7 +127,7 @@ svg.line {
   gap: 8px;
 }
 .dialog footer button {
-  height: 28px;
+  height: var(--control);
   padding: 0 14px;
   border-radius: 14px;
 }
@@ -145,6 +145,24 @@ svg.line {
 .dialog.ask {
   max-width: 320px;
 }
+/* A question is the browser's own dialog (see ask in parts.js), dressed as the others. */
+dialog.dialog {
+  width: calc(100% - 24px);
+  border: 0;
+  color: var(--text);
+}
+dialog.dialog::backdrop {
+  background: rgb(0 0 0 / 0.35);
+}
+dialog.dialog input {
+  height: var(--control);
+  padding: 0 8px;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--badge);
+  border-radius: 6px;
+}
 .dialog p {
   margin: 0;
   line-height: 1.5;
@@ -159,7 +177,7 @@ svg.line {
   font-size: 12px;
 }
 .field input {
-  height: 28px;
+  height: var(--control);
   padding: 0 8px;
   font: inherit;
   font-size: 13px;
@@ -179,13 +197,13 @@ svg.line {
   line-height: 1.5;
 }
 .hint.error {
-  color: #d93025;
+  color: var(--danger);
 }
 .trouble {
   margin: 0;
   padding: 8px 10px;
   border-radius: 8px;
-  background: #d93025;
+  background: var(--danger);
   color: #fff;
   user-select: text;
 }

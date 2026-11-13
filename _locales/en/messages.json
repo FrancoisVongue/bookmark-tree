@@ -92,6 +92,9 @@
   "densityHint": {
     "message": "Pages of one level that follow each other stand closer, up to half over one another; a parent and its first child keep their distance. Rows move apart under the pointer."
   },
+  "noteLinkYes": {
+    "message": "Link"
+  },
   "extDescription": {
     "message": "Your pages as trees, in the side panel."
   },

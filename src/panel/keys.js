@@ -1,10 +1,11 @@
 // The keyboard.
 
-import { app, arrange, closeOverlay, focusRow, here, idAt, onTop, op, paneAt, redraw, rowOf, targets, ui } from './screen.js';
+import { app, closeMenu, closeOverlay, deselect, focusRow, here, idAt, onTop, paneAt, rowOf, search, searchJournal, selectAlso, targets, ui, under } from './screen.js';
 import { endDrag } from './drag.js';
 import * as cmd from './commands.js';
 
 addEventListener('keydown', (event) => {
+  if (event.target.closest?.('dialog')) return; // A question is asked: the keys are its.
   const ctrl = event.ctrlKey || event.metaKey;
   const letter = event.key.toLowerCase();
   if (event.target.closest?.('.rename')) {
@@ -23,12 +24,9 @@ addEventListener('keydown', (event) => {
   }
   if (event.key === 'Escape') {
     if (ui.drag) endDrag();
-    for (const pane of ui.panes) pane.sel.clear();
-    if (ui.query || ui.journalQuery) {
-      Object.assign(ui, { query: '', journalQuery: '' });
-      arrange();
-    }
-    return closeOverlay();
+    if (ui.query) search('');
+    if (ui.journalQuery) searchJournal('');
+    return deselect();
   }
   const everywhere = {
     z: () => cmd.undo(event.shiftKey),
@@ -52,8 +50,8 @@ addEventListener('keydown', (event) => {
   const row = pane.rows[index];
   const go = (to) => {
     if (!to) return;
-    if (event.shiftKey) pane.sel = new Set([...pane.sel, id, to.id]);
-    else pane.sel.clear();
+    if (event.shiftKey) selectAlso(pane, [id, to.id]);
+    else deselect(pane);
     focusRow(pane, to.id);
   };
   const keys = {
@@ -76,9 +74,9 @@ addEventListener('keydown', (event) => {
     ' ': () => cmd.open(pane, id),
     Delete: () => cmd.remove(pane, id, event.shiftKey),
     F2: () => cmd.startRename({ id, pane }),
-    Tab: () => op(event.shiftKey ? 'outdent' : 'indent', { tree, ids }),
-    d: () => ctrl && cmd.duplicate(pane, ids),
-    a: () => ctrl && ((pane.sel = new Set(pane.rows.map((each) => each.id))), redraw()),
+    Tab: () => (event.shiftKey ? cmd.outdent : cmd.indent)(pane, ids),
+    d: () => cmd.duplicate(pane, ids), // (With Ctrl: a letter alone is not a key of the tree, see below.)
+    a: () => selectAlso(pane),
   };
   const key = keys[event.key] ?? keys[letter];
   if (!key || (event.key.length === 1 && event.key !== ' ' && !ctrl)) return;
@@ -90,7 +88,7 @@ addEventListener('keydown', (event) => {
 function menuKey(event) {
   if (event.key === 'Enter' || event.key === ' ') return;
   event.preventDefault();
-  if (event.key === 'Escape') return cmd.closeMenu();
+  if (event.key === 'Escape') return closeMenu();
   const items = [...app.querySelectorAll('.menu button:not(:disabled)')];
   const at = items.indexOf(document.activeElement);
   ({ ArrowDown: items[(at + 1) % items.length], ArrowUp: items.at(at - 1 < 0 ? -1 : at - 1), Home: items[0], End: items.at(-1) })[event.key]?.focus();
@@ -111,8 +109,7 @@ function dialogKey(event) {
 function searchKey(event) {
   const pane = here();
   if (event.key === 'Escape') {
-    ui.query = '';
-    arrange();
+    search('');
     return focusRow(pane, ui.cursor);
   }
   if (!pane.first || !['ArrowDown', 'Enter'].includes(event.key)) return;
@@ -128,5 +125,5 @@ addEventListener('paste', (event) => {
   if (!nodes.length) return;
   event.preventDefault();
   const target = rowOf(here(), ui.cursor)?.id;
-  op('add', { tree: here().tree, nodes, target, position: target ? 'after' : 'end' });
+  cmd.addPages(here(), nodes, target);
 });

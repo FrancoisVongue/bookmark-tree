@@ -1,9 +1,33 @@
+/* The panel's own styles, by the parts of the screen. (What every page shares is in base.css; the strips are in strip.css.) */
+
+/* --- The panel as a whole ------------------------------------------------------ */
+
+:root {
+  /* The height of a row and the step of a level. The guides' mask (see .row::before) is drawn for these very numbers. */
+  --row: 30px;
+  --indent: 18px;
+}
 #app {
   user-select: none;
   display: flex;
   flex-direction: column;
   height: 100%;
 }
+/* What is selected: a quiet fill in the light, a tint of the accent in the dark, where a grey would look like a hover. */
+:root {
+  --selected: var(--badge);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --selected: color-mix(in srgb, var(--accent) 22%, var(--bg));
+  }
+  .notice {
+    background: #4a3f12;
+    color: #fde293;
+  }
+}
+
+/* --- The bar at the top: the search, the tools --------------------------------- */
 
 .bar {
   flex: none;
@@ -24,7 +48,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  height: 28px;
+  height: var(--control);
   padding: 0 8px;
   border-radius: 14px;
   background: var(--badge);
@@ -42,22 +66,78 @@
 .search:focus-within {
   box-shadow: 0 0 0 2px var(--accent);
 }
+.trouble button {
+  display: block;
+  margin-top: 6px;
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+/* --- Small buttons, wherever they are ------------------------------------------ */
+
 .act:disabled {
   opacity: 0.35;
   cursor: default;
 }
 .tools .act {
-  width: 28px;
-  height: 28px;
+  width: var(--control);
+  height: var(--control);
   color: var(--dim);
 }
 .tools .act[aria-pressed='true'] {
   background: var(--badge);
   color: var(--text);
 }
+.pane-head .act {
+  display: grid;
+}
+.act {
+  flex: none;
+  display: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  place-items: center;
+}
+.act.away,
+.act.shown,
+.acts .act {
+  display: grid;
+}
+/*
+ * A row's buttons lie over the end of its name, at the right edge, and only
+ * under the pointer: nothing in the row moves when they come. Behind them is
+ * the row's own colour, fading in from the left, so the name does not show
+ * through.
+ */
+.acts {
+  position: absolute;
+  inset: 0 4px 0 auto;
+  display: none;
+  align-items: center;
+  padding-left: 22px;
+  border-radius: inherit;
+  background: linear-gradient(var(--fill), var(--fill)), linear-gradient(var(--bg), var(--bg));
+  -webkit-mask: linear-gradient(90deg, transparent, #000 20px);
+}
+.row:hover .acts {
+  display: flex;
+}
+.act.away {
+  color: var(--accent);
+}
+.notice .pill {
+  color: inherit;
+  background: rgb(0 0 0 / 0.08);
+}
+.act.danger:hover {
+  color: var(--danger);
+  background: rgb(217 48 37 / 0.12);
+}
+
+/* --- The table of trees -------------------------------------------------------- */
+
 .tabs {
-  flex: 1;
-  min-width: 0;
   display: flex;
   flex-wrap: wrap;
   gap: 2px;
@@ -82,9 +162,43 @@
   background: var(--badge);
   color: var(--text);
 }
-.tree-name {
-  flex: 0 1 120px;
+.grid {
+  display: grid;
+  gap: 2px;
 }
+.grid .tab {
+  max-width: none;
+}
+.cell {
+  height: 26px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  color: color-mix(in srgb, var(--dim) 35%, transparent);
+}
+.cell:hover {
+  color: var(--dim);
+  background: var(--hover);
+}
+.grid .drop {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+.grid .dragging {
+  opacity: 0.4;
+}
+/* Where the current tab is, seen from anywhere: its tree in the table, the rows above it. */
+/* (The tree is marked the way the rows above the tab are: by the colour of its name. The fill says which tree is shown.) */
+.tab.has-active {
+  color: var(--accent);
+  font-weight: 600;
+}
+.tab span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* --- A pane: one tree ---------------------------------------------------------- */
 
 .panes {
   flex: 1;
@@ -135,12 +249,22 @@
 .pane.focused .pane-head {
   color: var(--accent);
 }
-.pane-head .act {
-  display: grid;
-}
 .pane.drop-end .tree {
   box-shadow: 0 2px 0 var(--accent);
 }
+/* Where dragged rows would land between rows: a line that starts at the level they would be on (see dropLine in screen.js). */
+.tree {
+  position: relative;
+}
+.pane-head .here {
+  flex: 1;
+  margin-left: 8px;
+  color: var(--dim);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* --- A row --------------------------------------------------------------------- */
 
 .row {
   position: relative;
@@ -160,7 +284,6 @@
   padding: 0 4px 0 calc(2px + var(--depth) * var(--indent));
   border-radius: 8px;
   cursor: default;
-  user-select: none;
 }
 .row:hover {
   --fill: var(--hover);
@@ -189,10 +312,6 @@
   --fill: var(--active-bg);
   box-shadow: inset 0 0 0 1px var(--accent);
 }
-/* A row kept in sight under a folded branch is not where it really sits: it has no branch of its own to fold. */
-.row.kept .twisty {
-  visibility: hidden;
-}
 .row.pinned .favicon {
   outline: 1px solid var(--dim);
   outline-offset: 2px;
@@ -210,10 +329,6 @@
 }
 .row.drop-inside {
   box-shadow: inset 0 0 0 2px var(--accent);
-}
-/* Where dragged rows would land between rows: a line that starts at the level they would be on (see dropLine in screen.js). */
-.tree {
-  position: relative;
 }
 .dropline {
   position: absolute;
@@ -236,7 +351,6 @@
   border-radius: 50%;
   background: var(--accent);
 }
-
 /*
  * Guides: a line from under each parent's arrow down along all that hangs on
  * it. Solid, dashed, dotted by depth, so that neighbours never look alike.
@@ -262,7 +376,6 @@
   background: var(--accent);
   -webkit-mask-position: calc((1 - var(--lit)) * var(--indent)) 0;
 }
-
 .twisty {
   flex: none;
   width: 16px;
@@ -283,7 +396,6 @@
 .act:hover {
   background: var(--hover);
 }
-
 .favicon {
   flex: none;
   width: 16px;
@@ -330,42 +442,6 @@
   font-size: 11px;
   line-height: 16px;
 }
-.act {
-  flex: none;
-  display: none;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  place-items: center;
-}
-.act.away,
-.act.shown,
-.acts .act {
-  display: grid;
-}
-/*
- * A row's buttons lie over the end of its name, at the right edge, and only
- * under the pointer: nothing in the row moves when they come. Behind them is
- * the row's own colour, fading in from the left, so the name does not show
- * through.
- */
-.acts {
-  position: absolute;
-  inset: 0 4px 0 auto;
-  display: none;
-  align-items: center;
-  padding-left: 22px;
-  border-radius: inherit;
-  background: linear-gradient(var(--fill), var(--fill)), linear-gradient(var(--bg), var(--bg));
-  -webkit-mask: linear-gradient(90deg, transparent, #000 20px);
-}
-.row:hover .acts {
-  display: flex;
-}
-.act.away {
-  color: var(--accent);
-}
-
 .ghost {
   position: fixed;
   left: 0;
@@ -382,86 +458,6 @@
   pointer-events: none;
   box-shadow: 0 2px 8px rgb(0 0 0 / 0.25);
 }
-
-.menu {
-  position: fixed;
-  z-index: 40;
-  min-width: 180px;
-  padding: 4px;
-  border-radius: 10px;
-  background: var(--bg);
-  box-shadow: 0 0 0 1px var(--badge), 0 6px 24px rgb(0 0 0 / 0.3);
-}
-.menu button {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  width: 100%;
-  padding: 5px 10px;
-  border-radius: 6px;
-  text-align: left;
-  white-space: nowrap;
-}
-.menu button:hover:not(:disabled) {
-  background: var(--hover);
-}
-.menu button:disabled {
-  color: var(--dim);
-  opacity: 0.6;
-  cursor: default;
-}
-.menu kbd {
-  font: inherit;
-  color: var(--dim);
-}
-.menu hr {
-  border: 0;
-  border-top: 1px solid var(--badge);
-  margin: 4px 0;
-}
-
-.dialog h2 {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 600;
-}
-.dialog .tabs {
-  flex: none;
-}
-.dialog.icons {
-  display: grid;
-  grid-template-columns: repeat(8, 1fr);
-  gap: 2px;
-  max-width: 320px;
-}
-.dialog.icons button {
-  aspect-ratio: 1;
-  border-radius: 8px;
-  font-size: 18px;
-}
-.dialog.icons button:hover {
-  background: var(--hover);
-}
-.dialog.icons .any {
-  grid-column: 1 / -1;
-  height: 28px;
-  margin-top: 4px;
-  padding: 0 8px;
-  font: inherit;
-  color: var(--text);
-  background: var(--bg);
-  border: 1px solid var(--badge);
-  border-radius: 6px;
-  user-select: text;
-}
-.dialog.icons .wide {
-  grid-column: 1 / -1;
-  aspect-ratio: auto;
-  height: 28px;
-  font-size: 13px;
-  color: var(--dim);
-}
-
 .check {
   flex: none;
   width: 14px;
@@ -480,21 +476,6 @@
   background: color-mix(in srgb, var(--accent) 45%, transparent);
   box-shadow: inset 0 0 0 2px var(--bg);
 }
-.dialog .row.selected,
-.dialog .row.active {
-  --fill: transparent;
-  color: inherit;
-  box-shadow: none;
-}
-.dialog .row:hover {
-  --fill: var(--hover);
-}
-/* The picker's list gives way, and scrolls, so the dialog fits the panel with its buttons in sight. */
-.dialog .pane {
-  flex: 0 1 auto;
-  padding: 0;
-}
-
 .favicon.glyph {
   display: grid;
   place-items: center;
@@ -512,81 +493,8 @@
   flex: none;
   color: var(--dim);
 }
-
-.pane-head .here {
-  flex: 1;
-  margin-left: 8px;
-  color: var(--dim);
-  text-transform: none;
-  letter-spacing: 0;
-}
-
-.dialog .hint {
-  margin: 0;
-}
-
-.grid {
-  display: grid;
-  gap: 2px;
-}
-.grid .tab,
-.grid .cell {
-  max-width: none;
-  height: 26px;
-  border-radius: 8px;
-}
-.cell {
-  display: grid;
-  place-items: center;
-  color: color-mix(in srgb, var(--dim) 35%, transparent);
-}
-.cell:hover {
-  color: var(--dim);
-  background: var(--hover);
-}
-.grid .drop {
-  box-shadow: inset 0 0 0 2px var(--accent);
-}
-.grid .dragging {
-  opacity: 0.4;
-}
-.trouble button {
-  display: block;
-  margin-top: 6px;
-  font-weight: 600;
-  text-decoration: underline;
-}
-
-.notice {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 6px 6px 12px;
-  background: #fde293;
-  color: #3b2f00;
-  line-height: 1.4;
-}
-.notice span {
-  flex: 1;
-}
-.notice .pill {
-  color: inherit;
-  background: rgb(0 0 0 / 0.08);
-}
-
-/* Where the current tab is, seen from anywhere: its tree in the table, the rows above it. */
-/* (The tree is marked the way the rows above the tab are: by the colour of its name. The fill says which tree is shown.) */
-.tab.has-active {
-  color: var(--accent);
-  font-weight: 600;
-}
 .row.leads .title {
   color: var(--accent);
-}
-.act.danger:hover {
-  color: #d93025;
-  background: rgb(217 48 37 / 0.12);
 }
 /*
  * A page that plays: waves run along its row, behind the text - two of them,
@@ -625,7 +533,6 @@
     animation: none;
   }
 }
-
 /* In a dense tree rows overlap: what is pointed at, selected or current is drawn over its neighbours. */
 .row:hover,
 .row.selected,
@@ -642,10 +549,48 @@
     transition: none;
   }
 }
-
 /* The frame around the row the keyboard is on shows only to those using the keyboard (see settleFocus in screen.js). */
 #app:not(.keys) .row:focus-visible {
   outline: none;
+}
+
+/* --- Menus --------------------------------------------------------------------- */
+
+.menu {
+  position: fixed;
+  z-index: 40;
+  min-width: 180px;
+  padding: 4px;
+  border-radius: 10px;
+  background: var(--bg);
+  box-shadow: 0 0 0 1px var(--badge), 0 6px 24px rgb(0 0 0 / 0.3);
+}
+.menu button {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  padding: 5px 10px;
+  border-radius: 6px;
+  text-align: left;
+  white-space: nowrap;
+}
+.menu button:hover:not(:disabled) {
+  background: var(--hover);
+}
+.menu button:disabled {
+  color: var(--dim);
+  opacity: 0.6;
+  cursor: default;
+}
+.menu kbd {
+  font: inherit;
+  color: var(--dim);
+}
+.menu hr {
+  border: 0;
+  border-top: 1px solid var(--badge);
+  margin: 4px 0;
 }
 .menu:focus,
 .dialog:focus {
@@ -656,26 +601,79 @@
   background: var(--hover);
 }
 
-.tab span {
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
+/* --- What opens on top: the picker, the table of icons ------------------------- */
+
+.dialog h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.dialog .tabs {
+  flex: none;
+}
+.dialog.icons {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 2px;
+  max-width: 320px;
+}
+.dialog.icons button {
+  aspect-ratio: 1;
+  border-radius: 8px;
+  font-size: 18px;
+}
+.dialog.icons button:hover {
+  background: var(--hover);
+}
+.dialog.icons .any {
+  grid-column: 1 / -1;
+  height: var(--control);
+  margin-top: 4px;
+  padding: 0 8px;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--badge);
+  border-radius: 6px;
+  user-select: text;
+}
+.dialog.icons .wide {
+  grid-column: 1 / -1;
+  aspect-ratio: auto;
+  height: var(--control);
+  font-size: 13px;
+  color: var(--dim);
+}
+.dialog .row.selected,
+.dialog .row.active {
+  --fill: transparent;
+  color: inherit;
+  box-shadow: none;
+}
+.dialog .row:hover {
+  --fill: var(--hover);
+}
+/* The picker's list gives way, and scrolls, so the dialog fits the panel with its buttons in sight. */
+.dialog .pane {
+  flex: 0 1 auto;
+  padding: 0;
 }
 
-/* What is selected: a quiet fill in the light, a tint of the accent in the dark, where a grey would look like a hover. */
-:root {
-  --selected: var(--badge);
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --selected: color-mix(in srgb, var(--accent) 22%, var(--bg));
-  }
-  .unsynced {
-    background: #4a3f12;
-    color: #fde293;
-  }
-}
+/* --- Notices at the bottom ----------------------------------------------------- */
 
+.notice {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 6px 6px 12px;
+  background: #fde293;
+  color: #3b2f00;
+  line-height: 1.4;
+}
+.notice span {
+  flex: 1;
+}
 /* The notice of what was done stands above the strips at the bottom, whatever they are. */
 .toasts {
   flex: none;
@@ -685,6 +683,8 @@
 .toasts .toast {
   position: absolute;
 }
+
+/* --- While something is dragged ------------------------------------------------ */
 
 /* While something is dragged, nothing else answers the pointer: no buttons, no frames, no fills. */
 #app:has(.ghost) .acts {

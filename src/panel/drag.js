@@ -14,7 +14,7 @@
 import { descendantsOf } from '../model.js';
 import { t } from '../i18n.js';
 import { titleOf } from './view.js';
-import { app, arrange, idAt, op, paneAt, redraw, rowOf, say, targets, ui } from './screen.js';
+import { app, arrange, idAt, op, paneAt, redraw, rowOf, say, setDrag, setDrop, targets, ui, under } from './screen.js';
 import { pagesIn } from './commands.js';
 
 // The gesture in progress, from the button going down to the click after it.
@@ -77,7 +77,7 @@ function planAtPointer() {
 /** The place in a pane to drop rows or a link at. */
 function placeAtPointer() {
   const paneEl = paneElAtPointer();
-  const pane = paneEl && ui.panes[paneEl.dataset.pane];
+  const pane = paneEl && paneAt(paneEl);
   if (!pane || !['rows', 'link'].includes(ui.drag.kind)) return;
   const drop = dropAt(pane, paneEl, gesture.pointer.y);
   return drop.targetId !== undefined && inDragged(pane, drop.targetId) ? undefined : drop;
@@ -90,12 +90,11 @@ const same = (a, b) =>
 function updateDrop() {
   const drop = cellAtPointer() ?? planAtPointer() ?? placeAtPointer();
   if (same(drop, ui.drop)) return;
-  ui.drop = drop;
+  setDrop(drop);
   clearTimeout(gesture.unfold);
   if (drop?.position === 'inside' && rowOf(drop.pane, drop.targetId).collapsed) {
     gesture.unfold = setTimeout(() => op('collapse', { tree: drop.pane.tree, id: drop.targetId, collapsed: false }), 700);
   }
-  redraw();
 }
 
 /** Moves the dragged rows to where they were dropped; when that is another tree, says so (with the way back). */
@@ -122,23 +121,20 @@ function tick() {
 }
 
 function startDrag(drag) {
-  ui.drag = drag;
-  redraw();
+  setDrag(drag);
   tick();
 }
 
 export function endDrag() {
   clearTimeout(gesture.unfold);
   gesture.press = undefined;
-  ui.drag = undefined;
-  ui.drop = undefined;
-  redraw();
+  setDrag(undefined);
 }
 
 /** Dragging the line between two panes gives one more room and the other less. */
 function resize(divider) {
   const [before, after] = [ui.panes[divider - 1], ui.panes[divider]];
-  const [a, b] = [divider - 1, divider].map((index) => app.querySelector(`.pane[data-pane="${index}"]`).getBoundingClientRect());
+  const [a, b] = [before, after].map((pane) => app.querySelector(`.pane[data-pane="${pane.id}"]`).getBoundingClientRect());
   const { x, y } = gesture.pointer;
   const along = ui.split === 'row' ? (x - a.left) / (b.right - a.left) : (y - a.top) / (b.bottom - a.top);
   const share = Math.max(0.1, Math.min(0.9, along));
