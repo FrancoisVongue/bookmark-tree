@@ -2,7 +2,7 @@
 // commands from the panels, saves the result and tells the panels it changed.
 // It only ever asks the browser for three things: open, focus or close a tab.
 
-import { addNode, descendantsOf, expire, goHome, goneOf, isGroup, isNote, migrate, moveNode, newId, problems, stamped, treeFor, validTree } from './model.js';
+import { descendantsOf, expire, goHome, goneOf, isGroup, isNote, migrate, newId, problems, treeFor, validTree } from './model.js';
 import { QUIET, ops } from './ops.js';
 import { apply, diff, takeIn } from './merge.js';
 import * as github from './github.js';
@@ -180,17 +180,7 @@ async function closeTabs(ids) {
 }
 
 /** After a change to the library: tabs of nodes that are gone close; the rest stay in a tree that holds them. */
-async function settle() {
-  const gone = [];
-  for (const [tabId, bound] of Object.entries(state.binding)) {
-    if (state.library.nodes[bound.node]) bound.tree = treeFor(state.library, bound.node, bound.tree);
-    else {
-      gone.push(Number(tabId));
-      delete state.binding[tabId];
-    }
-  }
-  await closeTabs(gone);
-}
+const settle = () => closeTabs(core.rebind(state));
 
 /** Keeps a step of undo: one of the user's changes, from the library as it was (`before`, JSON) to as it is. */
 function remember(before) {
@@ -253,12 +243,12 @@ async function activate({ nodeId, treeId, windowId, where }) {
     const tab = await chrome.tabs.create({ windowId, url: core.isBlank(url) ? undefined : url, active: !where });
     tabId = tab.id;
     // Before its "created" event is handled, so no second node appears.
-    state.binding[tabId] = { node: nodeId, tree };
+    core.bind(state, tabId, nodeId, tree);
     log('woke node', nodeId, 'as tab', tabId);
   } else if (!where) {
     const tab = await chrome.tabs.update(tabId, { active: true });
     if (tab.windowId !== windowId) await chrome.windows.update(tab.windowId, { focused: true });
-    state.binding[tabId].tree = tree;
+    core.shownIn(state, tabId, tree);
   }
   if (where === 'window') await chrome.windows.create({ tabId });
 }
@@ -384,9 +374,7 @@ async function exchange() {
 async function newTab({ windowId, treeId, nodeId, as }) {
   treeId = validTree(state.library, treeId);
   const tab = await chrome.tabs.create({ windowId });
-  const node = addNode(state.library, treeId, stamped({ id: newId(), url: '', title: '' }, Date.now()));
-  if (nodeId) moveNode(state.library, treeId, node.id, nodeId, as === 'child' ? 'inside' : 'after');
-  state.binding[tab.id] = { node: node.id, tree: treeId };
+  core.tabAsked(state, tab, { treeId, nodeId, as, at: Date.now() });
 }
 
 async function handle(message, sender) {
