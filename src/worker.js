@@ -23,9 +23,6 @@ let undo = [];
 let redo = [];
 const UNDO_STEPS = 50;
 const UNDO_BYTES = 4_000_000;
-// Tabs whose node was just made top-level: if the browser then reports the
-// page that opened them, the node moves under it.
-const fresh = new Set();
 // Tab -> the tab whose page opened it. The browser reports this right around
 // the tab's creation, in either order.
 const openedFrom = new Map();
@@ -129,23 +126,12 @@ chrome.tabs.onCreated.addListener((created) => {
     // Read it again: the address is often not set yet when the event fires,
     // and the round trip gives the "opened from" report time to arrive.
     const tab = (await chrome.tabs.get(created.id).catch(() => null)) ?? created;
-    // A tab that comes from another tab with a page already in it was opened by that page, whichever
-    // way the browser tells it: a link (reported apart), or its menu ("search for the selected text").
-    // One that comes empty is a new tab the user asked for.
-    const arrived = !core.isBlank(tab.pendingUrl || tab.url);
-    const source = openedFrom.get(tab.id) ?? (arrived ? created.openerTabId : undefined);
+    const reported = openedFrom.get(tab.id);
     openedFrom.delete(tab.id);
-    const result = core.tabOpened(state, tab, source, windowTree(tab.windowId), Date.now());
-    // Its node was made just now: here or, if this event woke the worker, a moment ago,
-    // when the worker lined itself up with the open tabs and put it at the end of the tree.
-    const late = result === 'known' && state.binding[tab.id].loose;
-    if (late && source !== undefined) core.tabOpenedFrom(state, tab.id, source);
-    else if (result === 'new' || late) {
-      fresh.add(tab.id);
-      // Below the page the user was on. (A worker just woken does not know which tab was shown: where the user's attention was says it.)
-      core.tabOpenedBeside(state, tab.id, (beside !== tab.id && state.binding[beside]?.node) || state.attention?.node);
-    }
-    log('tab', tab.id, 'created ->', result, source === undefined ? `(beside tab ${beside})` : `(from tab ${source})`, tab.pendingUrl || tab.url);
+    // The page the user was on. (A worker just woken does not know which tab was shown: where the user's attention was says it.)
+    const shownNode = (beside !== tab.id && state.binding[beside]?.node) || state.attention?.node;
+    const result = core.tabCreated(state, tab, { opener: created.openerTabId, reported, shownNode, treeId: windowTree(tab.windowId), at: Date.now() });
+    log('tab', tab.id, 'created ->', result, `(opener ${created.openerTabId}, reported ${reported}, beside tab ${beside})`, tab.pendingUrl || tab.url);
   });
 });
 
@@ -154,7 +140,6 @@ chrome.webNavigation.onCreatedNavigationTarget.addListener(({ tabId, sourceTabId
   enqueue('tab opened from page', () => {
     if (state.binding[tabId] === undefined) return; // Not created yet: that handler uses the entry.
     openedFrom.delete(tabId);
-    if (!fresh.delete(tabId)) return;
     log('tab', tabId, 'was opened from tab', sourceTabId, '-> child:', core.tabOpenedFrom(state, tabId, sourceTabId));
   });
 });
@@ -168,7 +153,6 @@ chrome.tabs.onUpdated.addListener((tabId, change, tab) => {
 
 chrome.tabs.onRemoved.addListener((tabId) =>
   enqueue('tab closed', () => {
-    fresh.delete(tabId);
     openedFrom.delete(tabId);
     log('tab', tabId, 'closed, node', state.binding[tabId]?.node);
     core.tabClosed(state, tabId, Date.now());

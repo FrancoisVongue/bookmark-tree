@@ -4,8 +4,9 @@
 //   state.binding   { [tabId]: { node, tree, loose? } } - which node each open
 //                   tab shows, and in which tree it was opened (links opened
 //                   from it become its children there); `loose` marks a tab
-//                   whose place nobody chose. True only on this computer,
-//                   for this browser session
+//                   whose place nobody chose yet: it stands where new tabs go
+//                   by default. True only on this computer, for this
+//                   browser session
 //   state.windows   { [windowId]: treeId } - the tree each window's panel shows
 //   state.attention, state.journal   where the user is and was (see journal.js)
 //
@@ -164,12 +165,41 @@ export function tabOpenedBeside(state, tabId, nodeId) {
   return moveNode(state.library, bound.tree, bound.node, nodeId, 'after');
 }
 
-/** The browser reported, after the fact, that `tabId` was opened from `sourceTabId`'s page. */
+/**
+ * A tab was created: its node is made, or found, and put where the tab came
+ * from. What is known of that:
+ *   reported   the tab whose page opened it, when the browser said so apart (a link)
+ *   opener     the tab it was opened from, as the tab itself says
+ *   shownNode  the node the user was at
+ *   treeId     the tree the window's panel shows
+ * A tab that comes from another tab with a page already in it was opened by
+ * that page, whichever way the browser tells it - a link, or its own menu
+ * ("search for the selected text") - and is its child. One that comes empty
+ * is a new tab the user asked for: it goes below the node they were at.
+ * Returns what `tabOpened` does.
+ */
+export function tabCreated(state, tab, { opener, reported, shownNode, treeId, at }) {
+  const source = reported ?? (isBlank(urlOf(tab)) ? undefined : opener);
+  const result = tabOpened(state, tab, source, treeId, at);
+  // Its node was made just now: here or, if this event woke the worker, a moment ago,
+  // when the state was lined up with the open tabs and it was put at the end of the tree.
+  const late = result === 'known' && state.binding[tab.id].loose;
+  if (late && source !== undefined) tabOpenedFrom(state, tab.id, source);
+  else if (result === 'new' || late) tabOpenedBeside(state, tab.id, shownNode);
+  return result;
+}
+
+/**
+ * The browser reported, after the fact, that `tabId` was opened from
+ * `sourceTabId`'s page: its node moves under that page's. Only if nobody
+ * chose its place yet; and now somebody has.
+ */
 export function tabOpenedFrom(state, tabId, sourceTabId) {
   const { library, binding } = state;
   const bound = binding[tabId];
   const source = binding[sourceTabId];
-  if (!bound || !source) return false;
+  if (!bound?.loose || !source) return false;
+  delete bound.loose;
   if (bound.tree !== source.tree) {
     placeNode(library, source.tree, bound.node, source.node);
     removeNode(library, bound.tree, bound.node);
