@@ -102,11 +102,13 @@ console.log('  nodes at A:', Object.keys(atA.library.nodes).length, '| at B:', O
 console.log('  kept back:', JSON.stringify(atA.unsynced), JSON.stringify(atB.unsynced));
 for (const who of [A, B]) {
   await who.panel.reload(); await sleep(900);
-  console.log(`  notice at ${who.name}:`, await who.panel.locator('.unsynced span').textContent().catch(() => 'NONE'));
+  console.log(`  notice at ${who.name}:`, await who.panel.locator('.notice span').textContent().catch(() => 'NONE'));
 }
 await A.panel.screenshot({ path: `${os.tmpdir()}/tree-unsynced.png` });
-await A.panel.click('[data-action="unsynced-close"]'); await sleep(400);
-console.log('  after closing it at A:', await A.panel.locator('.unsynced').count());
+await A.panel.click('[data-action="notice-close"]'); await sleep(600);
+console.log('  that one put off, A says:', await A.panel.locator('.notice span').textContent().catch(() => 'NONE'));
+await A.panel.click('[data-action="notice-close"]'); await sleep(400);
+console.log('  after closing that too:', await A.panel.locator('.notice').count());
 await round();
 console.log('  another round: nodes at A still', Object.keys((await A.msg({ type: 'get-state' })).library.nodes).length);
 

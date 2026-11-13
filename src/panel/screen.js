@@ -4,6 +4,7 @@
 
 import { descendantsOf, migrate, parentOf, rowsOf } from '../model.js';
 import { find } from '../find.js';
+import { t } from '../i18n.js';
 import { draw, titleOf } from './view.js';
 
 export const log = (...args) => console.log('[tree panel]', ...args);
@@ -28,8 +29,7 @@ export const ui = {
   journalAll: false, // Whether the unfolded journal shows all its places, or only the latest.
   places: { shown: [], more: 0, loose: undefined }, // What the unfolded journal shows (see layJournal).
   planOpen: localStorage.getItem('planOpen') === 'yes', // The same for the plan (the library's `plan`: what to open next).
-  // Pages that do not fit in the synced storage: { kind: 'here' | 'elsewhere', count }, unless the user closed that notice.
-  unsynced: undefined,
+  notice: undefined, // The one thing to tell the user at the bottom: { id, text, button?: { action, label } } (see noticeOf).
   canUndo: false,
   canRedo: false,
   panes: (kept.panes ?? []).map((pane) => newPane(pane.tree, pane.size)), // The trees shown: { tree, size, rows, sel }.
@@ -308,14 +308,31 @@ function layJournal() {
   ui.places = { shown, more: hits.length - shown.length, loose: how === 'exact' ? undefined : { how, as } };
 }
 
+/**
+ * The one thing to tell the user at the bottom of the panel, if any: the
+ * most important of what there is to say, as { id, text, button? }.
+ */
+function noticeOf(state) {
+  const { warning } = state;
+  const { here, elsewhere } = state.unsynced;
+  const settings = (label) => ({ action: 'settings', label });
+  const all = [
+    // The library is kept nowhere but here (see safety.js in the worker's code).
+    warning?.kind === 'sync' && { id: 'sync', text: t('syncFailing', warning.error), button: settings(t('openSettings')) },
+    warning?.kind === 'backup' && { id: 'backup', text: t('backupDue'), button: { action: 'backup-now', label: t('unsyncedBackUp') } },
+    // Not all of it fits in the synced storage. Of the two things to say, the one about more pages.
+    here > 0 && here >= elsewhere && { id: 'here', text: t('unsyncedHere', here), button: settings(t('unsyncedBackUp')) },
+    elsewhere > here && { id: 'elsewhere', text: t('unsyncedElsewhere', elsewhere) },
+  ];
+  const [first] = all.filter(Boolean);
+  return first && localStorage.getItem('unsyncedClosed') !== first.id ? first : undefined;
+}
+
 function take(state, active) {
   ui.library = migrate(state.library);
   ui.trouble = state.trouble;
   ui.journal = state.journal;
-  // Of the two things to say, the one about more pages.
-  const { here, elsewhere } = state.unsynced;
-  const kind = here + elsewhere === 0 ? undefined : here >= elsewhere ? 'here' : 'elsewhere';
-  ui.unsynced = kind && localStorage.getItem('unsyncedClosed') !== kind ? { kind, count: state.unsynced[kind] } : undefined;
+  ui.notice = noticeOf(state);
   ui.canUndo = state.canUndo;
   ui.canRedo = state.canRedo;
   ui.live = new Set(Object.values(state.binding).map((bound) => bound.node));

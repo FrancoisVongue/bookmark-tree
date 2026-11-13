@@ -4,6 +4,7 @@
 import { app, arrange, closeOverlay, here, idAt, log, newPane, op, paneAt, picker, redraw, refresh, revealActive, rowOf, send, setFocus, showActiveTree, targets, ui } from './screen.js';
 import { mainMenu, menuUnder, openMenu, rowMenu, treeMenu } from './menus.js';
 import { endsDrag } from './drag.js';
+import { saveBackup } from '../page.js';
 import * as cmd from './commands.js';
 import './keys.js';
 
@@ -55,10 +56,16 @@ const actions = {
   },
   icon: ({ el }) => cmd.setIcon(el.dataset.icon),
   settings: cmd.openSettings,
-  // The notice stays closed until there is something else to say.
-  'unsynced-close': () => {
-    localStorage.setItem('unsyncedClosed', ui.unsynced.kind);
-    arrange();
+  // That not everything is synced is said once: closed, it stays closed. That the library has no
+  // copy elsewhere is the worker's to keep track of: closed, it comes back in a while.
+  'notice-close': async () => {
+    if (['here', 'elsewhere'].includes(ui.notice.id)) localStorage.setItem('unsyncedClosed', ui.notice.id);
+    else await send({ type: 'warning-closed' });
+    refresh();
+  },
+  'backup-now': async () => {
+    await saveBackup(ui.library);
+    refresh();
   },
   'journal-go': ({ el }) => cmd.revisit(el.dataset.node, el.dataset.tree),
   'journal-more': () => {

@@ -50,6 +50,15 @@
   "justNow": {
     "message": "now"
   },
+  "backupDue": {
+    "message": "This library is kept on this computer only. Save a copy of it to a file."
+  },
+  "syncFailing": {
+    "message": "Sync with GitHub has not worked for days: $1"
+  },
+  "openSettings": {
+    "message": "Settings"
+  },
   "unsyncedHere": {
     "message": "Not everything is synced: your $1 oldest pages stay on this computer only."
   },

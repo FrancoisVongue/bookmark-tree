@@ -11,6 +11,7 @@ import * as github from './github.js';
 import * as channel from './channel.js';
 import * as core from './core.js';
 import { attend, placesOf } from './journal.js';
+import { warningOf } from './safety.js';
 
 const log = (...args) => console.log('[tree]', ...args);
 
@@ -116,7 +117,8 @@ async function init() {
   expire(state.library, Date.now());
   await reconcile();
   await backUp();
-  unsynced = (await loadChannel()).unsynced ?? unsynced;
+  const ch = await loadChannel();
+  [unsynced, met] = [ch.unsynced ?? unsynced, !!ch.met];
 }
 
 // --- Facts from the browser ----------------------------------------------------
@@ -398,6 +400,8 @@ const loadChannel = async () => {
 };
 // How many pages do not fit in the synced storage: those this computer keeps to itself, and another one does.
 let unsynced = { here: 0, elsewhere: 0 };
+// Whether another computer has ever been seen in the synced storage: if not, nothing but this one holds the library there.
+let met = false;
 // The library as it was when last told to the others (JSON): telling the same again is skipped.
 let published;
 
@@ -417,6 +421,7 @@ async function exchange() {
     if (JSON.stringify(mine) !== published) unsynced.here = await channel.publish(cells, ch, mine);
     published = JSON.stringify(mine);
     unsynced.elsewhere = await channel.awayElsewhere(cells, ch);
+    met = !!ch.met;
     await chrome.storage.local.set({ channel: { ...ch, unsynced } });
   } catch (error) {
     log('exchange failed', error.message); // Tried again in a minute, from what was known before.
@@ -435,6 +440,8 @@ async function handle(message, sender) {
   switch (message.type) {
     case 'get-state': {
       const audible = await chrome.tabs.query({ audible: true });
+      const { sync, savedToFileAt, warningClosedAt } = await chrome.storage.local.get(['sync', 'savedToFileAt', 'warningClosedAt']);
+      const safety = { nodes: Object.keys(library.nodes).length, sync, unsynced: unsynced.here, met, savedAt: savedToFileAt, closedAt: warningClosedAt, now: Date.now() };
       return {
         library,
         binding: state.binding,
@@ -442,6 +449,7 @@ async function handle(message, sender) {
         audible: audible.map((tab) => state.binding[tab.id]?.node).filter(Boolean),
         trouble,
         unsynced,
+        warning: loaded ? warningOf(safety) : undefined, // That the library is kept nowhere else (see safety.js).
         journal: placesOf(state),
         canUndo: undo.length > 0,
         canRedo: redo.length > 0,
@@ -505,6 +513,12 @@ async function handle(message, sender) {
     case 'restore-file':
       // A whole library from a backup file. Says what is wrong with it, if anything.
       return adopt(migrate(message.library), true).catch((error) => error.message);
+    case 'saved-to-file':
+      // A page saved the whole library to a file: that is a copy elsewhere.
+      return chrome.storage.local.set({ savedToFileAt: Date.now() });
+    case 'warning-closed':
+      // The user put the warning off. It comes back (see safety.js).
+      return chrome.storage.local.set({ warningClosedAt: Date.now() });
     case 'show-tree':
       // The tree this window's panel shows: where its new tabs go.
       state.windows[message.windowId] = message.treeId;

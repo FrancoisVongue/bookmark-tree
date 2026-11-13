@@ -508,7 +508,7 @@
   text-decoration: underline;
 }
 
-.unsynced {
+.notice {
   flex: none;
   display: flex;
   align-items: center;
@@ -518,10 +518,10 @@
   color: #3b2f00;
   line-height: 1.4;
 }
-.unsynced span {
+.notice span {
   flex: 1;
 }
-.unsynced .pill {
+.notice .pill {
   color: inherit;
   background: rgb(0 0 0 / 0.08);
 }

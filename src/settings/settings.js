@@ -6,7 +6,7 @@ import { html, render, nothing } from '../vendor/lit-html/lit-html.js';
 import { validTree } from '../model.js';
 import { fromHtml, fromOutline } from '../bookmarks.js';
 import { t } from '../i18n.js';
-import { askForBookmarks, pickFile, saveFile } from '../page.js';
+import { askForBookmarks, pickFile, saveBackup } from '../page.js';
 import { askView, iconView, titleOf } from '../panel/view.js';
 
 const app = document.getElementById('app');
@@ -162,7 +162,7 @@ const actions = {
   'import-file': importFile,
   'import-bookmarks': importBookmarks,
   // The whole library, as a file to keep somewhere safe.
-  backup: () => saveFile(`tree-backup-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(page.library), 'application/json'),
+  backup: () => saveBackup(page.library),
   restore: ({ node }) => op('restore', { tree: page.tree, ids: [node] }),
   'trash-empty': () =>
     ask(t('askEmptyTrash', page.library.trash.length), t('emptyTrash'), async () => {
