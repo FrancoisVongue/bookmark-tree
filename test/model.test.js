@@ -141,3 +141,19 @@ test('the library is plain JSON', () => {
   setCollapsed(lib, MAIN, 'a', true);
   assert.deepEqual(JSON.parse(JSON.stringify(lib)), lib);
 });
+
+test('a folded branch hides what is asleep; open tabs and marked nodes stay in sight right under it', () => {
+  const lib = library('a\n  b\n    c\n    d\n  e\nf');
+  setCollapsed(lib, MAIN, 'a', true);
+  setCollapsed(lib, MAIN, 'b', true); // Folded inside the folded: still one level, the outer one's.
+  const shown = (live) => rowsOf(lib, MAIN, false, new Set(live)).map((row) => `${'.'.repeat(row.depth)}${row.id}${row.kept ? '!' : ''}${row.hidden ? `(${row.hidden})` : ''}`).join(' ');
+  assert.equal(shown([]), 'a(4) f');
+  assert.equal(shown(['d']), 'a(3) .d! f');
+  lib.nodes.c.keep = true;
+  assert.equal(shown(['e']), 'a(2) .c! .e! f');
+  assert.equal(shown(['b', 'c', 'd', 'e']), 'a .b! .c! .d! .e! f');
+  // Unfolded, everything is where it is.
+  setCollapsed(lib, MAIN, 'a', false);
+  assert.equal(shown(['d']), 'a .b ..c! ..d! .e f'); // b is folded too: c is marked, d is open, nothing is left to hide.
+  assert.equal(rowsOf(lib, MAIN, true, new Set(['d'])).map((row) => row.id).join(' '), 'a b c d e f');
+});

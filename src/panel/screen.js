@@ -124,6 +124,7 @@ export function setFocus(pane) {
   for (const other of ui.panes) other.sel.clear();
   ui.focus = index;
   ui.cursor = undefined;
+  remember(); // New tabs go to the tree of the pane the user works in: the worker hears of it at once.
 }
 
 export function focusRow(pane, id) {
@@ -136,17 +137,18 @@ export function focusRow(pane, id) {
 // --- From the worker's state to the screen -------------------------------------
 
 /** The rows that match the search, and the rows above them that lead there. */
+/** Whether node `id` has every word of the search in its name, address or text. */
+function matches(id, query) {
+  const node = ui.library.nodes[id];
+  const text = `${titleOf(node)} ${node.url ?? ''} ${node.note ?? ''}`.toLowerCase();
+  return query.toLowerCase().split(/\s+/).every((word) => text.includes(word));
+}
+
 function found(rows, query) {
-  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
-  const matches = (id) => {
-    const node = ui.library.nodes[id];
-    const text = `${titleOf(node)} ${node.url ?? ''} ${node.note ?? ''}`.toLowerCase();
-    return words.every((word) => text.includes(word));
-  };
   const out = [];
   let need = 0; // Walking up: a row shallower than the last one kept leads to it.
   for (const row of rows.toReversed()) {
-    if (!matches(row.id) && row.depth >= need) continue;
+    if (!matches(row.id, query) && row.depth >= need) continue;
     out.unshift(row);
     need = row.depth;
   }
@@ -179,7 +181,7 @@ function layOut() {
   for (const pane of [...ui.panes, picker()]) {
     if (!pane) continue;
     const searching = ui.query && pane !== picker();
-    pane.rows = searching ? found(rowsOf(library, pane.tree, true), ui.query) : rowsOf(library, pane.tree);
+    pane.rows = searching ? found(rowsOf(library, pane.tree, true), ui.query) : rowsOf(library, pane.tree, false, ui.live);
     pane.sel = new Set([...pane.sel].filter((id) => rowOf(pane, id)));
   }
   if (!rowOf(here(), ui.cursor)) ui.cursor = rowOf(here(), ui.activeId)?.id ?? here().rows[0]?.id;
@@ -250,6 +252,8 @@ export async function refresh() {
   const mine = followed !== undefined && (asking > 0 || asked);
   asked = false;
   if (moved && !mine) showActiveTree();
+  // The user went to a tab the search would hide (a new one, say): the search is over.
+  if (moved && !mine && ui.query && ui.activeId && !matches(ui.activeId, ui.query)) ui.query = '';
   followed = ui.activeId ?? null;
   layOut();
   findShared();

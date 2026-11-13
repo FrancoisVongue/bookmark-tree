@@ -11,6 +11,7 @@ const ICONS = {
   close: svg('M5.3 4.2 10 8.9l4.7-4.7 1.1 1.1L11.1 10l4.7 4.7-1.1 1.1L10 11.1l-4.7 4.7-1.1-1.1L8.9 10 4.2 5.3z'),
   sleep: svg('M11.2 4.4a5.6 5.6 0 1 0 4.4 9A4.8 4.8 0 0 1 11.2 4.4z'),
   trash: svg('M8 3.5h4l.8 1.3H16v1.5H4V4.8h3.2zM5.2 7.6h9.6l-.7 7.9a1.5 1.5 0 0 1-1.5 1.4H7.4a1.5 1.5 0 0 1-1.5-1.4zm1.6 1.5.6 6.3h5.2l.6-6.3z'),
+  keep: svg('M10 5.5c3.4 0 6 2.6 7 4.5-1 1.900-3.6 4.5-7 4.500S4 11.900 3 10c1-1.900 3.600-4.500 7-4.500zm0 1.500a3 3 0 1 0 0 6 3 3 0 0 0 0-6zm0 1.600a1.400 1.400 0 1 1 0 2.800 1.400 1.400 0 0 1 0-2.800z'),
   locate: svg('M9.25 2h1.5v2.6a5.5 5.5 0 0 1 4.65 4.65H18v1.5h-2.6a5.5 5.5 0 0 1-4.65 4.65V18h-1.5v-2.6a5.5 5.5 0 0 1-4.65-4.65H2v-1.5h2.6A5.5 5.5 0 0 1 9.25 4.6zM10 6a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm0 2.4a1.6 1.6 0 1 1 0 3.2 1.6 1.6 0 0 1 0-3.2z'),
   add: svg('M9.2 4h1.6v5.2H16v1.6h-5.2V16H9.2v-5.2H4V9.2h5.2z'),
   home: svg('M10 3 3 9.2h2V16h3.6v-4h2.8v4H15V9.2h2z'),
@@ -69,7 +70,7 @@ export function iconView(node) {
 const act = (action, icon, title, more = '') =>
   html`<button class="act ${more}" data-action=${action} tabindex="-1" title=${title}>${ICONS[icon]}</button>`;
 
-function rowView(row, pane, ui, { holder, leads, included }, lit) {
+function rowView(row, pane, ui, { leads, included }, lit) {
   const node = ui.library.nodes[row.id];
   if (!node) return '';
   const picking = pane === ui.overlay;
@@ -81,7 +82,7 @@ function rowView(row, pane, ui, { holder, leads, included }, lit) {
     live ? 'live' : 'asleep',
     isGroup(node) && 'group',
     row.id === ui.activeId && 'active',
-    row.id === holder && 'holds-active',
+    row.kept && 'kept',
     leads.has(row.id) && 'leads',
     pane.sel.has(row.id) && 'selected',
     included?.has(row.id) && 'included',
@@ -113,6 +114,7 @@ function rowView(row, pane, ui, { holder, leads, included }, lit) {
         ? html`<input class="rename" .value=${editing.field === 'url' ? node.url : title} aria-label=${t('renameHint')} />`
         : html`<span class="title">${title}</span>`}
       ${ui.audible.has(row.id) ? html`<span class="mark" title=${t('playing')}>${WAVES}</span>` : ''}
+      ${node.keep ? html`<span class="mark" title=${t('kept')}>${ICONS.keep}</span>` : ''}
       ${shared ? html`<span class="mark" title=${t('alsoIn', shared.join(', '))}>${ICONS.shared}</span>` : ''}
       ${row.hidden ? html`<span class="badge">${row.hidden}</span>` : ''}
       ${picking || editing
@@ -126,18 +128,12 @@ function rowView(row, pane, ui, { holder, leads, included }, lit) {
   `;
 }
 
-/**
- * Where the current tab's node is in a pane: `leads` are the nodes above it,
- * `holder` the collapsed row that hides it, if any (a branch never opens by
- * itself: the row that holds the node shows a mark instead).
- */
-function wayToActive(pane, ui) {
+/** The nodes above the current tab's node in a pane's tree. (The node itself is always in sight: see rowsOf.) */
+function leadsToActive(pane, ui) {
   const tree = ui.library.trees[pane.tree];
-  const shown = new Set(pane.rows.map((row) => row.id));
   const leads = new Set();
   for (let id = parentOf(tree, ui.activeId); id !== undefined; id = parentOf(tree, id)) leads.add(id);
-  const holder = shown.has(ui.activeId) ? undefined : [...leads].find((id) => shown.has(id));
-  return { leads, holder };
+  return leads;
 }
 
 /**
@@ -156,8 +152,8 @@ function litGuide(rows, id) {
 
 /** One tree. The same view serves the panes of the panel and the picker. */
 function paneView(pane, index, ui) {
-  const way = wayToActive(pane, ui);
-  const guide = litGuide(pane.rows, way.holder ?? ui.activeId);
+  const way = { leads: leadsToActive(pane, ui) };
+  const guide = litGuide(pane.rows, ui.activeId);
   const picking = pane === ui.overlay;
   const focused = pane === ui.panes[ui.focus];
   const tree = ui.library.trees[pane.tree];

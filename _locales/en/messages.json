@@ -53,6 +53,15 @@
   "showActive": {
     "message": "Show the current tab in its tree"
   },
+  "keep": {
+    "message": "Keep in sight when folded"
+  },
+  "keepNot": {
+    "message": "Hide when folded"
+  },
+  "kept": {
+    "message": "Kept in sight when its branch is folded"
+  },
   "extDescription": {
     "message": "Your pages as trees, in the side panel."
   },
