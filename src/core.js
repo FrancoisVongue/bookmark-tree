@@ -181,11 +181,14 @@ export function tabChanged(state, tab) {
   if (!node || isNote(node)) return;
   const url = urlOf(tab);
   // An empty new tab taken to the address of a sleeping node wakes that node.
-  // (A tab the user placed under another node stays where it was put.)
+  // (A tab the user placed under another node stays where it was put.) The
+  // user is in this tree: if the node lives in another one only, it is
+  // shown here too, at the end - the same node, not a copy.
   const loose = isBlank(node.url) && (bound.loose || parentOf(library.trees[bound.tree], node.id) === ROOT);
   const asleep = loose && sleeperAt(state, url);
   if (asleep && dropIfEmpty(library, node.id)) {
-    binding[tab.id] = { node: asleep.id, tree: treeFor(library, asleep.id, bound.tree) };
+    placeNode(library, bound.tree, asleep.id);
+    binding[tab.id] = { node: asleep.id, tree: bound.tree };
     return tabChanged(state, tab);
   }
   if (isOurs(url) && dropIfEmpty(library, node.id)) {

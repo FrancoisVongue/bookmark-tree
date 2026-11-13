@@ -11,6 +11,9 @@
   "closeNotice": {
     "message": "Close"
   },
+  "showActive": {
+    "message": "Show the current tab in its tree"
+  },
   "extDescription": {
     "message": "Your pages as trees, in the side panel."
   },

@@ -1,7 +1,7 @@
 // The panel's entry: the mouse, and the start. It turns what the user does
 // into commands for the worker (see screen.js for what the panel itself owns).
 
-import { app, closeOverlay, here, idAt, log, newPane, op, paneAt, picker, redraw, refresh, rowOf, send, setFocus, targets, ui } from './screen.js';
+import { app, closeOverlay, here, idAt, log, newPane, op, paneAt, picker, redraw, refresh, revealActive, rowOf, send, setFocus, showActiveTree, targets, ui } from './screen.js';
 import { mainMenu, menuUnder, openMenu, rowMenu, treeMenu } from './menus.js';
 import { endsDrag } from './drag.js';
 import * as cmd from './commands.js';
@@ -17,6 +17,12 @@ const actions = {
   undo: () => {
     ui.toast = undefined;
     send({ type: 'undo' });
+  },
+  // Back to where the current tab is: its tree, its row.
+  'show-active': async () => {
+    showActiveTree();
+    await refresh();
+    revealActive();
   },
   'new-tab': () => cmd.newTab(here()),
   'new-group': () => cmd.newGroup(here(), rowOf(here(), ui.cursor)?.id),
@@ -159,7 +165,8 @@ app.addEventListener('input', (event) => {
 });
 
 async function main() {
-  ui.windowId = (await chrome.windows.getCurrent()).id;
+  // (A scenario may open the panel as a page of one window and point it at another.)
+  ui.windowId = Number(new URLSearchParams(location.search).get('window')) || (await chrome.windows.getCurrent()).id;
   chrome.runtime.onMessage.addListener((message) => {
     if (message?.type === 'changed') refresh();
   });
