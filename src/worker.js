@@ -17,7 +17,8 @@ let state = core.createState();
 let loaded = false;
 // What the user must be told: the library could not be read, or could not be saved.
 let trouble;
-// The user's changes that can be taken back, newest last: the library before and after each ({ before, after }, JSON).
+// The user's changes that can be taken back, newest last. Each is kept as what it changed, both ways
+// ({ back, forth }: see diff in merge.js) - not as the libraries before and after it, which are mostly the same.
 let undo = [];
 let redo = [];
 const UNDO_STEPS = 50;
@@ -209,10 +210,10 @@ async function settle() {
 
 /** Keeps a step of undo: one of the user's changes, from the library as it was (`before`, JSON) to as it is. */
 function remember(before) {
-  undo.push({ before, after: JSON.stringify(state.library) });
+  const [was, now] = [JSON.parse(before), structuredClone(state.library)];
+  undo.push({ back: diff(now, was), forth: diff(was, now) });
   redo = [];
-  const size = () => undo.reduce((sum, step) => sum + step.before.length + step.after.length, 0);
-  while (undo.length > UNDO_STEPS || size() > UNDO_BYTES) undo.shift();
+  while (undo.length > UNDO_STEPS || JSON.stringify(undo).length > UNDO_BYTES) undo.shift();
 }
 
 /** Applies one of the user's changes, remembering it. */
@@ -246,8 +247,7 @@ async function stepBack(forward = false) {
   const [from, to] = forward ? [redo, undo] : [undo, redo];
   const step = from.pop();
   if (!step) return;
-  const [was, will] = forward ? [step.before, step.after] : [step.after, step.before];
-  const next = apply(structuredClone(state.library), diff(JSON.parse(was), JSON.parse(will)), Date.now());
+  const next = apply(structuredClone(state.library), forward ? step.forth : step.back, Date.now());
   if (problems(next).length) return log('that step can no longer be taken:', problems(next)[0]);
   to.push(step);
   state.library = next;
