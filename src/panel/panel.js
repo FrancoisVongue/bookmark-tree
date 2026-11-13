@@ -1,7 +1,7 @@
 // The panel's entry: the mouse, and the start. It turns what the user does
 // into commands for the worker (see screen.js for what the panel itself owns).
 
-import { allOfJournal, app, arrange, closeMenu, closeNotice, closeOverlay, closePane, deselect, here, idAt, log, menuUnder, op, openMenu, paneAt, pick, picker, pointAt, redraw, refresh, revealActive, rowOf, search, searchJournal, select, send, setFocus, show, showActiveTree, split, targets, toggleStrip, ui, watch } from './screen.js';
+import { allOfJournal, app, arrange, closeMenu, closeNotice, closeOverlay, closePane, deselect, here, idAt, log, menuUnder, openMenu, paneAt, pick, picker, pointAt, redraw, refresh, revealActive, rowOf, search, searchJournal, select, setFocus, show, showActiveTree, split, targets, toggleStrip, ui, watch } from './screen.js';
 import { mainMenu, rowMenu, treeMenu } from './menus.js';
 import { endsDrag } from './drag.js';
 import * as cmd from './commands.js';
@@ -11,9 +11,9 @@ import './keys.js';
 const actions = {
   collapse: ({ pane, id }) => cmd.toggle(pane, id),
   child: ({ pane, id }) => cmd.newTab(pane, id, 'child'),
-  sleep: ({ pane, id }) => send({ type: 'sleep', ids: targets(pane, id), treeId: pane.tree }),
+  sleep: ({ pane, id }) => cmd.sleep(pane, targets(pane, id)),
   remove: ({ pane, id }) => cmd.remove(pane, id),
-  home: ({ id }) => send({ type: 'go-home', nodeId: id }),
+  home: ({ id }) => cmd.goHome(id),
   undo: () => cmd.undo(),
   // Back to where the current tab is: its tree, its row.
   'show-active': async () => {
@@ -31,14 +31,7 @@ const actions = {
   'split-row': () => split('row'),
   'split-column': () => split('column'),
   'picker-tree': ({ el }) => pick(el.dataset.tree, picker().into),
-  // What is chosen in the picker is shown here too, or (the "move" button) moves here.
-  'picker-add': ({ el }) => {
-    const { tree, sel, into } = picker();
-    const { pane, id } = into;
-    op('move', { tree: pane.tree, from: tree, ids: [...sel], target: id, position: id ? 'inside' : 'end', take: 'take' in el.dataset });
-    if (id) op('collapse', { tree: pane.tree, id, collapsed: false }); // So what was added is seen.
-    closeOverlay();
-  },
+  'picker-add': ({ el }) => cmd.addPicked('take' in el.dataset),
   icon: ({ el }) => cmd.setIcon(el.dataset.icon),
   settings: cmd.openSettings,
   'unsynced-close': closeNotice,
@@ -46,7 +39,7 @@ const actions = {
   'journal-more': allOfJournal,
   'journal-toggle': () => toggleStrip('journal'),
   'plan-go': ({ el }) => cmd.revisit(el.dataset.node),
-  unplan: ({ el }) => op('unplan', { ids: [el.closest('.place').dataset.node] }),
+  unplan: ({ el }) => cmd.plan([el.closest('.place').dataset.node], false),
   'plan-toggle': () => toggleStrip('plan'),
   'overlay-close': closeOverlay,
   yes: () => {
@@ -93,7 +86,7 @@ app.addEventListener('auxclick', (event) => {
   const id = idAt(event.target);
   const pane = paneAt(event.target);
   if (!id || event.button !== 1 || pane === picker()) return;
-  if (ui.live.has(id)) send({ type: 'sleep-one', nodeId: id });
+  if (ui.live.has(id)) cmd.sleepOne(id);
   else cmd.remove(pane, id);
 });
 

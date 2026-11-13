@@ -2,7 +2,7 @@
 
 import { gridOf, isGroup, isNote, planOf } from '../model.js';
 import { t } from '../i18n.js';
-import { here, op, openBeside, openMenu, openOverlay, rename, rowOf, send, targets, ui, under } from './screen.js';
+import { here, openBeside, openMenu, rename, rowOf, targets, ui, under } from './screen.js';
 import * as cmd from './commands.js';
 
 const item = (label, run, hint, disabled = false) => ({ label: t(label), hint, disabled, run });
@@ -15,16 +15,14 @@ const anyLive = (pane, ids, live = true) =>
 export function rowMenu(pane, id) {
   const ids = targets(pane, id);
   const node = ui.library.nodes[id];
-  const tree = pane.tree;
   const page = !isNote(node);
   const planned = planOf(ui.library).includes(id);
-  const links = () => ids.map((each) => ui.library.nodes[each].url).join('\n');
   return [
     !page && item('openNote', () => cmd.activate(pane, id)),
     page && !ui.live.has(id) && item('openBackground', () => cmd.activate(pane, id, 'background')),
     page && item('openWindow', () => cmd.activate(pane, id, 'window')),
-    item('openAll', () => send({ type: 'wake', ids, treeId: tree, windowId: ui.windowId }), '', !anyLive(pane, ids, false)),
-    item('sleepShort', () => send({ type: 'sleep', ids, treeId: tree }), '', !anyLive(pane, ids)),
+    item('openAll', () => cmd.wake(pane, ids), '', !anyLive(pane, ids, false)),
+    item('sleepShort', () => cmd.sleep(pane, ids), '', !anyLive(pane, ids)),
     null,
     item('newChild', () => cmd.newTab(pane, id, 'child'), 'Ctrl+Shift+Enter'),
     item('newSibling', () => cmd.newTab(pane, id, 'sibling'), 'Ctrl+Enter'),
@@ -33,16 +31,16 @@ export function rowMenu(pane, id) {
     null,
     item('rename', () => cmd.startRename({ id, pane }), 'F2'),
     page && item('editAddress', () => cmd.startRename({ id, pane, field: 'url' })),
-    page && item('copyLink', () => navigator.clipboard.writeText(links())),
-    item('changeIcon', () => openOverlay({ kind: 'icons', ids })),
+    page && item('copyLink', () => cmd.copyLinks(ids)),
+    item('changeIcon', () => cmd.chooseIcon({ ids })),
     item('duplicate', () => cmd.duplicate(pane, ids), 'Ctrl+D'),
-    !isGroup(node) && (planned ? item('planRemove', () => op('unplan', { ids })) : item('planAdd', () => op('plan', { ids }))),
-    item(node.keep ? 'keepNot' : 'keep', () => op('keep', { ids, keep: !node.keep })),
-    page && item(node.pinned ? 'unpin' : 'pin', () => op('pin', { ids, pinned: !node.pinned })),
-    node.home && node.url !== node.home.url && item('goHome', () => send({ type: 'go-home', nodeId: id })),
+    !isGroup(node) && item(planned ? 'planRemove' : 'planAdd', () => cmd.plan(ids, !planned)),
+    item(node.keep ? 'keepNot' : 'keep', () => cmd.keep(ids, !node.keep)),
+    page && item(node.pinned ? 'unpin' : 'pin', () => cmd.pin(ids, !node.pinned)),
+    node.home && node.url !== node.home.url && item('goHome', () => cmd.goHome(id)),
     null,
-    item('indent', () => op('indent', { tree, ids }), 'Tab'),
-    item('outdent', () => op('outdent', { tree, ids }), 'Shift+Tab'),
+    item('indent', () => cmd.indent(pane, ids), 'Tab'),
+    item('outdent', () => cmd.outdent(pane, ids), 'Shift+Tab'),
     item('addFromTreeHere', () => cmd.openPicker(pane, id), '', !hasOtherTrees()),
     null,
     item(rowOf(pane, id).collapsed ? 'removeBranch' : 'remove', () => cmd.remove(pane, id), 'Del'),
@@ -54,7 +52,7 @@ export function treeMenu(treeId) {
   const ids = Object.keys(ui.library.trees);
   return [
     item('rename', () => cmd.startRename({ tree: treeId })),
-    item('changeIcon', () => openOverlay({ kind: 'icons', tree: treeId })),
+    item('changeIcon', () => cmd.chooseIcon({ tree: treeId })),
     item('openBeside', () => openBeside(treeId)),
     null,
     item('saveToBookmarks', () => cmd.saveToBookmarks(treeId)),
@@ -66,19 +64,18 @@ export function treeMenu(treeId) {
 }
 
 export function mainMenu() {
-  const tree = here().tree;
   // The table of trees can grow freely, and shrink while every tree still has a cell.
   const { columns, rows } = gridOf(ui.library);
   const trees = Object.keys(ui.library.trees).length;
   const size = (label, more) => {
     const next = { columns: columns + (more.columns ?? 0), rows: rows + (more.rows ?? 0) };
-    return item(label, () => op('grid-size', next), '', next.columns * next.rows < trees || next.columns > 6);
+    return item(label, () => cmd.resizeGrid(next), '', next.columns * next.rows < trees || next.columns > 6);
   };
   return [
-    item('redo', () => send({ type: 'redo' }), 'Ctrl+Shift+Z', !ui.canRedo),
+    item('redo', () => cmd.undo(true), 'Ctrl+Shift+Z', !ui.canRedo),
     null,
-    item('collapseAll', () => op('collapse-all', { tree, collapsed: true })),
-    item('expandAll', () => op('collapse-all', { tree, collapsed: false })),
+    item('collapseAll', () => cmd.collapseAll(here(), true)),
+    item('expandAll', () => cmd.collapseAll(here(), false)),
     item('addFromTree', () => cmd.openPicker(here()), '', !hasOtherTrees()),
     null,
     item('newTree', () => cmd.newTree()),

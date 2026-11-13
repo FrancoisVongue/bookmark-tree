@@ -1,6 +1,6 @@
 // The keyboard.
 
-import { app, closeMenu, closeOverlay, deselect, focusRow, here, idAt, onTop, op, paneAt, rowOf, search, searchJournal, selectAlso, targets, ui, under } from './screen.js';
+import { app, closeMenu, closeOverlay, deselect, focusRow, here, idAt, onTop, paneAt, rowOf, search, searchJournal, selectAlso, targets, ui, under } from './screen.js';
 import { endDrag } from './drag.js';
 import * as cmd from './commands.js';
 
@@ -73,7 +73,7 @@ addEventListener('keydown', (event) => {
     ' ': () => cmd.open(pane, id),
     Delete: () => cmd.remove(pane, id, event.shiftKey),
     F2: () => cmd.startRename({ id, pane }),
-    Tab: () => op(event.shiftKey ? 'outdent' : 'indent', { tree, ids }),
+    Tab: () => (event.shiftKey ? cmd.outdent : cmd.indent)(pane, ids),
     d: () => ctrl && cmd.duplicate(pane, ids),
     a: () => ctrl && selectAlso(pane),
   };
@@ -124,5 +124,5 @@ addEventListener('paste', (event) => {
   if (!nodes.length) return;
   event.preventDefault();
   const target = rowOf(here(), ui.cursor)?.id;
-  op('add', { tree: here().tree, nodes, target, position: target ? 'after' : 'end' });
+  cmd.addPages(here(), nodes, target);
 });

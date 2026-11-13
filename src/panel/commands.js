@@ -6,7 +6,7 @@ import { toHtml, toOutline } from '../bookmarks.js';
 import { t } from '../i18n.js';
 import { askForBookmarks, saveFile } from '../page.js';
 import { titleOf } from './view.js';
-import { ask, branches, closeOverlay, endRenaming, here, op, pick, picker, refresh, rename, rowOf, say, send, show, ui, under, unsay } from './screen.js';
+import { ask, branches, closeOverlay, endRenaming, here, op, openOverlay, pick, picker, refresh, rename, rowOf, say, send, show, ui, under, unsay } from './screen.js';
 
 export const activate = (pane, id, where) =>
   send({ type: 'activate', nodeId: id, treeId: pane.tree, windowId: ui.windowId, where });
@@ -18,6 +18,26 @@ export function revisit(id, tree) {
   show(here(), treeFor(ui.library, id, tree));
   activate(here(), id);
 }
+
+/** Closes the tabs of nodes and of all under them (the nodes stay, asleep); `wake` opens them again. */
+export const sleep = (pane, ids) => send({ type: 'sleep', ids, treeId: pane.tree });
+export const wake = (pane, ids) => send({ type: 'wake', ids, treeId: pane.tree, windowId: ui.windowId });
+/** Closes the tab of one node only. */
+export const sleepOne = (id) => send({ type: 'sleep-one', nodeId: id });
+/** Takes a page that went elsewhere back to its own address. */
+export const goHome = (id) => send({ type: 'go-home', nodeId: id });
+
+export const indent = (pane, ids) => op('indent', { tree: pane.tree, ids });
+export const outdent = (pane, ids) => op('outdent', { tree: pane.tree, ids });
+export const collapseAll = (pane, collapsed) => op('collapse-all', { tree: pane.tree, collapsed });
+export const plan = (ids, planned) => op(planned ? 'plan' : 'unplan', { ids });
+export const keep = (ids, kept) => op('keep', { ids, keep: kept });
+export const pin = (ids, pinned) => op('pin', { ids, pinned });
+export const copyLinks = (ids) => navigator.clipboard.writeText(ids.map((id) => ui.library.nodes[id].url).join('\n'));
+/** Opens the table of icons for nodes ({ ids }) or for a tree ({ tree }). */
+export const chooseIcon = (what) => openOverlay({ kind: 'icons', ...what });
+/** Gives the table of trees another size. */
+export const resizeGrid = (size) => op('grid-size', size);
 
 /** Copies of nodes and of all that is under them, right after them. */
 export function duplicate(pane, ids) {
@@ -85,6 +105,18 @@ export function removeTree(treeId) {
 export function openPicker(pane, id) {
   pick(Object.keys(ui.library.trees).find((treeId) => treeId !== pane.tree), { pane, id });
 }
+
+/** What is chosen in the picker is shown where it was opened for too - or, with `take`, moves there. */
+export function addPicked(take) {
+  const { tree, sel, into } = picker();
+  const { pane, id } = into;
+  op('move', { tree: pane.tree, from: tree, ids: [...sel], target: id, position: id ? 'inside' : 'end', take });
+  if (id) op('collapse', { tree: pane.tree, id, collapsed: false }); // So what was added is seen.
+  closeOverlay();
+}
+
+/** New sleeping pages after row `target`, or at the end of the tree. */
+export const addPages = (pane, nodes, target) => op('add', { tree: pane.tree, nodes, target, position: target ? 'after' : 'end' });
 
 /** Addresses in a piece of text, one per line, as new sleeping pages. */
 export function pagesIn(text) {
