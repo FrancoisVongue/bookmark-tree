@@ -42,11 +42,6 @@ const actions = {
   unplan: ({ el }) => cmd.plan([el.closest('.place').dataset.node], false),
   'plan-toggle': () => toggleStrip('plan'),
   'overlay-close': closeOverlay,
-  yes: () => {
-    const { run } = ui.overlay;
-    closeOverlay();
-    run();
-  },
 };
 
 let chosen; // The row that was the one selected before the click now being handled, if it was that row.

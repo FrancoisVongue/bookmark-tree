@@ -4,6 +4,7 @@ import { html, render, nothing } from '../vendor/lit-html/lit-html.js';
 import { repeat } from '../vendor/lit-html/directives/repeat.js';
 import { descendantsOf, gridOf, isGroup, isNote, parentOf, planOf } from '../model.js';
 import { t } from '../i18n.js';
+import { toastView } from '../parts.js';
 import { keyOf } from './keymap.js';
 
 // One family of icons: lines of one weight on a 20-unit grid. (Two are solid: an arrow that small and three dots have no outline to speak of.)
@@ -262,19 +263,6 @@ function pickerView(ui) {
   `);
 }
 
-/** A question with two answers. The settings page asks the same way. */
-export const askView = ({ question, yes }) =>
-  dialog(
-    html`
-      <p>${question}</p>
-      <footer>
-        <button data-action="overlay-close">${t('cancel')}</button>
-        <button class="primary" data-action="yes">${yes}</button>
-      </footer>
-    `,
-    'ask',
-  );
-
 const iconsView = () =>
   dialog(
     html`
@@ -285,7 +273,7 @@ const iconsView = () =>
     'icons',
   );
 
-const OVERLAYS = { picker: pickerView, icons: iconsView, ask: (ui) => askView(ui.overlay) };
+const OVERLAYS = { picker: pickerView, icons: iconsView };
 
 const AGO = new Intl.RelativeTimeFormat(undefined, { style: 'narrow' });
 /** How long ago, in a word or two. */
@@ -396,12 +384,7 @@ export function draw(container, ui) {
       ${planView(ui)}
       <main class="panes split-${ui.split}">${ui.panes.map((pane, index) => paneView(pane, index, ui))}</main>
       ${ui.toast
-        ? html`<div class="toasts">
-            <div class="toast">
-              <span>${ui.toast.text}</span>
-              ${ui.toast.undo ? html`<button class="pill" data-action="undo">${t('undo')}</button>` : nothing}
-            </div>
-          </div>`
+        ? html`<div class="toasts">${toastView(ui.toast)}</div>`
         : nothing}
       ${journalView(ui)}
       ${ui.unsynced

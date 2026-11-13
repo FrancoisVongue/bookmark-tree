@@ -3,6 +3,7 @@
 // are lit and which cannot be used where the cursor stands.
 
 import { t } from '../i18n.js';
+import { ask } from '../parts.js';
 
 const svg = (path) => `<svg viewBox="0 0 20 20" width="18" height="18"><path d="${path}" /></svg>`;
 const heading = (level) => ({
@@ -13,11 +14,10 @@ const heading = (level) => ({
   on: ['heading', { level }],
 });
 
-/** Asks for the address. On a link it changes it, and an empty answer removes the link. */
-function link(chain, editor) {
+/** Makes a link to `href` (asked for first: see `ask` in the tool). On a link it changes it, and an empty address removes the link. */
+function link(chain, editor, href) {
   const old = editor.getAttributes('link').href;
-  const href = prompt(t('noteLinkAddress'), old ?? 'https://')?.trim();
-  if (href === undefined) return chain;
+  if (href === undefined) return chain; // Asking only whether it can be done, or the person said no.
   if (!href) return chain.extendMarkRange('link').unsetLink();
   if (old) return chain.extendMarkRange('link').setLink({ href });
   // With nothing selected there is nothing to turn into a link: the address itself becomes one.
@@ -49,7 +49,7 @@ const groups = [
     { title: t('noteTaskList'), keys: 'Mod+Shift+9', icon: svg('M3.5 3.5h13v13h-13zM6.5 10l2.5 2.5 4.5-5'), run: (chain) => chain.toggleTaskList(), on: ['taskList'] },
   ],
   [
-    { title: t('noteLink'), icon: svg('M8.5 11.5a3 3 0 0 0 4.2 0l2.5-2.5A3 3 0 0 0 11 4.8l-1 1M11.5 8.5a3 3 0 0 0-4.2 0L4.8 11A3 3 0 0 0 9 15.2l1-1'), run: link, on: ['link'] },
+    { title: t('noteLink'), icon: svg('M8.5 11.5a3 3 0 0 0 4.2 0l2.5-2.5A3 3 0 0 0 11 4.8l-1 1M11.5 8.5a3 3 0 0 0-4.2 0L4.8 11A3 3 0 0 0 9 15.2l1-1'), ask: (editor) => ask(t('noteLinkAddress'), t('noteLinkYes'), editor.getAttributes('link').href ?? 'https://').then((href) => href?.trim()), run: link, on: ['link'] },
     { title: t('noteTable'), icon: svg('M3 4h14v12H3zM3 8h14M3 12h14M7.7 4v12M12.3 4v12'), run: (chain) => chain.insertTable({ rows: 3, cols: 3, withHeaderRow: true }) },
   ],
 ];
@@ -76,7 +76,8 @@ export function toolbar(editor, bar) {
       button.innerHTML = tool.icon;
       button.title = tool.keys ? `${tool.title} (${tool.keys.replace('Mod', mod)})` : tool.title;
       button.setAttribute('aria-label', tool.title);
-      button.addEventListener('click', () => tool.run(editor.chain().focus(), editor).run());
+      // A tool that needs an answer asks for it first; what it then does is one step, as for the others.
+      button.addEventListener('click', async () => tool.run(editor.chain().focus(), editor, await tool.ask?.(editor)).run());
       buttons.set(button, tool);
     }
     return element;
@@ -90,8 +91,7 @@ export function toolbar(editor, bar) {
   const refresh = () => {
     table.hidden = !editor.isActive('table');
     for (const [button, tool] of buttons) {
-      // Asking whether a link can be made would ask the person for its address.
-      button.disabled = tool.run !== link && !tool.run(editor.can().chain(), editor).run();
+      button.disabled = !tool.run(editor.can().chain(), editor).run();
       if (tool.on) button.setAttribute('aria-pressed', editor.isActive(...tool.on));
     }
   };

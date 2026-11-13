@@ -5,6 +5,7 @@ import { endDrag } from './drag.js';
 import * as cmd from './commands.js';
 
 addEventListener('keydown', (event) => {
+  if (event.target.closest?.('dialog')) return; // A question is asked: the keys are its.
   const ctrl = event.ctrlKey || event.metaKey;
   const letter = event.key.toLowerCase();
   if (event.target.closest?.('.rename')) {

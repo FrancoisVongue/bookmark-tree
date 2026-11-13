@@ -46,7 +46,6 @@ export const ui = {
   // The one thing open on top of the panel, if any:
   //   { kind: 'picker', into, tree, rows, sel }  a pane to choose nodes of another tree
   //   { kind: 'icons', ids } or { ..., tree }    the table of icons, for nodes or for a tree
-  //   { kind: 'ask', question, yes, run }        a question before something is lost
   overlay: undefined,
   toast: undefined, // { text, undo }: what was just done, and whether "Undo" would take it back.
   tight: undefined, // The step between two rows of one level, in pixels (see place()).
@@ -254,6 +253,7 @@ export const onTop = () => ui.menu ?? ui.overlay ?? ui.renaming;
  * cursor is on.
  */
 function settleFocus() {
+  if (document.querySelector('dialog[open]')) return; // A question is asked (see ask in parts.js): the browser keeps the keyboard in it.
   const within = (selector) => app.querySelector(selector)?.contains(document.activeElement);
   if (ui.renaming) {
     // The field of the name being typed has it, with all of the name selected and its beginning in sight.
@@ -262,9 +262,8 @@ function settleFocus() {
     return;
   }
   if (ui.menu) return within('.menu') || app.querySelector('.menu')?.focus();
-  // A question waits on its "yes", the table of icons in its field, a pane to choose from on itself.
-  const first = { ask: '.primary', icons: '.any' }[ui.overlay?.kind] ?? '';
-  if (ui.overlay) return within('.dialog') || app.querySelector(`.dialog ${first}`)?.focus();
+  // The table of icons waits in its field, a pane to choose from on itself.
+  if (ui.overlay) return within('.dialog') || app.querySelector(`.dialog ${ui.overlay.kind === 'icons' ? '.any' : ''}`)?.focus();
   if (!app.contains(document.activeElement) || document.activeElement === app) rowEl(here(), ui.cursor)?.focus({ preventScroll: true });
 }
 
@@ -275,12 +274,6 @@ addEventListener('pointerdown', () => app.classList.remove('keys'), true);
 export function closeOverlay() {
   ui.overlay = undefined;
   redraw();
-}
-
-/** Asks before something is lost: `run` happens only on a yes (the button named `yes`). */
-export function ask(question, yes, run) {
-  ui.overlay = { kind: 'ask', question, yes, run };
-  redraw(); // (The keyboard goes to "yes": see settleFocus.)
 }
 
 let toastTimer;

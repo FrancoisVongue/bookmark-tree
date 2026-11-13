@@ -4,9 +4,10 @@ import { isGroup, newId, treeFor } from '../model.js';
 import { exportTree } from '../ops.js';
 import { toHtml, toOutline } from '../bookmarks.js';
 import { t } from '../i18n.js';
+import { ask } from '../parts.js';
 import { askForBookmarks, saveFile } from '../page.js';
 import { titleOf } from './view.js';
-import { ask, branches, closeOverlay, endRenaming, here, op, openOverlay, pick, picker, refresh, rename, rowOf, say, send, show, ui, under, unsay } from './screen.js';
+import { branches, closeOverlay, endRenaming, here, op, openOverlay, pick, picker, refresh, rename, rowOf, say, send, show, ui, under, unsay } from './screen.js';
 
 export const activate = (pane, id, where) =>
   send({ type: 'activate', nodeId: id, treeId: pane.tree, windowId: ui.windowId, where });
@@ -85,17 +86,15 @@ export function remove(pane, id, everywhere = false) {
     await (everywhere ? op('delete', { ids }) : op('remove', { tree: pane.tree, ids }));
     say(t('removed', ids.length), true);
   };
-  if (ids.length === 1) return go();
-  if (everywhere) ask(t('askDelete', ids.length), t('deleteYes'), go);
-  else ask(t('askRemove', ids.length, ui.library.trees[pane.tree].name), t('removeYes'), go);
+  const sure = ids.length === 1 || (everywhere ? ask(t('askDelete', ids.length), t('deleteYes')) : ask(t('askRemove', ids.length, ui.library.trees[pane.tree].name), t('removeYes')));
+  return Promise.resolve(sure).then((yes) => yes && go());
 }
 
 /** Deletes a tree, once the user has said yes. */
-export function removeTree(treeId) {
-  ask(t('askDeleteTree', ui.library.trees[treeId].name), t('deleteYes'), async () => {
-    await op('tree-remove', { tree: treeId });
-    say(t('treeDeleted'), true);
-  });
+export async function removeTree(treeId) {
+  if (!(await ask(t('askDeleteTree', ui.library.trees[treeId].name), t('deleteYes')))) return;
+  await op('tree-remove', { tree: treeId });
+  say(t('treeDeleted'), true);
 }
 
 /**
