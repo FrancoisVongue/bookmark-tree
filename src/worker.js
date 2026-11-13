@@ -298,37 +298,70 @@ async function adopt(library, asked = false) {
  * Brings this library and the saved one together: takes in what changed
  * there since the last time (see takeIn in merge.js), saves the result as
  * the next version. If someone saves in between, it starts over.
+ *
+ * It waits for the network outside the queue - tabs go on being heard and
+ * the panels answered meanwhile - and queues only what touches the state:
+ * taking theirs in, and noting what was saved. One sync runs at a time.
  */
-async function sync() {
+let syncing;
+const sync = () => (syncing ??= syncOnce().finally(() => (syncing = undefined)));
+
+async function syncOnce() {
   const settings = await loadSync();
   if (!loaded || !settings?.repo || !settings.token) return;
   try {
     for (let attempt = 1; ; attempt++) {
       const remote = await github.pull(settings);
       const news = remote && remote.version !== settings.version;
-      if (news) {
-        const base = settings.base && JSON.parse(settings.base);
-        const theirs = migrate(remote.library);
-        const told = goneOf(theirs).filter((id) => !(id in (base?.gone ?? {})));
-        const next = takeIn(structuredClone(state.library), base, theirs, told, Date.now());
-        if (JSON.stringify(next) !== JSON.stringify(state.library)) await adopt(next);
-      }
-      const mine = JSON.stringify(core.shared(state.library));
-      const saved = remote && mine === (news ? JSON.stringify(remote.library) : settings.base);
+      const mine = await enqueue('sync: take in', async () => {
+        if (news) {
+          const base = settings.base && JSON.parse(settings.base);
+          const theirs = migrate(remote.library);
+          const told = goneOf(theirs).filter((id) => !(id in (base?.gone ?? {})));
+          const next = takeIn(structuredClone(state.library), base, theirs, told, Date.now());
+          if (JSON.stringify(next) !== JSON.stringify(state.library)) await adopt(next);
+        }
+        return JSON.stringify(core.shared(state.library));
+      });
+      if (mine === undefined) throw new Error('What was saved there could not be taken in.');
+      const same = remote && mine === (news ? JSON.stringify(remote.library) : settings.base);
       let version = remote?.version;
       try {
-        if (!saved) version = await github.push(settings, JSON.parse(mine), version, `Tree: ${new Date().toISOString()}`);
+        if (!same) version = await github.push(settings, JSON.parse(mine), version, `Tree: ${new Date().toISOString()}`);
       } catch (error) {
         if (error instanceof github.Conflict && attempt < 3) continue;
         throw error;
       }
-      log('synced', saved ? '(nothing to save)' : '(saved a version)', news ? '(took theirs in)' : '');
-      return saveSync({ ...settings, version, base: mine, at: Date.now(), error: undefined });
+      log('synced', same ? '(nothing to save)' : '(saved a version)', news ? '(took theirs in)' : '');
+      return await noteSync(settings, { version, base: mine, at: Date.now(), error: undefined });
     }
   } catch (error) {
     log('sync failed', error.message);
-    await saveSync({ ...settings, error: error.message });
+    await noteSync(settings, { error: error.message });
   }
+}
+
+/** Writes down how a sync went - unless the user pointed the sync elsewhere meanwhile: then it tells nothing about the new place. */
+const noteSync = (settings, outcome) =>
+  enqueue('sync: note', async () => {
+    const now = await loadSync();
+    if (now?.repo === settings.repo && now.api === settings.api) await saveSync({ ...now, ...outcome });
+  });
+
+/** The versions one can go back to: those saved on GitHub, then this computer's backups. */
+async function versions() {
+  const settings = await loadSync();
+  const remote = settings?.repo ? await github.history(settings).catch((error) => (log('history failed', error.message), [])) : [];
+  const { backups = [], backedUpAt } = await chrome.storage.local.get(['backups', 'backedUpAt']);
+  const last = backedUpAt ? [{ ref: 'local:last', at: backedUpAt, local: true }] : [];
+  return [...remote, ...last, ...backups.toReversed().map((day) => ({ ref: `local:${day}`, at: day, local: true }))];
+}
+
+/** Goes back to a saved version. The next sync saves it as the newest. */
+async function goBackTo(ref) {
+  const key = `backup.${ref.slice('local:'.length)}`;
+  const old = ref.startsWith('local:') ? JSON.parse((await chrome.storage.local.get(key))[key]) : (await github.pull(await loadSync(), ref))?.library;
+  if (old) await enqueue('sync-restore', () => adopt(migrate(old), true));
 }
 
 // --- Backups on this computer --------------------------------------------------
@@ -471,27 +504,6 @@ async function handle(message, sender) {
     }
     case 'exchange':
       return exchange();
-    case 'sync-now':
-      // Everything at once: the quick exchange, then the full sync.
-      await exchange();
-      return sync();
-    case 'sync-history': {
-      // The versions one can go back to: those saved on GitHub, then this computer's daily backups.
-      const settings = await loadSync();
-      const remote = settings?.repo ? await github.history(settings).catch((error) => (log('history failed', error.message), [])) : [];
-      const { backups = [], backedUpAt } = await chrome.storage.local.get(['backups', 'backedUpAt']);
-      const last = backedUpAt ? [{ ref: 'local:last', at: backedUpAt, local: true }] : [];
-      return [...remote, ...last, ...backups.toReversed().map((day) => ({ ref: `local:${day}`, at: day, local: true }))];
-    }
-    case 'sync-restore': {
-      // Goes back to a saved version. The next sync saves it as the newest.
-      const key = `backup.${message.ref.slice('local:'.length)}`;
-      const old = message.ref.startsWith('local:')
-        ? JSON.parse((await chrome.storage.local.get(key))[key])
-        : (await github.pull(await loadSync(), message.ref))?.library;
-      if (old) await adopt(migrate(old), true);
-      return;
-    }
     case 'restore-file':
       // A whole library from a backup file. Says what is wrong with it, if anything.
       return adopt(migrate(message.library), true).catch((error) => error.message);
@@ -501,10 +513,21 @@ async function handle(message, sender) {
   }
 }
 
+// Commands that wait for GitHub do so outside the queue, and queue only what they then do to the state.
+const unqueued = {
+  // Everything at once: the quick exchange, then the full sync.
+  'sync-now': () => enqueue('exchange', exchange).then(sync),
+  'sync-history': versions,
+  'sync-restore': ({ ref }) => goBackTo(ref),
+};
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'changed') return;
   if (message.type !== 'get-state') log('command', message);
-  enqueue(message.op ?? message.type, () => handle(message, sender)).then(sendResponse);
+  const done = unqueued[message.type]
+    ? unqueued[message.type](message).catch((error) => console.error('[tree]', message.type, error))
+    : enqueue(message.op ?? message.type, () => handle(message, sender));
+  done.then(sendResponse);
   return true;
 });
 
@@ -530,8 +553,8 @@ chrome.commands.onCommand.addListener((command, tab) => {
 // Once a day the library is synced in full by itself (and whenever the user
 // asks); once a minute, and whenever another computer writes something, the
 // quick exchange runs.
-const TIMERS = { sync: [SYNC_EVERY_MINUTES, sync], exchange: [1, exchange], backup: [60, backUp] };
-chrome.alarms.onAlarm.addListener((alarm) => TIMERS[alarm.name] && enqueue(alarm.name, TIMERS[alarm.name][1]));
+const TIMERS = { sync: [SYNC_EVERY_MINUTES, sync], exchange: [1, () => enqueue('exchange', exchange)], backup: [60, () => enqueue('backup', backUp)] };
+chrome.alarms.onAlarm.addListener((alarm) => TIMERS[alarm.name]?.[1]());
 for (const [name, [minutes]] of Object.entries(TIMERS)) {
   chrome.alarms.get(name).then((alarm) => alarm || chrome.alarms.create(name, { periodInMinutes: minutes }));
 }

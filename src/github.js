@@ -18,7 +18,7 @@ async function call(settings, path, init = {}) {
   const response = await fetch(`${settings.api ?? 'https://api.github.com'}/repos/${settings.repo}/${path}`, {
     ...init,
     cache: 'no-store',
-    signal: AbortSignal.timeout(15000), // A request that hangs must not hold up everything queued behind it.
+    signal: AbortSignal.timeout(15000), // A request that hangs must end: the sync waiting for it is the only one that may run.
     headers: { Authorization: `Bearer ${settings.token}`, Accept: 'application/vnd.github+json' },
   });
   if (response.status === 404) return undefined;
