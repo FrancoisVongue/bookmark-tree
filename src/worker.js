@@ -147,8 +147,9 @@ chrome.tabs.onCreated.addListener((created) => {
     openedFrom.delete(tab.id);
     // The page the user was on. (A worker just woken does not know which tab was shown: where the user's attention was says it.)
     const shownNode = (beside !== tab.id && state.binding[beside]?.node) || state.attention?.node;
-    const result = core.tabCreated(state, tab, { opener: created.openerTabId, reported, shownNode, treeId: windowTree(tab.windowId), at: Date.now() });
-    log('tab', tab.id, 'created ->', result, `(opener ${created.openerTabId}, reported ${reported}, beside tab ${beside})`, tab.pendingUrl || tab.url);
+    const born = created.pendingUrl || created.url;
+    const result = core.tabCreated(state, tab, { born, opener: created.openerTabId, reported, shownNode, treeId: windowTree(tab.windowId), at: Date.now() });
+    log('tab', tab.id, 'created ->', result, `(born ${born || 'with no address'}, opener ${created.openerTabId}, reported ${reported}, beside tab ${beside})`, tab.pendingUrl || tab.url);
   });
 });
 
