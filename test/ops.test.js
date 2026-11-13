@@ -146,3 +146,23 @@ test('what is added or copied remembers when', () => {
   ops.duplicate(library, { tree: MAIN, ids: ['a'] }, 3000);
   assert.deepEqual(Object.values(library.nodes).map((node) => node.added), [1000, 2000, 3000]);
 });
+
+test('taking back one change leaves everything made since in place', async () => {
+  const { apply, diff } = await import('../src/merge.js');
+  const library = createLibrary();
+  ops.add(library, { tree: MAIN, nodes: [{ id: 'a', url: 'https://a.example/', title: 'A' }] }, 1);
+  ops['note-add'](library, { tree: MAIN, id: 'n' }, 1);
+  const before = structuredClone(library);
+  ops.rename(library, { id: 'a', name: 'Renamed' });
+  const after = structuredClone(library);
+  // Since then: a page kept, a note written.
+  ops.add(library, { tree: MAIN, nodes: [{ id: 'b', url: 'https://b.example/', title: 'B' }] }, 2);
+  ops['note-text'](library, { id: 'n', text: 'an hour of writing' });
+  apply(library, diff(after, before), 3); // Undo the rename.
+  assert.equal(library.nodes.a.name, undefined);
+  assert.equal(library.nodes.b.title, 'B');
+  assert.equal(library.nodes.n.note, 'an hour of writing');
+  assert.deepEqual(problems(library), []);
+  apply(library, diff(before, after), 4); // And redo it.
+  assert.equal(library.nodes.a.name, 'Renamed');
+});

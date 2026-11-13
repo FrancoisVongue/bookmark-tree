@@ -119,8 +119,10 @@ async function importFile() {
     if (text.trimStart().startsWith('<')) return await addTree(fromOutline(fromHtml(text), file.name.replace(/(\.bookmarks)?\.[^.]*$/, ''), uuid));
     const data = JSON.parse(text);
     if (data.trees) {
-      const refused = await send({ type: 'restore-file', library: data });
-      return say(refused ?? t('restored'), !refused);
+      return ask(t('askRestore'), t('restoreYes'), async () => {
+        const refused = await send({ type: 'restore-file', library: data });
+        say(refused ?? t('restored'), !refused);
+      });
     }
     if (!data.nodes || !data.tree?.children) throw new Error('not a tree file');
     await addTree(data);
@@ -195,7 +197,8 @@ addEventListener('keydown', (event) => {
 const button = (action, label, { primary = false, disabled = false } = {}) =>
   html`<button class="button ${primary ? 'primary' : ''}" data-action=${action} ?disabled=${disabled || page.busy}>${label}</button>`;
 
-const when = ({ at, local }) => (local ? `${new Date(at).toLocaleDateString()} · ${t('localBackup')}` : new Date(at).toLocaleString());
+/** A version's time. This computer's daily copies are known to the day; its last one, and GitHub's, to the minute. */
+const when = ({ at, local }) => `${typeof at === 'string' && local ? new Date(at).toLocaleDateString() : new Date(at).toLocaleString()}${local ? ` · ${t('localBackup')}` : ''}`;
 
 function syncView() {
   const { sync, busy } = page;

@@ -148,3 +148,53 @@ test('months nobody touched are not written again', async () => {
   assert.ok(first > 20, `${first} pieces at first`);
   assert.equal(again, 2); // The new month, and the trees.
 });
+
+test('a computer that was away while the other wrote many times keeps its own changes', async () => {
+  const store = sharedStore();
+  const [a, b] = [computer('a'), computer('b')];
+  for (const id of ['x', 'y', 'z']) add(a, id);
+  ops['note-add'](a.library, { tree: MAIN, id: 'note' }, 1);
+  await rounds(store, [a, b]);
+  // b, away, changes things; a writes five snapshots meanwhile.
+  ops['note-text'](b.library, { id: 'note', text: 'written on b' });
+  ops.rename(b.library, { id: 'x', name: 'Named on b' });
+  ops.move(b.library, { tree: MAIN, ids: ['z'], target: 'x', position: 'before' });
+  ops['tree-rename'](b.library, { tree: MAIN, name: 'Renamed on b' });
+  for (let n = 0; n < 5; n++) {
+    add(a, `more${n}`);
+    await exchange(store, a);
+  }
+  ops.rename(a.library, { id: 'y', name: 'Named on a' });
+  await exchange(store, a);
+  await rounds(store, [a, b]);
+  for (const who of [a, b]) {
+    assert.equal(who.library.nodes.note.note, 'written on b');
+    assert.equal(who.library.nodes.x.name, 'Named on b');
+    assert.equal(who.library.nodes.y.name, 'Named on a');
+    assert.equal(who.library.trees[MAIN].name, 'Renamed on b');
+    assert.ok(outline(who).startsWith('z x y'), outline(who));
+    assert.equal(Object.keys(who.library.nodes).length, 9);
+  }
+});
+
+test('both write several times without hearing each other: still nothing is lost', async () => {
+  const store = sharedStore();
+  const [a, b] = [computer('a'), computer('b')];
+  add(a, 'x');
+  await rounds(store, [a, b]);
+  const apart = sharedStore(); // b's own world while it is cut off.
+  Object.assign(apart.cells, await store.get());
+  for (let n = 0; n < 3; n++) {
+    add(a, `a${n}`);
+    await exchange(store, a);
+    add(b, `b${n}`);
+    await exchange(apart, b);
+  }
+  ops.rename(a.library, { id: 'x', name: 'Named on a' });
+  await exchange(store, a);
+  await rounds(store, [a, b]); // b is back: it meets a's snapshots, a meets b's.
+  for (const who of [a, b]) {
+    assert.equal(Object.keys(who.library.nodes).length, 7);
+    assert.equal(who.library.nodes.x.name, 'Named on a');
+  }
+});

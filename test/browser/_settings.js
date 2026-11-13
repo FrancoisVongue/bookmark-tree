@@ -15,6 +15,9 @@ export async function openSettings(ctx, panel, errors, via) {
 export async function importFile(page, file) {
   const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.click('[data-action="import-file"]')]);
   await chooser.setFiles(file);
+  await new Promise((done) => setTimeout(done, 500));
+  // A backup of the whole library asks before it replaces everything.
+  if (await page.locator('.dialog .primary').count()) await page.click('.dialog .primary');
   await new Promise((done) => setTimeout(done, 700));
   return page.locator('.toast span').textContent().catch(() => '-');
 }

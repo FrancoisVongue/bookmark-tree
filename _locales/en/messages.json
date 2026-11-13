@@ -185,6 +185,12 @@
   "askDeleteTree": {
     "message": "Delete the tree “$1”?"
   },
+  "askRestore": {
+    "message": "Replace the whole library with the one in this backup file?"
+  },
+  "restoreYes": {
+    "message": "Replace"
+  },
   "askEmptyTrash": {
     "message": "Empty the trash ($1 pages)?"
   },

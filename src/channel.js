@@ -9,22 +9,27 @@
 // - What a snapshot does not mention, it says nothing about. A page is
 //   deleted elsewhere only when a snapshot says so by name (`gone`).
 // - A computer learns what changed elsewhere by comparing a snapshot with
-//   the one it was made from (`parent`). Without such a common past the two
-//   are simply put together.
+//   one both sides have seen. Each snapshot carries a clock - how many
+//   snapshots of each computer went into it - so a computer can tell
+//   whether a snapshot was made knowing the one it last saw, however many
+//   it has missed since. Without such a common past the two libraries are
+//   simply put together.
 //
 // No work is done twice: pages are grouped by the month they were last
 // used, each group is squeezed apart and stored under the name of its
 // content. A month nobody touched keeps its name and is not written again.
 //
 //   in the synced storage:
-//     head           { v, id, parent, top: [name], months: [[name]] }
+//     head           { v, id, clock: { [device]: n }, top: [name], months: [[name]] }
 //     p.<name>       a piece of squeezed text (a group may take several)
 //     away.<device>  how many pages that computer keeps to itself
 //   kept on this computer (`ch`):
-//     { device, head, seen, gone, before: { id, seen } }
-//       head, seen, gone   the snapshot last taken in or written: its id,
-//                          its library (JSON), the deletions it named
-//       before             the snapshot my last one was made from
+//     { device, head, clock, seen, gone, mine, before: { clock, seen } }
+//       head, clock, seen, gone   the snapshot last taken in or written: its id and
+//                                 clock, its library (JSON), the deletions it named
+//       mine                      whether I wrote it
+//       before                    the last snapshot taken in from elsewhere: what
+//                                 my own ones since were made from
 
 import { DAY, ROOT, freshOf, kidsOf, parentOf, removeNode } from './model.js';
 import { EMPTY, apply, diff, isEmpty, only } from './merge.js';
@@ -33,7 +38,10 @@ export const BUDGET = 90_000; // Of the 102,400 bytes the browser allows.
 const PIECE = 7000; // The browser allows 8192 per item, its name included.
 const MONTH = 30;
 
-export const newState = (device) => ({ device, gone: [] });
+export const newState = (device) => ({ device, gone: [], clock: {} });
+
+/** Whether a snapshot with clock `later` was made knowing the one with clock `earlier`. */
+const knows = (later, earlier) => Object.entries(earlier ?? {}).every(([device, n]) => (later?.[device] ?? 0) >= n);
 
 // --- Squeezing -----------------------------------------------------------------
 
@@ -148,7 +156,7 @@ async function read(all) {
   });
   const library = { nodes: Object.fromEntries(nodes.map((node) => [node.id, node])), trees: Object.fromEntries(trees.map((tree) => [tree.id, tree])), trash: [] };
   if (top.grid) library.grid = top.grid;
-  return { id: head.id, parent: head.parent, library, gone: top.gone };
+  return { id: head.id, clock: head.clock ?? {}, library, gone: top.gone };
 }
 
 // --- The exchange --------------------------------------------------------------
@@ -165,14 +173,18 @@ const changes = (base, next) => diff(only(base, new Set(Object.keys(next.nodes))
 export async function receive(cells, ch, library, at) {
   const remote = await read(await cells.get());
   if (!remote || remote.id === ch.head) return false;
-  // Made from the snapshot I know, or from the one my own last was made from (we both wrote at once)?
-  const base = remote.parent === ch.head ? ch.seen : remote.parent === ch.before?.id ? ch.before.seen : undefined;
+  // Made knowing the snapshot I have, or at least the last one I took in (we both wrote since)?
+  // Else we share no past: a first meeting.
+  const base = knows(remote.clock, ch.clock) ? ch.seen : ch.before && knows(remote.clock, ch.before.clock) ? ch.before.seen : undefined;
   const was = JSON.stringify(library);
   apply(library, changes(parsed(base), remote.library), at);
   for (const id of remote.gone) {
     if (!ch.gone.includes(id)) for (const tree in library.trees) removeNode(library, tree, id, at);
   }
-  Object.assign(ch, { head: remote.id, seen: JSON.stringify(remote.library), gone: remote.gone });
+  // The clocks join: what I wrote meanwhile is still to be told, on top of this.
+  const clock = { ...remote.clock };
+  for (const [device, n] of Object.entries(ch.clock ?? {})) clock[device] = Math.max(clock[device] ?? 0, n);
+  Object.assign(ch, { head: remote.id, clock, seen: JSON.stringify(remote.library), gone: remote.gone, mine: false });
   return JSON.stringify(library) !== was;
 }
 
@@ -189,8 +201,10 @@ export async function publish(cells, ch, library, budget) {
     const stale = Object.keys(all).filter((name) => !name.startsWith('away.') && !(name in mine.items));
     const fresh = Object.fromEntries(Object.entries(mine.items).filter(([name]) => !(name in all)));
     await cells.remove(stale);
-    await cells.set({ ...fresh, head: { ...mine.head, parent: ch.head } });
-    Object.assign(ch, { before: { id: ch.head, seen: ch.seen }, head: mine.head.id, seen: JSON.stringify(mine.library), gone: mine.gone });
+    const clock = { ...ch.clock, [ch.device]: (ch.clock?.[ch.device] ?? 0) + 1 };
+    await cells.set({ ...fresh, head: { ...mine.head, clock } });
+    if (!ch.mine) ch.before = { clock: ch.clock, seen: ch.seen };
+    Object.assign(ch, { head: mine.head.id, clock, seen: JSON.stringify(mine.library), gone: mine.gone, mine: true });
   }
   if (all[`away.${ch.device}`] !== mine.hidden) await cells.set({ [`away.${ch.device}`]: mine.hidden });
   return mine.hidden;

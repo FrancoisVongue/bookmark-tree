@@ -4,7 +4,7 @@
 
 import { addNode, descendantsOf, isGroup, isNote, migrate, moveNode, newId, problems, stamped, treeFor, validTree } from './model.js';
 import { QUIET, ops } from './ops.js';
-import { EMPTY, merge } from './merge.js';
+import { EMPTY, apply, diff, merge } from './merge.js';
 import * as github from './github.js';
 import * as channel from './channel.js';
 import * as core from './core.js';
@@ -16,7 +16,7 @@ let state = core.createState();
 let loaded = false;
 // What the user must be told: the library could not be read, or could not be saved.
 let trouble;
-// The library as it was before each of the user's changes, newest last (JSON).
+// The user's changes that can be taken back, newest last: the library before and after each ({ before, after }, JSON).
 let undo = [];
 let redo = [];
 const UNDO_STEPS = 50;
@@ -40,7 +40,8 @@ function enqueue(name, task) {
   const run = queue
     .then(task)
     .then(async (result) => {
-      await commit(name);
+      // Not saved is told to the user (see `trouble`); the answer still goes back.
+      await commit(name).catch((error) => console.error('[tree] not saved after', name, error));
       return result;
     })
     .catch((error) => console.error('[tree]', name, error));
@@ -53,6 +54,12 @@ async function commit(name) {
   const library = JSON.stringify(state.library);
   const session = JSON.stringify({ binding: state.binding, windows: state.windows, undo, redo });
   if (!loaded || (library === saved.library && session === saved.session)) return;
+  if (library !== saved.library && problems(state.library).length) {
+    // Whatever did this, a damaged library is never saved: back to the one that was.
+    log('NOT saved after', name, '- the library would be damaged:', problems(state.library)[0]);
+    if (saved.library) state.library = JSON.parse(saved.library);
+    return reconcile();
+  }
   try {
     if (library !== saved.library) await chrome.storage.local.set({ library: state.library });
     if (session !== saved.session) await chrome.storage.session.set({ session: JSON.parse(session) });
@@ -70,7 +77,15 @@ const allTabs = () => chrome.tabs.query({});
 const reconcile = async () => core.reconcile(state, await allTabs(), (tab) => windowTree(tab.windowId), Date.now());
 
 async function init() {
-  const { library } = await chrome.storage.local.get('library');
+  const { library, backups } = await chrome.storage.local.get(['library', 'backups']).catch((error) => {
+    trouble = `The saved library could not be read (${error.message}). Nothing is changed until it can.`;
+    throw error;
+  });
+  if (!library && backups?.length) {
+    // There was a library here before: this is not a first start.
+    trouble = 'The saved library is missing. Nothing is changed until you restore a backup.';
+    throw new Error(trouble);
+  }
   const { session } = await chrome.storage.session.get('session');
   const found = library ? problems(migrate(library)) : [];
   if (found.length) {
@@ -80,6 +95,7 @@ async function init() {
   if (library) state.library = library;
   loaded = true;
   if (session) ({ binding: state.binding, windows: state.windows, undo, redo } = session);
+  saved.library = JSON.stringify(state.library);
   log('init:', library ? 'library loaded' : 'new library', '|', session ? 'same session' : 'new session');
   const keepFrom = Date.now() - TRASH_DAYS * 24 * 3600 * 1000;
   state.library.trash = state.library.trash.filter((entry) => entry.at > keepFrom);
@@ -176,22 +192,29 @@ async function settle() {
   await closeTabs(gone);
 }
 
-/** Applies one of the user's changes, remembering the library as it was. */
+/** Keeps a step of undo: one of the user's changes, from the library as it was (`before`, JSON) to as it is. */
+function remember(before) {
+  undo.push({ before, after: JSON.stringify(state.library) });
+  redo = [];
+  const size = () => undo.reduce((sum, step) => sum + step.before.length + step.after.length, 0);
+  while (undo.length > UNDO_STEPS || size() > UNDO_BYTES) undo.shift();
+}
+
+/** Applies one of the user's changes, remembering it. */
 async function change(name, args) {
   if (!ops[name]) return log('unknown op', name);
   const before = JSON.stringify(state.library);
-  const effect = ops[name](state.library, args, Date.now()) ?? {};
-  const found = problems(state.library);
-  if (found.length) {
+  let effect;
+  try {
+    effect = ops[name](state.library, args, Date.now()) ?? {};
+    const found = problems(state.library);
+    if (found.length) throw new Error(found[0]);
+  } catch (error) {
     // Whatever went wrong, the library stays as it was.
     state.library = JSON.parse(before);
-    return log('op', name, 'would have damaged the library:', found[0]);
+    return log('op', name, 'was not made, it would have damaged the library:', error.message);
   }
-  if (!QUIET.has(name) && JSON.stringify(state.library) !== before) {
-    undo.push(before);
-    redo = [];
-    while (undo.length > UNDO_STEPS || undo.join('').length > UNDO_BYTES) undo.shift();
-  }
+  if (!QUIET.has(name) && JSON.stringify(state.library) !== before) remember(before);
   // What the operation asks of the browser (see ops.js).
   if (effect.keepTabs) await reconcile();
   else await settle();
@@ -199,11 +222,20 @@ async function change(name, args) {
   if (tabId !== undefined) await chrome.tabs.update(tabId, { url: state.library.nodes[effect.navigate].url });
 }
 
-/** Steps the library back (or forward again). Open tabs stay open and find their nodes anew. */
-async function stepBack(from, to) {
-  if (!from.length) return;
-  to.push(JSON.stringify(state.library));
-  state.library = JSON.parse(from.pop());
+/**
+ * Takes back the last of the user's changes (or, `forward`, makes it again):
+ * that change only, on top of everything that has happened since - pages
+ * opened, notes written. Open tabs stay open.
+ */
+async function stepBack(forward = false) {
+  const [from, to] = forward ? [redo, undo] : [undo, redo];
+  const step = from.pop();
+  if (!step) return;
+  const [was, will] = forward ? [step.before, step.after] : [step.after, step.before];
+  const next = apply(structuredClone(state.library), diff(JSON.parse(was), JSON.parse(will)), Date.now());
+  if (problems(next).length) return log('that step can no longer be taken:', problems(next)[0]);
+  to.push(step);
+  state.library = next;
   await reconcile();
 }
 
@@ -242,14 +274,18 @@ const SYNC_EVERY_MINUTES = 24 * 60;
 const loadSync = async () => (await chrome.storage.local.get('sync')).sync;
 const saveSync = (settings) => chrome.storage.local.set({ sync: settings });
 
-/** Replaces the library, keeping the way back; open tabs find their nodes anew. A damaged one is refused. */
-async function adopt(library) {
+/**
+ * Replaces the library; open tabs find their nodes anew. A damaged one is
+ * refused. When the user asked for it (`asked`), it is a step they can undo;
+ * what comes in by itself from other computers is not.
+ */
+async function adopt(library, asked = false) {
   const found = problems(library);
   if (found.length) throw new Error(`That library is damaged: ${found[0]}`);
   loaded = true;
-  undo.push(JSON.stringify(state.library));
-  redo = [];
+  const before = JSON.stringify(state.library);
   state.library = library;
+  if (asked) remember(before);
   await reconcile();
 }
 
@@ -289,9 +325,10 @@ async function sync() {
 }
 
 // --- Backups on this computer --------------------------------------------------
-// Every hour the library is put aside under `backup.<day>`, so each of the
-// last few days has the library as it last was that day. They guard against
-// our own mistakes, with no setup at all.
+// Every hour the library is put aside under `backup.last`; the first time in
+// a day, under `backup.<day>` too, where it stays: so each of the last few
+// days has the library as that day found it, and a mistake made today cannot
+// reach them. They guard against our own mistakes, with no setup at all.
 
 const BACKUPS_KEPT = 7;
 async function backUp() {
@@ -299,7 +336,8 @@ async function backUp() {
   const { backups = [] } = await chrome.storage.local.get('backups');
   if (!loaded) return;
   const kept = [...new Set([...backups, day])].slice(-BACKUPS_KEPT);
-  await chrome.storage.local.set({ [`backup.${day}`]: JSON.stringify(core.shared(state.library)), backups: kept });
+  const copy = JSON.stringify(core.shared(state.library));
+  await chrome.storage.local.set({ 'backup.last': copy, backedUpAt: Date.now(), backups: kept, ...(backups.includes(day) ? {} : { [`backup.${day}`]: copy }) });
   await chrome.storage.local.remove(backups.filter((old) => !kept.includes(old)).map((old) => `backup.${old}`));
   log('backed up as', day);
 }
@@ -327,6 +365,7 @@ async function exchange() {
     const next = structuredClone(state.library);
     if (await channel.receive(cells, ch, next, Date.now())) {
       await adopt(next);
+      await commit('exchange'); // Saved before the snapshot counts as taken in: else a crash here would skip it for good.
       log('took in changes from another computer');
     }
     core.keepFresh(state, Date.now());
@@ -368,9 +407,9 @@ async function handle(message, sender) {
     case 'op':
       return change(message.op, message.args);
     case 'undo':
-      return stepBack(undo, redo);
+      return stepBack();
     case 'redo':
-      return stepBack(redo, undo);
+      return stepBack(true);
     case 'activate':
       return activate(message);
     case 'new-tab':
@@ -434,8 +473,9 @@ async function handle(message, sender) {
       // The versions one can go back to: those saved on GitHub, then this computer's daily backups.
       const settings = await loadSync();
       const remote = settings?.repo ? await github.history(settings).catch((error) => (log('history failed', error.message), [])) : [];
-      const { backups = [] } = await chrome.storage.local.get('backups');
-      return [...remote, ...backups.toReversed().map((day) => ({ ref: `local:${day}`, at: day, local: true }))];
+      const { backups = [], backedUpAt } = await chrome.storage.local.get(['backups', 'backedUpAt']);
+      const last = backedUpAt ? [{ ref: 'local:last', at: backedUpAt, local: true }] : [];
+      return [...remote, ...last, ...backups.toReversed().map((day) => ({ ref: `local:${day}`, at: day, local: true }))];
     }
     case 'sync-restore': {
       // Goes back to a saved version. The next sync saves it as the newest.
@@ -443,12 +483,12 @@ async function handle(message, sender) {
       const old = message.ref.startsWith('local:')
         ? JSON.parse((await chrome.storage.local.get(key))[key])
         : (await github.pull(await loadSync(), message.ref))?.library;
-      if (old) await adopt(migrate(old));
+      if (old) await adopt(migrate(old), true);
       return;
     }
     case 'restore-file':
       // A whole library from a backup file. Says what is wrong with it, if anything.
-      return adopt(migrate(message.library)).catch((error) => error.message);
+      return adopt(migrate(message.library), true).catch((error) => error.message);
     case 'show-tree':
       // The tree this window's panel shows: where its new tabs go.
       state.windows[message.windowId] = message.treeId;
