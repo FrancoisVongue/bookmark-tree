@@ -1,6 +1,8 @@
 // The one owner of the state. It hears what happens to tabs (facts), takes
 // commands from the panels, saves the result and tells the panels it changed.
-// It only ever asks the browser for three things: open, focus or close a tab.
+// What it asks of the browser in return is five things, all in `browser`
+// below: open a tab, show one, close some, send one to an address, give one
+// a window of its own. It never reorders tabs.
 
 import { descendantsOf, expire, goHome, goneOf, isGroup, isNote, migrate, newId, problems, treeFor, validTree } from './model.js';
 import { QUIET, ops } from './ops.js';
@@ -11,6 +13,21 @@ import * as core from './core.js';
 import { attend, placesOf } from './journal.js';
 
 const log = (...args) => console.log('[tree]', ...args);
+
+// Everything the worker asks the browser to do to tabs. (Asking what tabs there are is not doing.)
+const browser = {
+  /** A new tab: `{ windowId, url?, active?, index? }`; without an address, an empty one. */
+  open: (tab) => chrome.tabs.create(tab),
+  /** Brings a tab to the front; its window too, if that is not `windowId`. */
+  async show(tabId, windowId) {
+    const tab = await chrome.tabs.update(tabId, { active: true });
+    if (tab.windowId !== windowId) await chrome.windows.update(tab.windowId, { focused: true });
+  },
+  close: (tabIds) => chrome.tabs.remove(tabIds),
+  navigate: (tabId, url) => chrome.tabs.update(tabId, { url }),
+  /** Gives a tab a window of its own. */
+  detach: (tabId) => chrome.windows.create({ tabId }),
+};
 
 let state = core.createState();
 // Nothing is saved before the library has been read: an empty one must never replace the user's.
@@ -173,10 +190,10 @@ async function closeTabs(ids) {
   const windows = new Set(all.filter((tab) => closing.has(tab.id)).map((tab) => tab.windowId));
   for (const windowId of windows) {
     if (all.filter((tab) => tab.windowId === windowId).every((tab) => closing.has(tab.id))) {
-      await chrome.tabs.create({ windowId });
+      await browser.open({ windowId });
     }
   }
-  await chrome.tabs.remove(ids).catch((error) => log('close failed', error.message));
+  await browser.close(ids).catch((error) => log('close failed', error.message));
 }
 
 /** After a change to the library: tabs of nodes that are gone close; the rest stay in a tree that holds them. */
@@ -209,7 +226,7 @@ async function change(name, args) {
   if (effect.keepTabs) await reconcile();
   else await settle();
   const tabId = core.tabOf(state, effect.navigate);
-  if (tabId !== undefined) await chrome.tabs.update(tabId, { url: state.library.nodes[effect.navigate].url });
+  if (tabId !== undefined) await browser.navigate(tabId, state.library.nodes[effect.navigate].url);
 }
 
 /**
@@ -240,17 +257,16 @@ async function activate({ nodeId, treeId, windowId, where }) {
   let tabId = core.tabOf(state, nodeId);
   if (tabId === undefined) {
     const url = isNote(node) ? chrome.runtime.getURL(core.notePath(nodeId)) : node.url;
-    const tab = await chrome.tabs.create({ windowId, url: core.isBlank(url) ? undefined : url, active: !where });
+    const tab = await browser.open({ windowId, url: core.isBlank(url) ? undefined : url, active: !where });
     tabId = tab.id;
     // Before its "created" event is handled, so no second node appears.
     core.bind(state, tabId, nodeId, tree);
     log('woke node', nodeId, 'as tab', tabId);
   } else if (!where) {
-    const tab = await chrome.tabs.update(tabId, { active: true });
-    if (tab.windowId !== windowId) await chrome.windows.update(tab.windowId, { focused: true });
+    await browser.show(tabId, windowId);
     core.shownIn(state, tabId, tree);
   }
-  if (where === 'window') await chrome.windows.create({ tabId });
+  if (where === 'window') await browser.detach(tabId);
 }
 
 // --- Keeping the library elsewhere ---------------------------------------------
@@ -373,7 +389,7 @@ async function exchange() {
 /** Opens an empty tab as a new node: top-level, or a child / next sibling of `nodeId`. */
 async function newTab({ windowId, treeId, nodeId, as }) {
   treeId = validTree(state.library, treeId);
-  const tab = await chrome.tabs.create({ windowId });
+  const tab = await browser.open({ windowId });
   core.tabAsked(state, tab, { treeId, nodeId, as, at: Date.now() });
 }
 
@@ -432,13 +448,13 @@ async function handle(message, sender) {
       const tabId = core.tabOf(state, message.nodeId);
       if (!node?.home) return;
       if (tabId === undefined) goHome(node);
-      else await chrome.tabs.update(tabId, { url: node.home.url });
+      else await browser.navigate(tabId, node.home.url);
       return;
     }
     case 'open-link': {
       // A link clicked in a note: a new tab, and a child of the note.
       const from = sender.tab;
-      const tab = await chrome.tabs.create({ url: message.url, windowId: from.windowId, index: from.index + 1 });
+      const tab = await browser.open({ url: message.url, windowId: from.windowId, index: from.index + 1 });
       core.tabOpened(state, tab, from.id, undefined, Date.now());
       return;
     }
