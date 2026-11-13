@@ -25,7 +25,7 @@ const errors = [];
 sw.on('console', (m) => m.type() === 'error' && errors.push('worker: ' + m.text()));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const a = await ctx.newPage(); await a.goto(base + '/a');
-const b = await ctx.newPage(); await b.goto(base + '/b');
+const b = await ctx.newPage(); await sleep(400); await b.goto(base + '/b'); // The pause lets the tab be seen empty: one that arrives with a page already in it counts as opened by the page in front, and becomes its child.
 const [c] = await Promise.all([ctx.waitForEvent('page'), a.click('#l')]);
 await c.waitForLoadState();
 const panel = await ctx.newPage();
