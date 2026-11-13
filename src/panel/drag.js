@@ -14,7 +14,7 @@
 import { descendantsOf } from '../model.js';
 import { t } from '../i18n.js';
 import { titleOf } from './view.js';
-import { app, idAt, op, paneAt, redraw, refresh, rowOf, say, targets, ui } from './screen.js';
+import { app, arrange, idAt, op, paneAt, redraw, rowOf, say, targets, ui } from './screen.js';
 import { pagesIn } from './commands.js';
 
 // The gesture in progress, from the button going down to the click after it.
@@ -182,7 +182,7 @@ addEventListener('pointerup', () => {
   const { drag, drop } = ui;
   const resized = gesture.press?.divider;
   gesture.press = undefined;
-  if (resized) return refresh(); // Remembers the sizes.
+  if (resized) return arrange(); // Remembers the sizes.
   if (!drag) return;
   endDrag();
   gesture.dragged = true;

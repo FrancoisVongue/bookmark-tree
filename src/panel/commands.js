@@ -6,7 +6,7 @@ import { toHtml, toOutline } from '../bookmarks.js';
 import { t } from '../i18n.js';
 import { askForBookmarks, saveFile } from '../page.js';
 import { titleOf } from './view.js';
-import { app, ask, branches, closeOverlay, here, newPane, op, redraw, refresh, rowEl, rowOf, say, send, setFocus, ui } from './screen.js';
+import { app, arrange, ask, branches, closeOverlay, here, newPane, op, redraw, refresh, rowEl, rowOf, say, send, setFocus, ui } from './screen.js';
 
 export const activate = (pane, id, where) =>
   send({ type: 'activate', nodeId: id, treeId: pane.tree, windowId: ui.windowId, where });
@@ -17,7 +17,7 @@ export const toggle = (pane, id) => op('collapse', { tree: pane.tree, id, collap
 export function revisit(id, tree) {
   here().tree = treeFor(ui.library, id, tree);
   activate(here(), id);
-  refresh();
+  arrange();
 }
 
 /** Clicking a node goes to its page. A group has no page: it folds and unfolds. */
@@ -88,7 +88,7 @@ export function split(way) {
     ui.focus = 0;
   }
   ui.split = way;
-  refresh();
+  arrange();
 }
 
 /**
@@ -98,7 +98,7 @@ export function split(way) {
 export function openPicker(pane, id) {
   const other = Object.keys(ui.library.trees).find((treeId) => treeId !== pane.tree);
   ui.overlay = { kind: 'picker', ...newPane(other), into: { pane, id } };
-  refresh();
+  arrange();
 }
 
 /** Addresses in a piece of text, one per line, as new sleeping pages. */

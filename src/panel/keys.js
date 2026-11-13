@@ -1,6 +1,6 @@
 // The keyboard.
 
-import { app, closeOverlay, focusRow, here, idAt, op, paneAt, picker, redraw, refresh, rowOf, send, targets, ui } from './screen.js';
+import { app, arrange, closeOverlay, focusRow, here, idAt, op, paneAt, picker, redraw, rowOf, send, targets, ui } from './screen.js';
 import { endDrag } from './drag.js';
 import * as cmd from './commands.js';
 
@@ -29,7 +29,7 @@ addEventListener('keydown', (event) => {
     for (const pane of ui.panes) pane.sel.clear();
     if (ui.query || ui.journalQuery) {
       Object.assign(ui, { query: '', journalQuery: '' });
-      refresh();
+      arrange();
     }
     return closeOverlay();
   }
@@ -45,8 +45,9 @@ addEventListener('keydown', (event) => {
     return everywhere[letter]();
   }
 
-  const id = idAt(event.target);
-  const pane = paneAt(event.target);
+  // (A row scrolled far out of sight is not in the page, and the keys then come from the page itself: they are for the row the keyboard was on.)
+  const id = idAt(event.target) ?? (event.target === document.body ? ui.cursor : undefined);
+  const pane = paneAt(event.target) ?? here();
   if (!id || !pane || pane === picker()) return;
   const tree = pane.tree;
   const ids = targets(pane, id);

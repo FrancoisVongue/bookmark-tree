@@ -1,7 +1,7 @@
 // The panel's entry: the mouse, and the start. It turns what the user does
 // into commands for the worker (see screen.js for what the panel itself owns).
 
-import { app, closeOverlay, here, idAt, log, newPane, op, paneAt, picker, redraw, refresh, revealActive, rowOf, send, setFocus, showActiveTree, targets, ui } from './screen.js';
+import { app, arrange, closeOverlay, here, idAt, log, newPane, op, paneAt, picker, redraw, refresh, revealActive, rowOf, send, setFocus, showActiveTree, targets, ui } from './screen.js';
 import { mainMenu, menuUnder, openMenu, rowMenu, treeMenu } from './menus.js';
 import { endsDrag } from './drag.js';
 import * as cmd from './commands.js';
@@ -21,7 +21,7 @@ const actions = {
   // Back to where the current tab is: its tree, its row.
   'show-active': async () => {
     showActiveTree();
-    await refresh();
+    arrange();
     revealActive();
   },
   'new-tab': () => cmd.newTab(here()),
@@ -30,20 +30,20 @@ const actions = {
   'tree-show': ({ el }) => {
     here().tree = el.dataset.tree;
     here().sel.clear();
-    refresh();
+    arrange();
   },
   'tree-add': ({ el }) => cmd.newTree(Number(el.dataset.cell)),
   'pane-close': ({ pane }) => {
     ui.panes.splice(ui.panes.indexOf(pane), 1);
     ui.focus = 0;
-    refresh();
+    arrange();
   },
   more: ({ el }) => menuUnder(el, mainMenu()),
   'split-row': () => cmd.split('row'),
   'split-column': () => cmd.split('column'),
   'picker-tree': ({ el }) => {
     ui.overlay = { kind: 'picker', ...newPane(el.dataset.tree), into: picker().into };
-    refresh();
+    arrange();
   },
   // What is chosen in the picker is shown here too, or (the "move" button) moves here.
   'picker-add': ({ el }) => {
@@ -58,18 +58,18 @@ const actions = {
   // The notice stays closed until there is something else to say.
   'unsynced-close': () => {
     localStorage.setItem('unsyncedClosed', ui.unsynced.kind);
-    refresh();
+    arrange();
   },
   'journal-go': ({ el }) => cmd.revisit(el.dataset.node, el.dataset.tree),
   'journal-more': () => {
     ui.journalAll = true;
-    refresh();
+    arrange();
   },
   'journal-toggle': () => {
     ui.journalOpen = !ui.journalOpen;
     Object.assign(ui, { journalQuery: '', journalAll: false }); // Unfolded anew, it starts from the latest places.
     localStorage.setItem('journalOpen', ui.journalOpen ? 'yes' : 'no');
-    refresh();
+    arrange();
   },
   'plan-go': ({ el }) => cmd.revisit(el.dataset.node),
   unplan: ({ el }) => op('unplan', { ids: [el.closest('.place').dataset.node] }),
@@ -180,7 +180,7 @@ app.addEventListener('input', (event) => {
   if (event.target.closest('.journal-search')) ui.journalQuery = event.target.value;
   else if (event.target.closest('.search')) ui.query = event.target.value;
   else return;
-  refresh();
+  arrange();
 });
 
 async function main() {

@@ -10,7 +10,8 @@ export const log = (...args) => console.log('[tree panel]', ...args);
 export const app = document.getElementById('app');
 
 const kept = JSON.parse(localStorage.getItem('view') ?? '{}');
-export const newPane = (tree, size = 1) => ({ tree, size, rows: [], sel: new Set() }); // (While searching, also `loose`: see found().)
+// A pane: the tree it shows, its rows, and which of them are drawn (`from`..`to`: see inSight). (While searching, also `loose`: see found().)
+export const newPane = (tree, size = 1) => ({ tree, size, rows: [], from: 0, to: 0, sel: new Set() });
 
 export const ui = {
   windowId: undefined,
@@ -76,7 +77,58 @@ export async function send(message) {
 }
 export const op = (name, args) => send({ type: 'op', op: name, args });
 
-export const redraw = () => draw(app, ui);
+// --- Which rows are drawn ---------------------------------------------------------
+// A tree may have thousands of rows; only those in sight, and a few beyond,
+// are in the page. Rows are all of one height, so the place of each is known
+// without drawing it. This is the one place that decides what is in sight.
+
+const ROW = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--row'));
+const SPARE = 12; // Rows drawn beyond each edge of what is seen,
+const STEP = 6; // and how many rows the view scrolls before the set of drawn rows changes.
+
+const paneEl = (pane) => app.querySelector(`.pane[data-pane="${pane === picker() ? 'picker' : ui.panes.indexOf(pane)}"]`);
+/** How far the top of a pane's tree is above the top of what the pane shows, in pixels (below it: negative). */
+const scrolled = (el) => el.getBoundingClientRect().top - el.querySelector('.tree').getBoundingClientRect().top;
+
+/** Sets which rows of a pane are drawn, from where it is scrolled to. Says whether that changed. */
+function inSight(pane) {
+  const el = paneEl(pane);
+  const first = el ? Math.floor(scrolled(el) / ROW / STEP) * STEP : 0;
+  const count = Math.ceil((el?.clientHeight ?? innerHeight) / ROW) + STEP;
+  const from = Math.max(0, Math.min(first - SPARE, pane.rows.length - count - SPARE));
+  const to = Math.min(pane.rows.length, Math.max(first, 0) + count + SPARE);
+  const changed = from !== pane.from || to !== pane.to;
+  Object.assign(pane, { from, to });
+  return changed;
+}
+
+export function redraw() {
+  for (const pane of [...ui.panes, picker()]) if (pane) inSight(pane);
+  draw(app, ui);
+}
+
+// Scrolling brings other rows in sight. (The event does not bubble: it is caught on its way down.)
+app.addEventListener(
+  'scroll',
+  (event) => {
+    const pane = event.target.classList?.contains('pane') && paneAt(event.target);
+    if (pane && inSight(pane)) draw(app, ui);
+  },
+  true,
+);
+addEventListener('resize', () => redraw());
+
+/** Scrolls a pane just enough to have row `id` in sight, and draws it: a row far away is not in the page until then. */
+export function reveal(pane, id) {
+  const index = pane.rows.findIndex((row) => row.id === id);
+  const el = paneEl(pane);
+  if (index === -1 || !el) return;
+  const top = index * ROW - scrolled(el); // Where the row is, from the top of what the pane shows.
+  if (top < 0) el.scrollTop += top;
+  else if (top + ROW > el.clientHeight) el.scrollTop += top + ROW - el.clientHeight;
+  redraw();
+}
+
 export const here = () => ui.panes[ui.focus];
 export const picker = () => (ui.overlay?.kind === 'picker' ? ui.overlay : undefined);
 export const idAt = (el) => el.closest?.('.row')?.dataset.id;
@@ -84,7 +136,8 @@ export const paneAt = (el) => {
   const index = el.closest?.('.pane')?.dataset.pane;
   return index === 'picker' ? picker() : ui.panes[index];
 };
-export const rowEl = (pane, id) => app.querySelector(`.pane[data-pane="${ui.panes.indexOf(pane)}"] .row[data-id="${id}"]`);
+/** The row of node `id` in the page, if it is drawn (see inSight). */
+export const rowEl = (pane, id) => paneEl(pane)?.querySelector(`.row[data-id="${id}"]`);
 export const rowOf = (pane, id) => pane.rows.find((row) => row.id === id);
 export const under = (pane, id) => descendantsOf(ui.library.trees[pane.tree], id);
 /** What an action on row `id` applies to: the whole selection if the row is part of it. */
@@ -134,8 +187,8 @@ export function setFocus(pane) {
 export function focusRow(pane, id) {
   if (id === undefined) return;
   ui.cursor = id;
-  redraw();
-  rowEl(pane, id)?.focus();
+  reveal(pane, id);
+  rowEl(pane, id)?.focus({ preventScroll: true });
 }
 
 // --- From the worker's state to the screen -------------------------------------
@@ -245,7 +298,7 @@ export function revealActive() {
     const tree = ui.library.trees[pane.tree];
     let id = ui.activeId;
     while (id !== undefined && !rowOf(pane, id)) id = parentOf(tree, id);
-    rowEl(pane, id)?.scrollIntoView({ block: 'nearest' });
+    reveal(pane, id);
   }
 }
 
@@ -255,9 +308,28 @@ export function revealActive() {
 // sleep, say) does not take the panel away from the tree the user works in.
 let followed;
 
+/**
+ * Lays the screen out anew from what the panel already knows. Enough for
+ * what happens on the screen only: typing in the search, showing another
+ * tree, folding the journal. Nothing is asked of the worker.
+ */
+export function arrange() {
+  layOut();
+  layJournal();
+  findShared();
+  remember();
+  redraw();
+  holdKeys();
+}
+
+let coming; // A refresh about to start: all who ask before it does share it.
+/** Asks the worker for the state and shows it. Several askings at once (a command's answer, the worker's "changed", a change of tab) make one. */
+export function refresh() {
+  return (coming ??= new Promise((done) => setTimeout(() => ((coming = undefined), done(pull())))));
+}
+
 let generation = 0;
-/** Asks the worker for the state and shows it. */
-export async function refresh() {
+async function pull() {
   const current = ++generation;
   const [state, [active]] = await Promise.all([
     send({ type: 'get-state' }),
@@ -273,11 +345,6 @@ export async function refresh() {
   // The user went to a tab the search would hide (a new one, say): the search is over.
   if (moved && !mine && ui.query && ui.activeId && !find([ui.activeId], ui.query, textOf).hits.length) ui.query = '';
   followed = ui.activeId ?? null;
-  layOut();
-  layJournal();
-  findShared();
-  remember();
-  redraw();
+  arrange();
   if (moved) revealActive();
-  holdKeys();
 }

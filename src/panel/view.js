@@ -152,7 +152,7 @@ function litGuide(rows, id) {
 const looseView = (loose) =>
   loose ? html`<p class="loose">${loose.how === 'layout' ? t('foundAs', loose.as) : t('foundNear')}</p>` : nothing;
 
-/** One tree. The same view serves the panes of the panel and the picker. */
+/** One tree: its rows in sight (`pane.from`..`pane.to`, set in screen.js), with gaps as tall as the rows not drawn. The same view serves the panes of the panel and the picker. */
 function paneView(pane, index, ui) {
   const way = { leads: leadsToActive(pane, ui) };
   const guide = litGuide(pane.rows, ui.activeId);
@@ -177,11 +177,13 @@ function paneView(pane, index, ui) {
         : ''}
       ${looseView(pane.loose)}
       <div class="tree" role="tree" aria-label=${tree.name}>
+        <div class="gap" style="height:calc(${pane.from} * var(--row))"></div>
         ${repeat(
-          pane.rows,
+          pane.rows.slice(pane.from, pane.to),
           (row) => row.id,
-          (row, index) => rowView(row, pane, ui, way, guide && index >= guide.from && index < guide.to && guide.level),
+          (row, at) => rowView(row, pane, ui, way, guide && pane.from + at >= guide.from && pane.from + at < guide.to && guide.level),
         )}
+        <div class="gap" style="height:calc(${pane.rows.length - pane.to} * var(--row))"></div>
       </div>
       ${pane.rows.length || picking ? '' : html`<p class="hint">${t(ui.query ? 'nothingFound' : 'emptyTree')}</p>`}
     </section>

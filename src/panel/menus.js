@@ -2,7 +2,7 @@
 
 import { gridOf, isGroup, isNote, planOf } from '../model.js';
 import { t } from '../i18n.js';
-import { app, here, newPane, op, redraw, refresh, rowOf, send, targets, ui, under } from './screen.js';
+import { app, arrange, here, newPane, op, redraw, rowOf, send, targets, ui, under } from './screen.js';
 import * as cmd from './commands.js';
 
 const item = (label, run, hint, disabled = false) => ({ label: t(label), hint, disabled, run });
@@ -83,7 +83,7 @@ export function treeMenu(treeId) {
   return [
     item('rename', () => cmd.startRename({ tree: treeId })),
     item('changeIcon', () => ((ui.overlay = { kind: 'icons', tree: treeId }), redraw())),
-    item('openBeside', () => (ui.panes.push(newPane(treeId)), refresh())),
+    item('openBeside', () => (ui.panes.push(newPane(treeId)), arrange())),
     null,
     item('saveToBookmarks', () => cmd.saveToBookmarks(treeId)),
     item('exportBookmarks', () => cmd.downloadBookmarks(treeId)),
