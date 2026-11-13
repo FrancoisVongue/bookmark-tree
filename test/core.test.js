@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { MAIN, ROOT, rowsOf } from '../src/model.js';
+import { ops } from '../src/ops.js';
 import {
   createState,
   keepFresh,
@@ -158,16 +159,42 @@ test('empty tabs left asleep by a browser that quit are swept away', () => {
   assert.equal(outline(state), '(a)');
 });
 
+test('a page keeps the address it first had as its home; only a pinned one goes back there by itself', () => {
+  const state = createState();
+  tabOpened(state, tab(1, 'a'));
+  const node = state.library.nodes[state.binding[1].node];
+  assert.equal(node.home, undefined); // Still where it started: nothing to go back to.
+  tabChanged(state, tab(1, 'b'));
+  tabChanged(state, tab(1, 'c'));
+  assert.deepEqual(node.home, { url: 'https://a/', title: 'a' });
+  tabClosed(state, 1);
+  assert.equal(outline(state), '(c)'); // It sleeps where the user left it.
+  // Opening the first address anew does not wake it and send it back there: c would be lost.
+  assert.equal(tabOpened(state, tab(2, 'a')), 'new');
+});
+
 test('a pinned node goes back home when its tab closes', () => {
   const state = createState();
   tabOpened(state, tab(1, 'a'));
   const node = state.library.nodes[state.binding[1].node];
-  node.home = { url: node.url, title: node.title };
+  ops.pin(state.library, { ids: [node.id], pinned: true });
   tabChanged(state, tab(1, 'z'));
   assert.equal(outline(state), 'z');
   tabClosed(state, 1);
   assert.equal(outline(state), '(a)');
   assert.equal(tabOpened(state, tab(5, 'a')), 'woken');
+});
+
+test('a saved page that sends the browser elsewhere keeps its saved address', () => {
+  const state = createState();
+  ops.add(state.library, { tree: MAIN, nodes: [{ id: 'saved', url: 'https://bank/', title: 'Bank' }] });
+  assert.equal(tabOpened(state, { id: 1, url: 'https://bank/' }), 'woken');
+  tabChanged(state, { id: 1, url: 'https://login.bank/?next=home', title: 'Sign in' }); // A redirect.
+  assert.deepEqual(state.library.nodes.saved.home, { url: 'https://bank/', title: 'Bank' });
+  // An empty new tab taken somewhere has no address to keep before that.
+  tabOpened(state, tab(2));
+  tabChanged(state, tab(2, 'first'));
+  assert.equal(state.library.nodes[state.binding[2].node].home, undefined);
 });
 
 test('the extension\'s own pages are not nodes', () => {

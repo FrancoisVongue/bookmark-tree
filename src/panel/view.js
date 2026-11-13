@@ -54,7 +54,7 @@ const firstLine = (text) => text.split('\n').find((line) => line.trim())?.replac
 export const titleOf = (node) =>
   node.name || (isNote(node) ? firstLine(node.note) || t('note') : node.title || node.url || t('untitled'));
 
-/** Away from the address it is pinned to. */
+/** Away from its home: the address it first had, or was pinned to. */
 const isAway = (node) => node.home && node.url !== node.home.url;
 
 export function iconView(node) {
@@ -85,7 +85,7 @@ function rowView(row, pane, ui, { leads, included }, lit) {
     included?.has(row.id) && 'included',
     row.kids && 'parent',
     row.collapsed && 'collapsed',
-    node.home && 'pinned',
+    node.pinned && 'pinned',
     ui.audible.has(row.id) && 'playing',
     lit && 'lit',
     ui.drag?.kind === 'rows' && ui.drag.from === pane.tree && ui.drag.ids.includes(row.id) && 'dragging',
@@ -118,7 +118,7 @@ function rowView(row, pane, ui, { leads, included }, lit) {
       ${picking || editing
         ? ''
         : html`
-            ${isAway(node) ? act('home', 'home', t('backHome', node.home.title || node.home.url), 'away') : ''}
+            ${isAway(node) ? act('home', 'home', t('backHome', node.home.title || node.home.url), node.pinned ? 'away' : '') : ''}
             ${act('child', 'add', t('newChild'))} ${live ? act('sleep', 'sleep', t('sleep')) : ''}
             ${act('remove', 'trash', t(row.collapsed ? 'removeBranch' : 'remove'), 'danger')}
           `}

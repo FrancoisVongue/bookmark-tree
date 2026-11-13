@@ -27,6 +27,7 @@ import {
   removeNode,
   renameNode,
   setCollapsed,
+  settle,
   stamped,
   unplanNodes,
 } from './model.js';
@@ -128,7 +129,7 @@ export const ops = {
     const node = library.nodes[id];
     if (!node || isNote(node) || !url?.trim()) return;
     node.url = url.trim();
-    if (node.home) node.home = { url: node.url, title: node.title };
+    settle(node); // Typed by hand: this is where the page belongs now.
     return { navigate: id };
   },
   rename(library, { id, name }) {
@@ -149,13 +150,13 @@ export const ops = {
       else delete library.nodes[id].keep;
     }
   },
-  /** Pins a page to the address it shows now, or lets it go. */
+  /** Pins a page to the address it shows now (it goes back there when its tab closes), or lets it go. */
   pin(library, { ids, pinned }) {
     for (const id of ids) {
       const node = library.nodes[id];
       if (!node || isNote(node)) continue;
-      if (pinned) node.home = { url: node.url, title: node.title };
-      else delete node.home;
+      if (pinned) (settle(node), (node.pinned = true));
+      else delete node.pinned;
     }
   },
   /** A note; with a `name` and no text it serves as a group heading. */

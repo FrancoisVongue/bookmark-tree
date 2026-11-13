@@ -2,7 +2,7 @@
 // commands from the panels, saves the result and tells the panels it changed.
 // It only ever asks the browser for three things: open, focus or close a tab.
 
-import { addNode, descendantsOf, expire, goneOf, isGroup, isNote, migrate, moveNode, newId, problems, stamped, treeFor, validTree } from './model.js';
+import { addNode, descendantsOf, expire, goHome, goneOf, isGroup, isNote, migrate, moveNode, newId, problems, stamped, treeFor, validTree } from './model.js';
 import { QUIET, ops } from './ops.js';
 import { apply, diff, takeIn } from './merge.js';
 import * as github from './github.js';
@@ -455,11 +455,11 @@ async function handle(message, sender) {
       return closeTabs(tabId === undefined ? [] : [tabId]);
     }
     case 'go-home': {
-      // A pinned node returns to its address.
+      // A page returns to the address it first had (see `home` in model.js).
       const node = library.nodes[message.nodeId];
       const tabId = core.tabOf(state, message.nodeId);
       if (!node?.home) return;
-      if (tabId === undefined) Object.assign(node, node.home);
+      if (tabId === undefined) goHome(node);
       else await chrome.tabs.update(tabId, { url: node.home.url });
       return;
     }

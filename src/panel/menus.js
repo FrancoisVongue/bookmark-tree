@@ -66,7 +66,7 @@ export function rowMenu(pane, id) {
     item('duplicate', () => cmd.duplicate(pane, ids), 'Ctrl+D'),
     !isGroup(node) && (planned ? item('planRemove', () => op('unplan', { ids })) : item('planAdd', () => op('plan', { ids }))),
     item(node.keep ? 'keepNot' : 'keep', () => op('keep', { ids, keep: !node.keep })),
-    page && item(node.home ? 'unpin' : 'pin', () => op('pin', { ids, pinned: !node.home })),
+    page && item(node.pinned ? 'unpin' : 'pin', () => op('pin', { ids, pinned: !node.pinned })),
     node.home && node.url !== node.home.url && item('goHome', () => send({ type: 'go-home', nodeId: id })),
     null,
     item('indent', () => op('indent', { tree, ids }), 'Tab'),

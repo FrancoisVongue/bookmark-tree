@@ -19,6 +19,7 @@ import {
   addNode,
   createLibrary,
   freshOf,
+  goHome,
   inTree,
   isGroup,
   isNote,
@@ -28,6 +29,7 @@ import {
   parentOf,
   placeNode,
   removeNode,
+  settle,
   stamped,
   treeFor,
   validTree,
@@ -67,12 +69,12 @@ const liveIds = (state) => new Set(Object.values(state.binding).map((bound) => b
 /** The extension's own pages (the panel opened as a tab, a second view of a note) are not nodes. */
 const isOurs = (url) => /^chrome-extension:\/\/[^/]+\/src\//.test(url);
 
-/** A sleeping node whose address (current or pinned) is `url`. */
+/** A sleeping node whose address is `url` (for a pinned one, the address it is pinned to). */
 function sleeperAt(state, url) {
   if (isBlank(url)) return undefined;
   const live = liveIds(state);
   return Object.values(state.library.nodes).find(
-    (node) => !live.has(node.id) && (node.url === url || node.home?.url === url),
+    (node) => !live.has(node.id) && (node.url === url || (node.pinned && node.home?.url === url)),
   );
 }
 
@@ -176,7 +178,11 @@ export function tabOpenedFrom(state, tabId, sourceTabId) {
   return moveNode(library, source.tree, bound.node, source.node, 'inside');
 }
 
-/** A tab's page changed: its node follows it. (A pinned node remembers its home.) */
+/**
+ * A tab's page changed: its node follows it. The address the page first had
+ * is kept as its home when it leaves it, whether the user went on or the
+ * site sent them elsewhere: the saved address is never quietly replaced.
+ */
 export function tabChanged(state, tab) {
   const { library, binding } = state;
   const bound = binding[tab.id];
@@ -198,12 +204,13 @@ export function tabChanged(state, tab) {
     delete binding[tab.id];
     return;
   }
+  if (url && url !== node.url && !node.home && !isBlank(node.url)) settle(node);
   node.url = url || node.url;
   node.title = tab.title ?? node.title;
 }
 
 /**
- * A tab closed: its node falls asleep. A pinned node goes back home; an
+ * A tab closed: its node falls asleep, where it is. A pinned node goes back home; an
  * empty new tab leaves nothing behind.
  */
 export function tabClosed(state, tabId, at) {
@@ -212,7 +219,7 @@ export function tabClosed(state, tabId, at) {
   delete binding[tabId];
   const node = library.nodes[id];
   touch(node, at);
-  if (node?.home) Object.assign(node, node.home);
+  if (node?.pinned) goHome(node);
   dropIfEmpty(library, id);
 }
 

@@ -93,13 +93,18 @@ test('collapse-all folds every parent, and unfolds', () => {
   assert.deepEqual(lib.trees[MAIN].collapsed, {});
 });
 
-test('an address typed by hand asks the tab to go there; a pinned node moves its home', () => {
+test('an address typed by hand becomes the page\'s home; pinning is a mark of its own', () => {
   const lib = library('a');
-  ops.pin(lib, { ids: ['a'], pinned: true });
   assert.deepEqual(ops.address(lib, { id: 'a', url: ' https://z/ ' }), { navigate: 'a' });
   assert.equal(lib.nodes.a.home.url, 'https://z/');
+  ops.pin(lib, { ids: ['a'], pinned: true });
+  assert.equal(lib.nodes.a.pinned, true);
   ops.pin(lib, { ids: ['a'], pinned: false });
-  assert.equal(lib.nodes.a.home, undefined);
+  assert.deepEqual([lib.nodes.a.pinned, lib.nodes.a.home.url], [undefined, 'https://z/']); // Unpinned, it still knows the way back.
+  // A library from before every page had a home: there, having one meant being pinned.
+  const older = { nodes: { p: { id: 'p', url: 'https://x/', home: { url: 'https://p/' } }, q: { id: 'q', url: 'https://q/' } }, trees: lib.trees, trash: [] };
+  assert.deepEqual(Object.values(migrate(older).nodes).map((node) => node.pinned), [true, undefined]);
+  assert.deepEqual(Object.values(migrate(older).nodes).map((node) => node.pinned), [true, undefined]);
 });
 
 test('a deleted tree sends its own nodes to the trash and keeps the tabs', () => {

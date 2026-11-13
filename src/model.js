@@ -1,12 +1,14 @@
 // The library: pages the user keeps, arranged in trees. Pure data, no Chrome.
 //
-//   library.nodes  { [nodeId]: { id, url, title, added?, touched?, name?, icon?, home?, note? } }
-//                  a page; `keep` says it stays in sight when the branch
-//                  it is in is folded; `added` is when it came into the library,
+//   library.nodes  { [nodeId]: { id, url, title, added?, touched?, name?, icon?, keep?, home?, pinned?, note? } }
+//                  a page; `added` is when it came into the library,
 //                  `touched` the day its tab was last opened or closed, `name`
-//                  the user's own title, `icon` an emoji, `home` { url, title }
-//                  the address it is pinned to. A node with `note` (markdown
-//                  text) is a note, not a page.
+//                  the user's own title, `icon` an emoji; `keep` says it stays
+//                  in sight when the branch it is in is folded. `home`
+//                  { url, title } is the address the page first had, kept
+//                  once it leaves it: the way back. A `pinned` page goes back
+//                  there by itself when its tab closes. A node with `note`
+//                  (markdown text) is a note, not a page.
 //   library.trees  { [treeId]: { id, name, children, collapsed } }  where it sits
 //
 // A tree stores structure only: `children` maps a parent id (or ROOT) to the
@@ -29,11 +31,12 @@
 //
 // Functions change the library they are given and return what they found.
 
+const VERSION = 2; // Of the shape of a library: see migrate.
 export const ROOT = 'root';
 export const MAIN = 'main';
 
 export function createLibrary() {
-  return { nodes: {}, trees: { [MAIN]: { id: MAIN, name: 'Main', children: {}, collapsed: {} } }, trash: [], gone: {} };
+  return { version: VERSION, nodes: {}, trees: { [MAIN]: { id: MAIN, name: 'Main', children: {}, collapsed: {} } }, trash: [], gone: {} };
 }
 
 /** A new id: 12 letters, 72 random bits. Short, because ids are most of what does not squeeze. */
@@ -48,6 +51,16 @@ export const freshOf = (node) => node.touched ?? Math.floor((node.added ?? 0) / 
 
 /** `node`, marked as added to the library at time `at` (left as it is when the time is not known). */
 export const stamped = (node, at) => (at === undefined ? node : { ...node, added: at });
+
+/** Makes the address a page is at its home: where it belongs, by the user's word. */
+export function settle(node) {
+  node.home = { url: node.url, title: node.title };
+}
+
+/** Takes a sleeping page back to its home. */
+export function goHome(node) {
+  if (node.home) Object.assign(node, node.home);
+}
 
 /** What a node is. A note without text is a group: a heading for the nodes under it. */
 export const isNote = (node) => node.note !== undefined;
@@ -133,6 +146,9 @@ export function migrate(library) {
   library.trash ??= [];
   // Before deletions were kept apart, the trash was all that told of them.
   library.gone ??= Object.fromEntries(library.trash.map((entry) => [entry.node.id, Math.floor(entry.at / DAY)]));
+  // Before every page had a home, having one meant being pinned to it.
+  if (!library.version) for (const node of Object.values(library.nodes)) if (node.home) node.pinned = true;
+  library.version = VERSION;
   return library;
 }
 
