@@ -80,7 +80,7 @@ addEventListener('keydown', (event) => {
     Delete: () => cmd.remove(pane, id, event.shiftKey),
     F2: () => cmd.startRename({ id, pane }),
     Tab: () => op(event.shiftKey ? 'outdent' : 'indent', { tree, ids }),
-    d: () => ctrl && op('duplicate', { tree, ids }),
+    d: () => ctrl && cmd.duplicate(pane, ids),
     a: () => ctrl && ((pane.sel = new Set(pane.rows.map((each) => each.id))), redraw()),
   };
   const key = keys[event.key] ?? keys[letter];

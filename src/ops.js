@@ -1,7 +1,11 @@
-// Everything the user can do to the library, by name. A change is a record
-// { op, args, at } applied by the one owner (the worker). An operation is a
-// function (library, args, at) of nothing else: new ids come in `args`, the
-// time in `at`, so the same record always gives the same result.
+// Everything the user can do to the library, by name. The one owner of the
+// state (the worker) applies them; nobody else changes the library by hand,
+// except to follow what tabs do (core.js).
+//
+// An operation is a function (library, args, at) of nothing else. What it
+// cannot work out from those - the ids of new nodes, the time - comes in
+// `args` and `at`: so it can be tried with plain values, and gives the same
+// result every time it is.
 //
 // An operation may return what the browser should do next:
 //   { keepTabs: true }  tabs whose nodes are gone stay open, as new nodes
@@ -15,7 +19,6 @@ import {
   forgetLoose,
   gridOf,
   isNote,
-  inTree,
   kidsOf,
   moveNode,
   parentOf,
@@ -41,10 +44,15 @@ function link(library, from, to, id, parent = ROOT) {
   for (const kid of kidsOf(library.trees[from], id)) link(library, from, to, kid, id);
 }
 
-/** A copy of `id` and its subtree, made at time `at`, as the last child of `parent`. The copies' ids end in the time. */
-function copy(library, tree, id, parent, at) {
-  const node = addNode(library, tree, stamped({ ...structuredClone(library.nodes[id]), id: `${id}-${at.toString(36)}` }, at), parent);
-  for (const kid of kidsOf(library.trees[tree], id)) copy(library, tree, kid, node.id, at);
+/**
+ * A copy of `id` and its subtree, made at time `at`, as the last child of
+ * `parent`. `as` names the copies: { [id]: the id of its copy }; a node it
+ * does not name is left out, with what is under it.
+ */
+function copy(library, tree, id, parent, as, at) {
+  if (!as[id]) return undefined;
+  const node = addNode(library, tree, stamped({ ...structuredClone(library.nodes[id]), id: as[id] }, at), parent);
+  for (const kid of kidsOf(library.trees[tree], id)) copy(library, tree, kid, node.id, as, at);
   return node.id;
 }
 
@@ -101,10 +109,11 @@ export const ops = {
   delete(library, { ids }, at) {
     for (const id of ids) for (const tree in library.trees) removeNode(library, tree, id, at);
   },
-  duplicate(library, { tree, ids }, at) {
-    for (const id of ids) {
-      if (!library.nodes[id] || !inTree(library.trees[tree], id)) continue;
-      moveNode(library, tree, copy(library, tree, id, undefined, at), id, 'after');
+  /** Copies nodes, with their subtrees, each copy right after what it copies. `as` gives the copies their ids (see `copy`). */
+  duplicate(library, { tree, ids, as }, at) {
+    for (const id of topmost(library.trees[tree], ids)) {
+      const made = copy(library, tree, id, undefined, as, at);
+      if (made) moveNode(library, tree, made, id, 'after');
     }
   },
   collapse(library, { tree, id, collapsed }) {

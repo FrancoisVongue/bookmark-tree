@@ -1,12 +1,12 @@
 // What the user can ask for, whichever way they ask: a button, a menu, a key.
 
-import { isGroup, treeFor } from '../model.js';
+import { isGroup, newId, treeFor } from '../model.js';
 import { exportTree } from '../ops.js';
 import { toHtml, toOutline } from '../bookmarks.js';
 import { t } from '../i18n.js';
 import { askForBookmarks, saveFile } from '../page.js';
 import { titleOf } from './view.js';
-import { app, arrange, ask, branches, closeOverlay, here, newPane, op, redraw, refresh, rowEl, rowOf, say, send, setFocus, ui } from './screen.js';
+import { app, arrange, ask, branches, closeOverlay, here, newPane, op, redraw, refresh, rowEl, rowOf, say, send, setFocus, ui, under } from './screen.js';
 
 export const activate = (pane, id, where) =>
   send({ type: 'activate', nodeId: id, treeId: pane.tree, windowId: ui.windowId, where });
@@ -18,6 +18,12 @@ export function revisit(id, tree) {
   here().tree = treeFor(ui.library, id, tree);
   activate(here(), id);
   arrange();
+}
+
+/** Copies of nodes and of all that is under them, right after them. */
+export function duplicate(pane, ids) {
+  const copied = ids.flatMap((id) => [id, ...under(pane, id)]);
+  return op('duplicate', { tree: pane.tree, ids, as: Object.fromEntries(copied.map((id) => [id, newId()])) });
 }
 
 /** Clicking a node goes to its page. A group has no page: it folds and unfolds. */

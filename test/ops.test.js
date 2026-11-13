@@ -66,12 +66,23 @@ test('a removed node goes to the trash once no tree holds it, and can be put bac
   assert.deepEqual(lib.trash.map((entry) => entry.node.id), ['a']);
 });
 
-test('duplicating copies the branch, and the same record gives the same ids', () => {
-  const [one, two] = [library('a\n  b'), library('a\n  b')];
-  ops.duplicate(one, { tree: MAIN, ids: ['a'] }, 1000);
-  ops.duplicate(two, { tree: MAIN, ids: ['a'] }, 1000);
-  assert.equal(outline(one), 'a\n  b\na-rs\n  b-rs');
-  assert.deepEqual(one, two);
+test('duplicating copies the branch, under the ids it is given', () => {
+  const lib = library('a\n  b\nc');
+  ops.duplicate(lib, { tree: MAIN, ids: ['a'], as: { a: 'a2', b: 'b2' } }, 1000);
+  assert.equal(outline(lib), 'a\n  b\na2\n  b2\nc');
+  assert.deepEqual(problems(lib), []);
+});
+
+test('a parent and its child both chosen: the branch is copied once', () => {
+  const lib = library('a\n  b\nc');
+  ops.duplicate(lib, { tree: MAIN, ids: ['b', 'a', 'c'], as: { a: 'a2', b: 'b2', c: 'c2' } }, 1000);
+  assert.equal(outline(lib), 'a\n  b\na2\n  b2\nc\nc2');
+  // Twice in the same instant: two copies, not one.
+  ops.duplicate(lib, { tree: MAIN, ids: ['c'], as: { c: 'c3' } }, 1000);
+  assert.equal(outline(lib), 'a\n  b\na2\n  b2\nc\nc3\nc2');
+  // A node the copies were not named for (it appeared meanwhile) is left out.
+  ops.duplicate(lib, { tree: MAIN, ids: ['a'], as: { a: 'a4' } }, 1000);
+  assert.equal(outline(lib), 'a\n  b\na4\na2\n  b2\nc\nc3\nc2');
 });
 
 test('collapse-all folds every parent, and unfolds', () => {
@@ -143,7 +154,7 @@ test('what is added or copied remembers when', () => {
   const library = createLibrary();
   ops.add(library, { tree: MAIN, nodes: [{ id: 'a', url: 'https://a.example/', title: 'A' }] }, 1000);
   ops['note-add'](library, { tree: MAIN, id: 'n' }, 2000);
-  ops.duplicate(library, { tree: MAIN, ids: ['a'] }, 3000);
+  ops.duplicate(library, { tree: MAIN, ids: ['a'], as: { a: 'a2' } }, 3000);
   assert.deepEqual(Object.values(library.nodes).map((node) => node.added), [1000, 2000, 3000]);
 });
 

@@ -63,7 +63,7 @@ export function rowMenu(pane, id) {
     page && item('editAddress', () => cmd.startRename({ id, pane, field: 'url' })),
     page && item('copyLink', () => navigator.clipboard.writeText(links())),
     item('changeIcon', () => ((ui.overlay = { kind: 'icons', ids }), redraw())),
-    item('duplicate', () => op('duplicate', { tree, ids }), 'Ctrl+D'),
+    item('duplicate', () => cmd.duplicate(pane, ids), 'Ctrl+D'),
     !isGroup(node) && (planned ? item('planRemove', () => op('unplan', { ids })) : item('planAdd', () => op('plan', { ids }))),
     item(node.keep ? 'keepNot' : 'keep', () => op('keep', { ids, keep: !node.keep })),
     page && item(node.home ? 'unpin' : 'pin', () => op('pin', { ids, pinned: !node.home })),
