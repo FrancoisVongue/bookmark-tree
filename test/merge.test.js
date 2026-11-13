@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MAIN, ROOT, addNode, createLibrary, goneOf, planOf, rowsOf } from '../src/model.js';
+import { MAIN, ROOT, addNode, createLibrary, goneOf, planOf, problems, rowsOf } from '../src/model.js';
 import { ops } from '../src/ops.js';
-import { diff, isEmpty, only, takeIn } from '../src/merge.js';
+import { apply, diff, isEmpty, only, takeIn } from '../src/merge.js';
 
 /** My library after taking in theirs, as the worker does it for GitHub: what they deleted since `base` is told by their `gone`. */
 const merge = (base, mine, theirs, at) =>
@@ -151,4 +151,30 @@ test('the plan is merged entry by entry: a visit here does not undo what was pla
   // Nothing planned on either side: nothing to tell.
   assert.equal(isEmpty(diff(base, structuredClone(base))), true);
   assert.deepEqual(planOf(only(mine, new Set(['a']))), ['a']);
+});
+
+test('a tree deleted elsewhere takes with it only what its deleter knew of', () => {
+  // Both know the tree Work: a group with a page in it, and a page beside.
+  const base = library('x');
+  ops['tree-add'](base, { id: 'work', name: 'Work' });
+  ops['note-add'](base, { tree: 'work', id: 'g', name: 'Group' });
+  for (const [id, target] of [['old', 'g'], ['other', undefined]]) {
+    ops.add(base, { tree: 'work', nodes: [{ id, url: `https://${id}/`, title: id }], target, position: target && 'inside' });
+  }
+  const [mine, theirs] = [structuredClone(base), structuredClone(base)];
+  ops['tree-remove'](theirs, { tree: 'work' }, 5);
+
+  // Nothing new here: the tree goes, its nodes to the trash.
+  const gone = merge(base, mine, theirs, 6);
+  assert.deepEqual(Object.keys(gone.trees), [MAIN]);
+  assert.deepEqual(gone.trash.map((entry) => entry.node.id).sort(), ['g', 'old', 'other']);
+
+  // A page was added here meanwhile, inside the group: the tree stays with it and the group above it.
+  ops.add(mine, { tree: 'work', nodes: [{ id: 'new', url: 'https://new/', title: 'new' }], target: 'g', position: 'inside' });
+  const kept = merge(base, mine, theirs, 6);
+  assert.equal(outline(kept, 'work'), 'g\n  new');
+  assert.deepEqual(kept.trash.map((entry) => entry.node.id).sort(), ['old', 'other']);
+  assert.deepEqual(problems(kept), []);
+  // And a tree deleted here, by an undo say, is deleted whole: this rule is about what comes from elsewhere.
+  assert.deepEqual(Object.keys(apply(structuredClone(mine), diff(base, theirs), 7).trees), [MAIN]);
 });

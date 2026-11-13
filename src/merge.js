@@ -22,7 +22,7 @@
 //   d.grid   the table of trees, if it changed (taken whole)
 //   d.plan   { put: [[id, after]], out: [id] }   entries of the plan put in (or moved), top to bottom; taken out
 
-import { ROOT, descendantsOf, forgetLoose, goneOf, inTree, kidsOf, moveNode, newTree, parentOf, placeNode, planOf, removeNode, removeTree, setCollapsed, setPlan } from './model.js';
+import { ROOT, descendantsOf, forgetLoose, goneOf, inTree, kidsOf, moveNode, newTree, parentOf, parentsOf, placeNode, planOf, removeNode, removeTree, setCollapsed, setPlan } from './model.js';
 
 export const EMPTY = { nodes: {}, trees: {}, trash: [] };
 const NO_TREE = { children: {}, collapsed: {} };
@@ -162,10 +162,29 @@ export function apply(out, d, at) {
  * only the nodes `told` (ids), which they said they deleted. Without a
  * `base` the two have no past in common and are simply put together; what
  * was deleted here stays deleted even so.
+ *
+ * A tree they deleted is deleted here if they knew all of it. If nodes were
+ * put into it here since `base`, they never saw those: the tree stays, with
+ * them and the nodes above them; the rest of it goes, as it would have.
  */
 export function takeIn(library, base, theirs, told, at) {
   const deleted = base ? told : [...goneOf(library), ...told];
-  apply(library, diff(only(base ?? EMPTY, new Set(Object.keys(theirs.nodes))), theirs), at);
-  for (const id of deleted) for (const tree in library.trees) removeNode(library, tree, id, at);
+  const d = diff(only(base ?? EMPTY, new Set(Object.keys(theirs.nodes))), theirs);
+  const leaving = []; // [treeId, id]: what goes from the trees that stay.
+  const spared = new Set(); // What stays in them: not deleted, though deleting their tree named it so.
+  d.felled = d.felled.filter((treeId) => {
+    const mine = library.trees[treeId];
+    const known = new Set(descendantsOf(base.trees[treeId], ROOT));
+    const unseen = mine ? descendantsOf(mine, ROOT).filter((id) => !known.has(id)) : [];
+    if (!unseen.length) return true;
+    const parents = parentsOf(mine);
+    const staying = new Set(unseen);
+    for (const id of unseen) for (let up = parents.get(id); up !== ROOT && !staying.has(up); up = parents.get(up)) staying.add(up);
+    for (const id of descendantsOf(mine, ROOT)) staying.has(id) ? spared.add(id) : leaving.push([treeId, id]);
+    return false;
+  });
+  apply(library, d, at);
+  for (const [treeId, id] of leaving) removeNode(library, treeId, id, at);
+  for (const id of deleted) if (!spared.has(id)) for (const tree in library.trees) removeNode(library, tree, id, at);
   return library;
 }
