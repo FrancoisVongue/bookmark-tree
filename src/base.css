@@ -2,6 +2,8 @@
 
 :root {
   color-scheme: light dark;
+  --danger: #d93025; /* What cannot be taken lightly: an error, a removal. */
+  --control: 28px; /* The height of a field, a button with words, a strip's heading. */
   --bg: #fff;
   --text: #1f1f1f;
   --dim: #6b6f6d;
@@ -125,7 +127,7 @@ svg.line {
   gap: 8px;
 }
 .dialog footer button {
-  height: 28px;
+  height: var(--control);
   padding: 0 14px;
   border-radius: 14px;
 }
@@ -153,7 +155,7 @@ dialog.dialog::backdrop {
   background: rgb(0 0 0 / 0.35);
 }
 dialog.dialog input {
-  height: 28px;
+  height: var(--control);
   padding: 0 8px;
   font: inherit;
   color: var(--text);
@@ -175,7 +177,7 @@ dialog.dialog input {
   font-size: 12px;
 }
 .field input {
-  height: 28px;
+  height: var(--control);
   padding: 0 8px;
   font: inherit;
   font-size: 13px;
@@ -195,13 +197,13 @@ dialog.dialog input {
   line-height: 1.5;
 }
 .hint.error {
-  color: #d93025;
+  color: var(--danger);
 }
 .trouble {
   margin: 0;
   padding: 8px 10px;
   border-radius: 8px;
-  background: #d93025;
+  background: var(--danger);
   color: #fff;
   user-select: text;
 }

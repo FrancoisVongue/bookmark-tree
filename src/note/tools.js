@@ -77,7 +77,10 @@ export function toolbar(editor, bar) {
       button.title = tool.keys ? `${tool.title} (${tool.keys.replace('Mod', mod)})` : tool.title;
       button.setAttribute('aria-label', tool.title);
       // A tool that needs an answer asks for it first; what it then does is one step, as for the others.
-      button.addEventListener('click', async () => tool.run(editor.chain().focus(), editor, await tool.ask?.(editor)).run());
+      button.addEventListener('click', async () => {
+        const answer = await tool.ask?.(editor); // First the answer: the step is made from the text as it is after the question.
+        tool.run(editor.chain().focus(), editor, answer).run();
+      });
       buttons.set(button, tool);
     }
     return element;
