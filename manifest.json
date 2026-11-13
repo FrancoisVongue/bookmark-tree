@@ -2,6 +2,7 @@
   "manifest_version": 3,
   "name": "Bookmark Tree",
   "version": "0.6.0",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAq54gxUnC/GzzAs5rzvNwCkZOz6KhhLXrCyvtTQ8/7pQ3o5Z9TZHnKRdSrgzjauWZ7S3Vc2EVfOd75JRdwJtMhm8OE+YEf8sI+1WpXr13Uyw6awhefVAvFU2q4oKECFLOm90CB7/QXbStzLhk62ZzNQHU7B6K/kwMBJrw/lSC67XnHuUAG/rjCjCpme55QYgvvs6Q+pRTt9ljGwZUYsUyjUEfncz+LY9RzNCMAk8WDRp7qa2QnQFbr/BslQkrNhJOTekYwACukH783br8zpUuNvTTT/xX2EENHh4PbJ0iqE7Hy9aiLJ9ZIexFHTzyqzoRR3FCbzUK7yp05eJnwV+HswIDAQAB",
   "description": "__MSG_extDescription__",
   "default_locale": "en",
   "icons": {
