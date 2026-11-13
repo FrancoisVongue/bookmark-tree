@@ -85,15 +85,22 @@ test("a tree's icon travels", () => {
   assert.equal(merge(base, mine, structuredClone(base), 1).trees[MAIN].icon, '🔥');
 });
 
-test('the plan travels whole; a page one side does not have is not in its plan', () => {
+test('the plan is merged entry by entry: a visit here does not undo what was planned there', () => {
   const base = createLibrary();
-  for (const id of ['a', 'b']) addNode(base, MAIN, { id, url: `https://${id}/`, title: id });
+  for (const id of ['a', 'b', 'c']) addNode(base, MAIN, { id, url: `https://${id}/`, title: id });
+  base.plan = ['a'];
   const mine = structuredClone(base);
-  mine.plan = ['b', 'a'];
+  delete mine.plan; // I have been at a.
   const theirs = structuredClone(base);
+  theirs.plan = ['a', 'b']; // Meanwhile b was planned elsewhere.
+  assert.deepEqual(planOf(merge(base, mine, theirs, 1)), ['b']);
+  assert.deepEqual(planOf(merge(base, theirs, mine, 1)), ['b']);
+  // Both add, one reorders: all entries are there, each once.
+  mine.plan = ['c', 'a'];
+  assert.deepEqual(planOf(merge(base, mine, theirs, 1)), ['c', 'a', 'b']);
+  // A page one side does not have is not in its plan.
   ops.delete(theirs, { ids: ['a'] }, 1);
-  const merged = merge(base, mine, theirs, 2);
-  assert.deepEqual(planOf(merged), ['b']);
+  assert.deepEqual(planOf(merge(base, mine, theirs, 2)), ['c', 'b']);
   // Nothing planned on either side: nothing to tell.
   assert.equal(isEmpty(diff(base, structuredClone(base))), true);
   assert.deepEqual(planOf(only(mine, new Set(['a']))), ['a']);

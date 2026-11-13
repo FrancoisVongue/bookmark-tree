@@ -86,7 +86,7 @@ export function problems(library) {
 export const planOf = (library) => [...new Set(library.plan ?? [])].filter((id) => library.nodes[id]);
 
 /** Leaves `ids` in the plan: what is kept of it is what the plan is (no plan, when nothing is). */
-function setPlan(library, ids) {
+export function setPlan(library, ids) {
   if (ids.length) library.plan = ids;
   else delete library.plan;
 }

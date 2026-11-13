@@ -8,7 +8,9 @@
 //   merge               = apply(theirs, diff(base, mine))
 //
 // Nothing is lost quietly: what only one side has stays, and what one side
-// deleted goes to the other's trash rather than away. Pure: no Chrome here.
+// deleted goes to the other's trash rather than away. (One thing is taken
+// whole: the table of trees. Of two rearrangements of it made at once, one
+// wins.) Pure: no Chrome here.
 //
 //   d.nodes  { [id]: { node, keys } }   a new or changed node, and which of its fields changed
 //   d.trees  { [treeId]: { name, renamed, icon, redrawn, added,
@@ -17,9 +19,9 @@
 //                          collapsed: { [id]: bool } } }
 //   d.gone   [treeId]                   trees deleted
 //   d.grid   the table of trees, if it changed (taken whole)
-//   d.plan   the plan of what to open next, if it changed (taken whole)
+//   d.plan   { put: [[id, after]], out: [id] }   entries of the plan put in (or moved), top to bottom; taken out
 
-import { ROOT, descendantsOf, forgetLoose, inTree, kidsOf, moveNode, parentOf, placeNode, planOf, removeNode } from './model.js';
+import { ROOT, descendantsOf, forgetLoose, inTree, kidsOf, moveNode, parentOf, placeNode, planOf, removeNode, setPlan } from './model.js';
 
 export const EMPTY = { nodes: {}, trees: {}, trash: [] };
 const NO_TREE = { children: {}, collapsed: {} };
@@ -49,6 +51,12 @@ function diffTree(was, tree, changed) {
   }
   const out = descendantsOf(was, ROOT).filter((id) => !inTree(tree, id));
   return { name: tree.name, renamed: tree.name !== was.name, icon: tree.icon, redrawn: tree.icon !== was.icon, put, out, collapsed };
+}
+
+/** The plan, entry by entry: those new or after another entry than before, and those no longer in it. */
+function diffPlan(was, plan) {
+  const put = plan.map((id, at) => [id, plan[at - 1] ?? null]).filter(([id, after]) => !was.includes(id) || (was[was.indexOf(id) - 1] ?? null) !== after);
+  return { put, out: was.filter((id) => !plan.includes(id)) };
 }
 
 /**
@@ -88,7 +96,8 @@ export function diff(base, mine) {
     if (!quiet) d.trees[treeId] = entry;
   }
   if (!same(base.grid, mine.grid)) d.grid = mine.grid;
-  if (!same(planOf(base), planOf(mine))) d.plan = planOf(mine);
+  const plan = diffPlan(planOf(base), planOf(mine));
+  if (plan.put.length || plan.out.length) d.plan = plan;
   return d;
 }
 
@@ -126,8 +135,15 @@ export function apply(out, d, at) {
   }
   for (const treeId of d.gone) if (out.trees[treeId] && Object.keys(out.trees).length > 1) delete out.trees[treeId];
   if (d.grid) out.grid = structuredClone(d.grid);
-  if (d.plan?.length) out.plan = [...d.plan];
-  else if (d.plan) delete out.plan;
+  if (d.plan) {
+    let plan = planOf(out).filter((id) => !d.plan.out.includes(id));
+    for (const [id, after] of d.plan.put) {
+      if (!out.nodes[id]) continue;
+      plan = plan.filter((each) => each !== id);
+      plan.splice(after === null ? 0 : plan.indexOf(after) + 1 || plan.length, 0, id); // After an entry that is not here: at the end.
+    }
+    setPlan(out, plan);
+  }
   forgetLoose(out, at);
   out.trash = out.trash.filter((entry) => !out.nodes[entry.node.id]);
   return out;
