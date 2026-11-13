@@ -103,7 +103,7 @@ function place(pane) {
   pane.rows.forEach((row, at) => {
     const pull = at > 0 && row.depth === pane.rows[at - 1].depth ? ROW - ui.tight : 0;
     top += at > 0 ? ROW - pull : 0;
-    Object.assign(row, { top, pull, shift: 0 });
+    Object.assign(row, { top, pull, shift: 0, gap: 0 });
   });
   pane.height = pane.rows.length ? top + ROW : 0;
 }
@@ -166,16 +166,29 @@ function spread() {
     row.shift = opened;
   }
   atPointer ??= opened;
-  for (let n = pane.from; n < pane.to; n++) pane.rows[n].shift -= atPointer;
+  for (let n = pane.from; n < pane.to; n++) {
+    const row = pane.rows[n];
+    row.shift -= atPointer;
+    row.gap = n > pane.from ? row.shift - pane.rows[n - 1].shift : 0; // How far it moved from the row above: the guides bridge it.
+  }
+}
+
+/** Where the line that shows a drop goes in a pane: { top, depth } - under or over the target row, at the level the rows would land on. */
+function dropLine(pane) {
+  const { targetId, position } = ui.drop?.pane === pane ? ui.drop : {};
+  const row = targetId && rowOf(pane, targetId);
+  if (!row || position === 'inside') return undefined;
+  return { top: row.top + row.shift + (position === 'before' ? 0 : ROW), depth: row.depth + (position === 'first' ? 1 : 0) };
 }
 
 export function redraw() {
   for (const pane of [...ui.panes, picker()]) {
     if (!pane) continue;
     inSight(pane);
-    for (let n = pane.from; n < pane.to; n++) pane.rows[n].shift = 0;
+    for (let n = pane.from; n < pane.to; n++) Object.assign(pane.rows[n], { shift: 0, gap: 0 });
   }
   spread();
+  for (const pane of ui.panes) pane.line = dropLine(pane);
   draw(app, ui);
   settleFocus();
 }
@@ -340,10 +353,10 @@ function take(state, active) {
   ui.activeTree = state.binding[active?.id]?.tree;
 }
 
-let cursorWas = {}; // { tree, at }: where the cursor stood when the screen was last laid out.
 /** Each pane's rows; panes, selections and the cursor that point at things now gone are let go. */
 function layOut() {
   const { library } = ui;
+  const cursorWas = { tree: here()?.tree, at: here()?.rows.findIndex((row) => row.id === ui.cursor) ?? -1 }; // Among the rows as they were.
   ui.panes = ui.panes.filter((pane) => library.trees[pane.tree]);
   if (!ui.panes.length) ui.panes = [newPane(Object.keys(library.trees)[0])];
   ui.focus = Math.min(ui.focus, ui.panes.length - 1);
@@ -359,7 +372,6 @@ function layOut() {
   // The cursor's row is gone (removed, folded away): the cursor stays where it was, on the row now there. In another tree it starts from the current tab.
   const same = cursorWas.tree === here().tree && cursorWas.at >= 0;
   if (!rowOf(here(), ui.cursor)) ui.cursor = same ? here().rows[Math.min(cursorWas.at, here().rows.length - 1)]?.id : (rowOf(here(), ui.activeId)?.id ?? here().rows[0]?.id);
-  cursorWas = { tree: here().tree, at: here().rows.findIndex((row) => row.id === ui.cursor) };
   if (ui.renaming?.id && !rowOf(ui.renaming.pane, ui.renaming.id)) ui.renaming = undefined;
 }
 

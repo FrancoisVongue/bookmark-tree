@@ -116,7 +116,8 @@ function tick() {
   }
   updateDrop();
   const ghost = app.querySelector('.ghost');
-  if (ghost) ghost.style.transform = `translate(${gesture.pointer.x + 12}px, ${gesture.pointer.y + 8}px)`;
+  // (Kept inside the panel: near the right edge the label stays whole and the pointer runs along it.)
+  if (ghost) ghost.style.transform = `translate(${Math.min(gesture.pointer.x + 12, innerWidth - ghost.offsetWidth - 4)}px, ${gesture.pointer.y + 8}px)`;
   requestAnimationFrame(tick);
 }
 

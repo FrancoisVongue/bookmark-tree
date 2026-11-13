@@ -138,6 +138,7 @@ export function startRename(what) {
   const input = app.querySelector('.rename');
   input?.focus();
   input?.select();
+  if (input) input.scrollLeft = 0; // All of it is selected, and its beginning is what is seen.
 }
 
 export function endRename(save) {

@@ -101,7 +101,7 @@ function rowView(row, pane, ui, { leads, included }, lit) {
       aria-level=${row.depth + 1}
       aria-selected=${pane.sel.has(row.id)}
       tabindex=${pane === ui.panes[ui.focus] && row.id === ui.cursor ? 0 : -1}
-      style="--depth:${row.depth}; --lit:${lit || 0}; margin-top:${-row.pull}px; transform:translateY(${row.shift}px)"
+      style="--depth:${row.depth}; --lit:${lit || 0}; --gap:${row.gap}px; margin-top:${-row.pull}px; transform:translateY(${row.shift}px)"
       title=${[title, node.url, ui.audible.has(row.id) && t('playing'), node.added && t('addedOn', new Date(node.added).toLocaleDateString())].filter(Boolean).join('\n')}
     >
       ${ui.audible.has(row.id) ? html`<span class="sound"></span>` : ''}
@@ -119,8 +119,10 @@ function rowView(row, pane, ui, { leads, included }, lit) {
         ? ''
         : html`
             ${isAway(node) ? act('home', 'home', t('backHome', node.home.title || node.home.url), 'away') : ''}
-            ${act('child', 'add', t('newChild'))} ${live ? act('sleep', 'sleep', t('sleep')) : ''}
-            ${act('remove', 'trash', t(row.collapsed ? 'removeBranch' : 'remove'), 'danger')}
+            <span class="acts">
+              ${act('child', 'add', t('newChild'))} ${live ? act('sleep', 'sleep', t('sleep')) : ''}
+              ${act('remove', 'trash', t(row.collapsed ? 'removeBranch' : 'remove'), 'danger')}
+            </span>
           `}
     </div>
   `;
@@ -184,6 +186,7 @@ function paneView(pane, index, ui) {
           (row, at) => rowView(row, pane, ui, way, guide && pane.from + at >= guide.from && pane.from + at < guide.to && guide.level),
         )}
         <div class="gap" style="height:${pane.after}px"></div>
+        ${pane.line ? html`<div class="dropline" style="top:${pane.line.top}px; --depth:${pane.line.depth}"></div>` : nothing}
       </div>
       ${pane.rows.length || picking ? '' : html`<p class="hint">${t(ui.query ? 'nothingFound' : 'emptyTree')}</p>`}
     </section>
@@ -197,7 +200,7 @@ function treeTabs(ui, current, action) {
     ui.renaming?.tree === tree.id
       ? html`<input class="rename tree-name" .value=${tree.name} aria-label=${t('renameHint')} />`
       : html`<button class="tab ${tree.id === current ? 'current' : ''}" data-action=${action} data-tree=${tree.id}>
-          ${treeLabel(tree)}
+          <span>${treeLabel(tree)}</span>
         </button>`,
   );
 }
@@ -213,7 +216,7 @@ function treeGrid(ui) {
     if (ui.renaming?.tree === id) return html`<input class="rename tree-name" .value=${tree.name} aria-label=${t('renameHint')} />`;
     // The tree of the current tab is marked wherever the panel is looking.
     const state = `${id === current ? 'current' : ''} ${id === ui.activeTree ? 'has-active' : ''} ${ui.drag?.tree === id ? 'dragging' : ''} ${drop}`;
-    return html`<button class="tab ${state}" data-action="tree-show" data-tree=${id} data-cell=${cell}>${treeLabel(tree)}</button>`;
+    return html`<button class="tab ${state}" data-action="tree-show" data-tree=${id} data-cell=${cell}><span>${treeLabel(tree)}</span></button>`;
   };
   return html`<div class="grid" style="grid-template-columns:repeat(${columns}, minmax(0, 1fr))">${cells.map(cellView)}</div>`;
 }
@@ -388,6 +391,14 @@ export function draw(container, ui) {
       </header>
       ${planView(ui)}
       <main class="panes split-${ui.split}">${ui.panes.map((pane, index) => paneView(pane, index, ui))}</main>
+      ${ui.toast
+        ? html`<div class="toasts">
+            <div class="toast">
+              <span>${ui.toast.text}</span>
+              ${ui.toast.undo ? html`<button class="pill" data-action="undo">${t('undo')}</button>` : nothing}
+            </div>
+          </div>`
+        : nothing}
       ${journalView(ui)}
       ${ui.unsynced
         ? html`<footer class="unsynced">
@@ -396,12 +407,7 @@ export function draw(container, ui) {
             ${act('unsynced-close', 'close', t('closeNotice'), 'shown')}
           </footer>`
         : nothing}
-      ${ui.toast
-        ? html`<div class="toast">
-            <span>${ui.toast.text}</span>
-            ${ui.toast.undo ? html`<button class="pill" data-action="undo">${t('undo')}</button>` : nothing}
-          </div>`
-        : nothing}
+
       ${ui.drag?.label ? html`<div class="ghost">${ui.drag.label}</div>` : nothing}
       ${ui.overlay ? OVERLAYS[ui.overlay.kind](ui) : nothing}
       ${ui.menu ? menuView(ui.menu) : nothing}
