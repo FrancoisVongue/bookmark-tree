@@ -30,7 +30,7 @@
 //       before                    the last snapshot taken in from elsewhere: what
 //                                 my own ones since were made from
 
-import { ROOT, freshOf, goneOf, kidsOf, lettersOf, parentOf, planOf } from './model.js';
+import { ROOT, freshOf, goneOf, kidsOf, lettersOf, parentsOf, planOf } from './model.js';
 import { EMPTY, diff, isEmpty, only, takeIn } from './merge.js';
 
 export const BUDGET = 90_000; // Of the 102,400 bytes the browser allows.
@@ -84,8 +84,9 @@ async function load(names, all) {
 function withParents(library, ids) {
   const all = new Set(ids);
   for (const tree of Object.values(library.trees)) {
+    const parents = parentsOf(tree);
     for (const id of ids) {
-      for (let up = parentOf(tree, id); up && up !== ROOT && !all.has(up); up = parentOf(tree, up)) all.add(up);
+      for (let up = parents.get(id); up && up !== ROOT && !all.has(up); up = parents.get(up)) all.add(up);
     }
   }
   return all;

@@ -30,19 +30,21 @@ const NO_TREE = { children: {}, collapsed: {} };
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const keysOf = (...objects) => [...new Set(objects.flatMap((object) => Object.keys(object ?? {})))];
 
-/** Where a node sits: under which parent, after which sibling. */
-function placeOf(tree, id) {
-  const parent = parentOf(tree, id);
-  if (parent === undefined) return undefined;
-  const kids = kidsOf(tree, parent);
-  return { parent, after: kids[kids.indexOf(id) - 1] };
+/** Where each node of a tree sits: under which parent, after which sibling. (All at once: a diff asks it of every node.) */
+function placesIn(tree) {
+  const places = new Map();
+  for (const parent in tree.children) {
+    tree.children[parent].forEach((id, at, kids) => places.has(id) || places.set(id, { parent, after: kids[at - 1] }));
+  }
+  return places;
 }
 
 function diffTree(was, tree, changed) {
+  const [before, after] = [placesIn(was), placesIn(tree)];
   const put = [];
   for (const id of descendantsOf(tree, ROOT)) {
-    const now = placeOf(tree, id);
-    const moved = !same(placeOf(was, id), now);
+    const now = after.get(id);
+    const moved = !same(before.get(id), now);
     // A changed node's place is told too: where it was deleted meanwhile, it comes back there.
     if (moved || changed[id]) put.push([id, now.parent, now.after ?? null, moved]);
   }
@@ -50,7 +52,7 @@ function diffTree(was, tree, changed) {
   for (const id of keysOf(was.collapsed, tree.collapsed)) {
     if (!!was.collapsed[id] !== !!tree.collapsed[id]) collapsed[id] = !!tree.collapsed[id];
   }
-  const out = descendantsOf(was, ROOT).filter((id) => !inTree(tree, id));
+  const out = descendantsOf(was, ROOT).filter((id) => !after.has(id));
   return { name: tree.name, renamed: tree.name !== was.name, icon: tree.icon, redrawn: tree.icon !== was.icon, put, out, collapsed };
 }
 

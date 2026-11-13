@@ -163,6 +163,16 @@ export function parentOf(tree, id) {
 
 export const inTree = (tree, id) => parentOf(tree, id) !== undefined;
 
+/**
+ * Every node of a tree with its parent, as a Map. For a pass over many
+ * nodes: `parentOf` looks through the whole tree each time it is asked.
+ */
+export function parentsOf(tree) {
+  const parents = new Map();
+  for (const parent in tree.children) for (const kid of tree.children[parent]) if (!parents.has(kid)) parents.set(kid, parent);
+  return parents;
+}
+
 /** `id`'s descendants, depth first. */
 export function descendantsOf(tree, id) {
   const out = [];
