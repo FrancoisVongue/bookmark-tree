@@ -247,7 +247,7 @@ test('an address typed in a new tab that a sleeping node of another tree has: th
   assert.deepEqual(state.library.trees[MAIN].children[ROOT], [a]);
 });
 
-test('a new tab opened while on a page inside a folded branch goes right below the branch', () => {
+test('a new tab opened while on a page inside a folded branch goes right below that page all the same', () => {
   const state = createState();
   tabOpened(state, { id: 1, url: 'https://a.example/' });
   tabOpened(state, { id: 2, url: 'https://b.example/' }, 1);
@@ -258,6 +258,6 @@ test('a new tab opened while on a page inside a folded branch goes right below t
   state.library.trees[MAIN].collapsed[b] = true;
   tabOpened(state, { id: 5, url: 'chrome://newtab/' });
   tabOpenedBeside(state, 5, c);
-  assert.deepEqual(state.library.trees[MAIN].children[ROOT], [a, state.binding[5].node, last]);
-  assert.deepEqual(rowsOf(state.library, MAIN).map((row) => row.id), [a, state.binding[5].node, last]);
+  assert.deepEqual(state.library.trees[MAIN].children[ROOT], [a, last]);
+  assert.deepEqual(state.library.trees[MAIN].children[b], [c, state.binding[5].node]);
 });

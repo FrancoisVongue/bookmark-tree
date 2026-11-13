@@ -84,7 +84,7 @@ await switchTo(deep);
 await row('Page /a').locator('.twisty').click();
 await sleep(300);
 await panel.evaluate((windowId) => void chrome.tabs.create({ windowId }), windowId);
-await say('a new tab opened while on a page inside a folded branch: right below the branch');
+await say('a new tab opened while on a page inside a folded branch: right below that page, in sight under the fold');
 await shot('1-below-branch');
 await row('Page /a').locator('.twisty').click();
 
