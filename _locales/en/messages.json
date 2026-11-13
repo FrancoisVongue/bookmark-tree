@@ -1,4 +1,22 @@
 {
+  "journal": {
+    "message": "Where you were"
+  },
+  "journalGo": {
+    "message": "Go back there"
+  },
+  "journalBack": {
+    "message": "Back to where you were before"
+  },
+  "journalUnfold": {
+    "message": "Show all the places you were at"
+  },
+  "journalFold": {
+    "message": "Show only the last place"
+  },
+  "justNow": {
+    "message": "now"
+  },
   "unsyncedHere": {
     "message": "Not everything is synced: your $1 oldest pages stay on this computer only."
   },
@@ -417,7 +435,7 @@
     "message": "not set"
   },
   "keysChange": {
-    "message": "Change the first three…"
+    "message": "Change the browser-wide ones…"
   },
   "restoreBackup": {
     "message": "Restore a backup…"

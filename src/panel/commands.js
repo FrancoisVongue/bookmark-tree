@@ -1,6 +1,6 @@
 // What the user can ask for, whichever way they ask: a button, a menu, a key.
 
-import { isGroup } from '../model.js';
+import { isGroup, treeFor } from '../model.js';
 import { exportTree } from '../ops.js';
 import { toHtml, toOutline } from '../bookmarks.js';
 import { t } from '../i18n.js';
@@ -12,6 +12,13 @@ export const activate = (pane, id, where) =>
   send({ type: 'activate', nodeId: id, treeId: pane.tree, windowId: ui.windowId, where });
 export const newTab = (pane, id, as) => send({ type: 'new-tab', windowId: ui.windowId, treeId: pane.tree, nodeId: id, as });
 export const toggle = (pane, id) => op('collapse', { tree: pane.tree, id, collapsed: !rowOf(pane, id).collapsed });
+
+/** Back to a place from the journal: its tree is shown, its page opened (again, if it sleeps). */
+export function revisit(id, tree) {
+  here().tree = treeFor(ui.library, id, tree);
+  activate(here(), id);
+  refresh();
+}
 
 /** Clicking a node goes to its page. A group has no page: it folds and unfolds. */
 export function open(pane, id) {

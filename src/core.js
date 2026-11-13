@@ -7,6 +7,7 @@
 //                   whose place nobody chose. True only on this computer,
 //                   for this browser session
 //   state.windows   { [windowId]: treeId } - the tree each window's panel shows
+//   state.attention, state.journal   where the user is and was (see journal.js)
 //
 // A node with a tab is live; one without is asleep. Tabs come and go, nodes
 // stay until the user deletes them.
@@ -32,7 +33,7 @@ import {
   validTree,
 } from './model.js';
 
-export const createState = () => ({ library: createLibrary(), binding: {}, windows: {} });
+export const createState = () => ({ library: createLibrary(), binding: {}, windows: {}, attention: undefined, journal: [] });
 
 /** The address of the page that shows a note. */
 export const notePath = (id) => `src/note/note.html?id=${id}`;

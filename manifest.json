@@ -58,6 +58,12 @@
         "default": "Alt+N"
       },
       "description": "__MSG_newSibling__"
+    },
+    "journal-back": {
+      "suggested_key": {
+        "default": "Alt+J"
+      },
+      "description": "__MSG_journalBack__"
     }
   },
   "optional_permissions": [

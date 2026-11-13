@@ -17,6 +17,7 @@ const ICONS = {
   note: svg('M5 3h7l3 3v11H5zm1.6 1.6v10.8h6.8V7h-2.6V4.6zM8 9h4v1.4H8zm0 2.8h4v1.4H8z'),
   undo: svg('M8.5 4 3.5 8.5l5 4.5V10c3 0 5 1 6.5 4-.3-4.5-2.8-7.3-6.5-7.6z'),
   sound: svg('M4 8v4h2.7L10 15V5L6.7 8zm8-1.2v6.4a3.5 3.5 0 0 0 0-6.4z'),
+  clock: svg('M10 3a7 7 0 1 1 0 14 7 7 0 0 1 0-14zm0 1.6a5.4 5.4 0 1 0 0 10.8 5.4 5.4 0 0 0 0-10.8zm-.7 2h1.4v3.1l2.3 1.4-.7 1.2-3-1.8z'),
   search: svg('M8.7 3a5.7 5.7 0 0 1 4.5 9.2l3.6 3.5-1.1 1.1-3.6-3.5A5.7 5.7 0 1 1 8.7 3zm0 1.6a4.1 4.1 0 1 0 0 8.2 4.1 4.1 0 0 0 0-8.2z'),
   splitRow: svg('M3 4h14v12H3zm1.5 1.5v9h4.7v-9zm6.3 0v9h4.7v-9z'),
   splitColumn: svg('M3 4h14v12H3zm1.5 1.5v3.7h11V5.5zm0 5.3v3.7h11v-3.7z'),
@@ -264,6 +265,39 @@ const iconsView = () =>
 
 const OVERLAYS = { picker: pickerView, icons: iconsView, ask: (ui) => askView(ui.overlay) };
 
+const AGO = new Intl.RelativeTimeFormat(undefined, { style: 'narrow' });
+/** How long ago, in a word or two. */
+function ago(at) {
+  const minutes = Math.round((Date.now() - at) / 60_000);
+  if (minutes < 1) return t('justNow');
+  if (minutes < 60) return AGO.format(-minutes, 'minute');
+  return minutes < 24 * 60 ? AGO.format(-Math.round(minutes / 60), 'hour') : AGO.format(-Math.round(minutes / 1440), 'day');
+}
+
+/**
+ * The journal of attention, at the bottom: the place the user was at before
+ * this one, a click away; unfolded, all the places before it.
+ */
+function journalView(ui) {
+  if (!ui.journal.length) return nothing;
+  const place = ({ node, tree, at }) => html`
+    <button class="place" data-action="journal-go" data-node=${node} data-tree=${tree} title=${t('journalGo')}>
+      ${iconView(ui.library.nodes[node])}<span class="title">${titleOf(ui.library.nodes[node])}</span>
+      <span class="when">${ago(at)}</span>
+    </button>
+  `;
+  const fold = act('journal-toggle', 'chevron', t(ui.journalOpen ? 'journalFold' : 'journalUnfold'), 'shown');
+  return html`
+    <footer class="journal ${ui.journalOpen ? 'open' : ''}">
+      <div class="journal-head">
+        <span class="favicon glyph">${ICONS.clock}</span>
+        ${ui.journalOpen ? html`<span class="title">${t('journal')}</span>` : place(ui.journal[0])} ${fold}
+      </div>
+      ${ui.journalOpen ? html`<div class="places">${ui.journal.map(place)}</div>` : nothing}
+    </footer>
+  `;
+}
+
 /** Draws the panel from `ui` (see screen.js). */
 export function draw(container, ui) {
   if (!ui.library) return;
@@ -291,6 +325,7 @@ export function draw(container, ui) {
         </div>
       </header>
       <main class="panes split-${ui.split}">${ui.panes.map((pane, index) => paneView(pane, index, ui))}</main>
+      ${journalView(ui)}
       ${ui.unsynced
         ? html`<footer class="unsynced">
             <span>${t(ui.unsynced.kind === 'here' ? 'unsyncedHere' : 'unsyncedElsewhere', ui.unsynced.count)}</span>

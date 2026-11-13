@@ -24,6 +24,8 @@ with a library you care about, and keep backups (Settings has a button).
 - **Groups and notes.** A group is a heading for the nodes under it. A note
   is a page of your own, written in Markdown, with task lists.
 - **Pinned pages** remember the address they belong to and go back to it.
+- **A journal of where you were**: the last place is one click (or Alt+J)
+  away, the ones before it a list at the bottom of the panel.
 - **Search**, icons for nodes and trees, a trash that keeps deleted pages for
   30 days.
 - **Bookmarks in and out:** import the browser's bookmarks or a bookmarks

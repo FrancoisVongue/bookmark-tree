@@ -1,0 +1,68 @@
+/* The journal of attention, at the bottom of the panel (see journalView in view.js). */
+
+.journal {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  max-height: 45%;
+  border-top: 1px solid var(--badge);
+  padding: 2px 6px;
+  color: var(--dim);
+}
+.journal-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding-left: 6px;
+}
+.journal-head > .title {
+  flex: 1;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+/* The chevron points up while folded (there is more above), down while open. */
+.journal [data-action='journal-toggle'] svg {
+  transform: rotate(-90deg);
+}
+.journal.open [data-action='journal-toggle'] svg {
+  transform: rotate(90deg);
+}
+.places {
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: 4px;
+}
+.place {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  padding: 0 8px 0 6px;
+  border-radius: 8px;
+  text-align: left;
+  color: var(--text);
+}
+.places .place {
+  width: 100%;
+  padding-left: 28px; /* Under the heading's text, past its clock. */
+}
+.place:hover {
+  background: var(--hover);
+}
+.place .title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.place .when {
+  flex: none;
+  color: var(--dim);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}

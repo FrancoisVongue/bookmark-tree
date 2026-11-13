@@ -8,6 +8,7 @@ import { EMPTY, merge } from './merge.js';
 import * as github from './github.js';
 import * as channel from './channel.js';
 import * as core from './core.js';
+import { attend, placesOf } from './journal.js';
 
 const log = (...args) => console.log('[tree]', ...args);
 
@@ -51,7 +52,8 @@ function enqueue(name, task) {
 let saved = { library: '', session: '' };
 async function commit(name) {
   const library = JSON.stringify(state.library);
-  const session = JSON.stringify({ binding: state.binding, windows: state.windows, undo, redo });
+  const { binding, windows, attention, journal } = state;
+  const session = JSON.stringify({ binding, windows, attention, journal, undo, redo });
   if (!loaded || (library === saved.library && session === saved.session)) return;
   try {
     if (library !== saved.library) await chrome.storage.local.set({ library: state.library });
@@ -79,7 +81,7 @@ async function init() {
   }
   if (library) state.library = library;
   loaded = true;
-  if (session) ({ binding: state.binding, windows: state.windows, undo, redo } = session);
+  if (session) ({ binding: state.binding, windows: state.windows, attention: state.attention, journal: state.journal = [], undo, redo } = session);
   log('init:', library ? 'library loaded' : 'new library', '|', session ? 'same session' : 'new session');
   const keepFrom = Date.now() - TRASH_DAYS * 24 * 3600 * 1000;
   state.library.trash = state.library.trash.filter((entry) => entry.at > keepFrom);
@@ -94,6 +96,16 @@ async function init() {
 // node, if that node is in the tree the window's panel shows (see core.js).
 const shown = new Map();
 chrome.tabs.onActivated.addListener(({ tabId, windowId }) => shown.set(windowId, tabId));
+
+// Where the user looks: the tab in front, in the window in front (see journal.js).
+chrome.tabs.onActivated.addListener(({ tabId }) => enqueue('attention', () => attend(state, tabId, Date.now())));
+chrome.windows.onFocusChanged.addListener((windowId) => {
+  if (windowId === chrome.windows.WINDOW_ID_NONE) return; // Another program is in front: the user will be back.
+  enqueue('attention', async () => {
+    const [tab] = await chrome.tabs.query({ active: true, windowId });
+    attend(state, tab?.id, Date.now());
+  });
+});
 
 chrome.tabs.onCreated.addListener((created) => {
   // Right now, before the new tab itself becomes the one shown.
@@ -361,6 +373,7 @@ async function handle(message, sender) {
         audible: audible.map((tab) => state.binding[tab.id]?.node).filter(Boolean),
         trouble,
         unsynced,
+        journal: placesOf(state),
         canUndo: undo.length > 0,
         canRedo: redo.length > 0,
       };
@@ -464,8 +477,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 // Keyboard shortcuts that work while a page has the focus.
 chrome.commands.onCommand.addListener((command, tab) => {
-  if (!tab || !['new-child', 'new-sibling'].includes(command)) return;
+  if (!tab) return;
   enqueue(command, () => {
+    if (command === 'journal-back') {
+      // Back to where the user was before this.
+      const [last] = placesOf(state);
+      return last && activate({ nodeId: last.node, treeId: last.tree, windowId: tab.windowId });
+    }
     const bound = state.binding[tab.id];
     return newTab({
       windowId: tab.windowId,
