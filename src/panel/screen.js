@@ -2,7 +2,7 @@
 // the library itself; it owns only this: which trees are shown, what is
 // selected, searched for, dragged, or open on top.
 
-import { descendantsOf, migrate, rowsOf } from '../model.js';
+import { descendantsOf, migrate, parentOf, rowsOf } from '../model.js';
 import { draw, titleOf } from './view.js';
 
 export const log = (...args) => console.log('[tree panel]', ...args);
@@ -17,7 +17,8 @@ export const ui = {
   live: new Set(), // Ids of nodes that have a tab.
   audible: new Set(), // Ids of nodes whose tab is making sound.
   shared: new Map(), // Node id -> names of the other trees it is in.
-  activeId: undefined, // The node of this window's current tab.
+  activeId: undefined, // The node of this window's current tab,
+  activeTree: undefined, // and the tree that tab is in.
   trouble: undefined, // What the worker could not do: read the library, or save it.
   // Pages that do not fit in the synced storage: { kind: 'here' | 'elsewhere', count }, unless the user closed that notice.
   unsynced: undefined,
@@ -40,10 +41,30 @@ export const ui = {
   toast: undefined, // What was just done, with a way back.
 };
 
-export const send = (message) => {
-  if (message.type !== 'get-state') log('command', message);
-  return chrome.runtime.sendMessage(message).catch((error) => log('command failed', message.type, error.message));
-};
+// Commands on their way to the worker, and whether one has just come back:
+// what changes meanwhile was asked for here, in the panel. (`asked` is also
+// set when the current tab is closed: the tab the browser then moves to is
+// not one the user chose.)
+let asking = 0;
+let asked = false;
+let activeTab; // The id of this window's current tab.
+chrome.tabs.onRemoved.addListener((tabId) => (asked ||= tabId === activeTab));
+const QUIET = ['get-state', 'show-tree']; // Asking what there is, and telling what is shown, change nothing.
+
+export async function send(message) {
+  if (QUIET.includes(message.type)) return chrome.runtime.sendMessage(message).catch((error) => log('failed', message.type, error.message));
+  log('command', message);
+  asking++;
+  try {
+    return await chrome.runtime.sendMessage(message);
+  } catch (error) {
+    log('command failed', message.type, error.message);
+  } finally {
+    asking--;
+    asked = true;
+    refresh();
+  }
+}
 export const op = (name, args) => send({ type: 'op', op: name, args });
 
 export const redraw = () => draw(app, ui);
@@ -139,6 +160,7 @@ function take(state, active) {
   ui.live = new Set(Object.values(state.binding).map((bound) => bound.node));
   ui.audible = new Set(state.audible);
   ui.activeId = state.binding[active?.id]?.node;
+  ui.activeTree = state.binding[active?.id]?.tree;
 }
 
 /** Each pane's rows; panes, selections and the cursor that point at things now gone are let go. */
@@ -183,15 +205,29 @@ function remember() {
   send({ type: 'show-tree', windowId: ui.windowId, treeId: shownTree });
 }
 
-let shownActive;
-/** Keeps the current tab's row in sight, and the keyboard on the tree. */
-function follow() {
-  if (ui.activeId !== shownActive) {
-    shownActive = ui.activeId;
-    for (const pane of ui.panes) rowEl(pane, ui.activeId)?.scrollIntoView({ block: 'nearest' });
-  }
-  holdKeys();
+/** Shows the tree of the current tab, unless a pane shows it already. */
+export function showActiveTree() {
+  if (!ui.activeTree || ui.panes.some((pane) => pane.tree === ui.activeTree)) return;
+  if (!here()) ui.panes = [newPane(ui.activeTree)];
+  here().tree = ui.activeTree;
+  here().sel.clear();
 }
+
+/** Brings the current tab's row into sight or, where a folded branch hides it, the row that holds it. */
+export function revealActive() {
+  for (const pane of ui.panes) {
+    const tree = ui.library.trees[pane.tree];
+    let id = ui.activeId;
+    while (id !== undefined && !rowOf(pane, id)) id = parentOf(tree, id);
+    rowEl(pane, id)?.scrollIntoView({ block: 'nearest' });
+  }
+}
+
+// The current tab the panel last went to. The panel follows the user: when
+// they switch tabs in the browser, it shows that tab's tree and row. A tab
+// that changed because of something asked for in the panel (a page put to
+// sleep, say) does not take the panel away from the tree the user works in.
+let followed;
 
 let generation = 0;
 /** Asks the worker for the state and shows it. */
@@ -203,9 +239,16 @@ export async function refresh() {
   ]);
   if (current !== generation || !state) return;
   take(state, active);
+  activeTab = active?.id;
+  const moved = ui.activeId !== followed;
+  const mine = followed !== undefined && (asking > 0 || asked);
+  asked = false;
+  if (moved && !mine) showActiveTree();
+  followed = ui.activeId ?? null;
   layOut();
   findShared();
   remember();
   redraw();
-  follow();
+  if (moved) revealActive();
+  holdKeys();
 }
