@@ -7,6 +7,7 @@ import {
   keepFresh,
   reconcile,
   tabChanged,
+  tabAsked,
   tabClosed,
   tabCreated,
   tabOf,
@@ -307,4 +308,36 @@ test('where a new tab goes, from what is known of where it came from', () => {
   tabOpened(state, tab(5, 'late'));
   assert.equal(from(5, 'late', { opener: 2 }), 'known');
   assert.equal(outline(state), 'a\n  link\n    late\n  search\n    New Tab');
+});
+
+test('an empty tab the user placed stays where it was put; one put at the end of the tree is free to become a sleeping page', () => {
+  const state = createState();
+  tabOpened(state, tab(1, 'a'));
+  tabOpened(state, tab(2, 'saved'));
+  tabClosed(state, 2);
+  const a = state.binding[1].node;
+  // Asked for as the next sibling of a (a top-level node), then taken to the saved page's address: a page of its own, there.
+  tabAsked(state, { id: 3 }, { treeId: MAIN, nodeId: a, as: 'sibling' });
+  tabChanged(state, tab(3, 'saved'));
+  assert.equal(outline(state), 'a\nsaved\n(saved)');
+  // Asked for with no place named: it becomes the saved page.
+  tabAsked(state, { id: 4 }, { treeId: MAIN });
+  tabChanged(state, tab(4, 'saved'));
+  assert.equal(outline(state), 'a\nsaved\nsaved');
+});
+
+test('a tab born empty is a new tab, even if it shows a page by the time it is heard of', () => {
+  const state = createState();
+  tabOpened(state, tab(1, 'a'));
+  const a = state.binding[1].node;
+  // The worker slept: it lined itself up with the tabs first (the new one already at a page), then heard of the new tab.
+  tabOpened(state, tab(2, 'later'));
+  assert.equal(tabCreated(state, tab(2, 'later'), { born: 'about:blank', opener: 1, shownNode: a }), 'known');
+  // The worker was awake: the tab is heard of as it is born.
+  assert.equal(tabCreated(state, tab(3), { born: 'about:blank', opener: 1, shownNode: a }), 'new');
+  assert.equal(outline(state), 'a\nNew Tab\nlater'); // Both below the page the user was at; neither its child.
+  // Born with a page, from a tab: that page's child, whenever it is heard of.
+  tabOpened(state, tab(4, 'search'));
+  assert.equal(tabCreated(state, tab(4, 'search'), { born: 'https://search/', opener: 1, shownNode: a }), 'known');
+  assert.equal(outline(state), 'a\n  search\nNew Tab\nlater');
 });

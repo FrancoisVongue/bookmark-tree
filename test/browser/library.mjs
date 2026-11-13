@@ -116,6 +116,27 @@ console.log('  settings say:', await settings.locator('.toast span').textContent
 await settings.close(); await panel.bringToFront(); await sleep(400);
 console.log('  after restoring the local backup — banner:', await panel.locator('.trouble').count(), '| trees:', (await grid()).replace(/\n\s+/g, ' / '));
 
+// A library of some size with no copy anywhere else: the panel says so, and one press saves it to a file.
+const DAY = 24 * 3600 * 1000;
+const notice = async () => (await panel.reload(), await sleep(900), (await panel.locator('.notice span').textContent().catch(() => 'none')).slice(0, 60));
+console.log('\n== the warning that the library is kept only here\n  with', Object.keys((await msg({ type: 'get-state' })).library.nodes).length, 'nodes:', await notice());
+await msg({ type: 'op', op: 'add', args: { tree: 'main', nodes: Array.from({ length: 25 }, (_, n) => ({ id: `w${n}`, url: `https://example.com/w${n}`, title: `Page w${n}` })) } });
+console.log('  with 25 more (a file was saved earlier in this scenario):', await notice());
+await panel.evaluate((at) => chrome.storage.local.set({ savedToFileAt: at }), Date.now() - 15 * DAY);
+console.log('  fifteen days after that file:', await notice());
+const [saved] = await Promise.all([panel.waitForEvent('download'), panel.click('.notice [data-action="backup-now"]')]);
+await sleep(600);
+console.log('  pressed its button: saved', saved.suggestedFilename(), '| now:', await notice());
+await panel.evaluate((at) => chrome.storage.local.set({ savedToFileAt: at }), Date.now() - 15 * DAY);
+console.log('  fifteen days later:', await notice());
+await panel.screenshot({ path: `${os.tmpdir()}/tree-warning.png` });
+await panel.click('[data-action="notice-close"]'); await sleep(500);
+console.log('  closed:', await notice());
+await panel.evaluate((at) => chrome.storage.local.set({ warningClosedAt: at }), Date.now() - 15 * DAY);
+console.log('  fifteen days after closing:', await notice());
+await panel.evaluate(() => chrome.storage.local.set({ sync: { repo: 'me/library', token: 'x', path: 'tree.json', error: 'GitHub 401: Bad credentials', at: Date.now() - 4 * 24 * 3600 * 1000 } }));
+console.log('  with GitHub set up and failing for four days:', await notice());
+
 console.log('\nERRORS:', errors.length ? `\n${errors.join('\n')}` : 'none');
 await ctx.close();
 server.close();

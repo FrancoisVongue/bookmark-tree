@@ -22,3 +22,9 @@ export function pickFile(accept) {
 }
 
 export const askForBookmarks = () => chrome.permissions.request({ permissions: ['bookmarks'] });
+
+/** Saves the whole library to a file, and tells the worker it has a copy elsewhere now. */
+export function saveBackup(library) {
+  saveFile(`tree-backup-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(library), 'application/json');
+  return chrome.runtime.sendMessage({ type: 'saved-to-file' });
+}

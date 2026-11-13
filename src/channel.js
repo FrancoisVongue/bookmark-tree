@@ -24,11 +24,12 @@
 //     p.<name>       a piece of squeezed text (a group may take several)
 //     away.<device>  how many pages that computer keeps to itself
 //   kept on this computer (`ch`):
-//     { device, head, clock, seen, gone, before: { clock, seen } }
+//     { device, head, clock, seen, gone, before: { clock, seen }, met }
 //       head, clock, seen, gone   the snapshot last taken in or written: its id and
 //                                 clock, its library (JSON), the deletions it named
 //       before                    the last snapshot taken in from elsewhere: what
 //                                 my own ones since were made from
+//       met                       whether another computer was ever seen there
 
 import { ROOT, freshOf, goneOf, kidsOf, lettersOf, parentsOf, planOf } from './model.js';
 import { EMPTY, diff, isEmpty, only, takeIn } from './merge.js';
@@ -213,8 +214,10 @@ export async function publish(cells, ch, library, budget) {
   return mine.hidden;
 }
 
-/** How many pages another computer keeps to itself (the most any of them does). */
+/** How many pages another computer keeps to itself (the most any of them does). Notes in `ch.met` that there is another computer. */
 export async function awayElsewhere(cells, ch) {
   const all = await cells.get();
-  return Math.max(0, ...Object.keys(all).filter((name) => name.startsWith('away.') && name !== `away.${ch.device}`).map((name) => all[name]));
+  const others = Object.keys(all).filter((name) => name.startsWith('away.') && name !== `away.${ch.device}`);
+  if (others.length) ch.met = true;
+  return Math.max(0, ...others.map((name) => all[name]));
 }

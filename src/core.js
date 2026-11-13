@@ -16,7 +16,6 @@
 import {
   DAY,
   MAIN,
-  ROOT,
   addNode,
   createLibrary,
   freshOf,
@@ -28,7 +27,6 @@ import {
   kidsOf,
   moveNode,
   newId,
-  parentOf,
   placeNode,
   removeNode,
   stamped,
@@ -202,17 +200,18 @@ export function tabOpenedBeside(state, tabId, nodeId) {
 /**
  * An empty tab the user asked for by name - a button of the panel, a key:
  * a new node at the end of `treeId`, or a child or the next sibling of
- * `nodeId`. Its place was chosen.
+ * `nodeId` - a place the user chose, where it stays.
  */
 export function tabAsked(state, tab, { treeId, nodeId, as, at }) {
   const node = addNode(state.library, treeId, stamped({ id: newId(), url: '', title: '' }, at));
   if (nodeId) moveNode(state.library, treeId, node.id, nodeId, as === 'child' ? 'inside' : 'after');
-  bind(state, tab.id, node.id, treeId);
+  bind(state, tab.id, node.id, treeId, !nodeId); // At the end of the tree: nobody chose that place.
 }
 
 /**
  * A tab was created: its node is made, or found, and put where the tab came
  * from. What is known of that:
+ *   born       the address it had when it appeared, if it had one yet
  *   reported   the tab whose page opened it, when the browser said so apart (a link)
  *   opener     the tab it was opened from, as the tab itself says
  *   shownNode  the node the user was at
@@ -223,8 +222,10 @@ export function tabAsked(state, tab, { treeId, nodeId, as, at }) {
  * is a new tab the user asked for: it goes below the node they were at.
  * Returns what `tabOpened` does.
  */
-export function tabCreated(state, tab, { opener, reported, shownNode, treeId, at }) {
-  const source = reported ?? (isBlank(urlOf(tab)) ? undefined : opener);
+export function tabCreated(state, tab, { born, opener, reported, shownNode, treeId, at }) {
+  // What it came with is what it was born with, if the browser said: by the time this is
+  // handled (the worker may have been asleep) an empty tab may have been taken somewhere.
+  const source = reported ?? (isBlank(born || urlOf(tab)) ? undefined : opener);
   const result = tabOpened(state, tab, source, treeId, at);
   // Its node was made just now: here or, if this event woke the worker, a moment ago,
   // when the state was lined up with the open tabs and it was put at the end of the tree.
@@ -265,11 +266,10 @@ export function tabChanged(state, tab) {
   if (!node || isNote(node)) return;
   const url = urlOf(tab);
   // An empty new tab taken to the address of a sleeping node wakes that node.
-  // (A tab the user placed under another node stays where it was put.) The
-  // user is in this tree: if the node lives in another one only, it is
-  // shown here too, at the end - the same node, not a copy.
-  const adrift = isBlank(node.url) && (bound.unplaced || parentOf(library.trees[bound.tree], node.id) === ROOT);
-  const asleep = adrift && sleeperAt(state, url);
+  // (A tab the user placed - a child, a sibling of some node - stays where
+  // it was put.) The user is in this tree: if the node lives in another one
+  // only, it is shown here too, at the end - the same node, not a copy.
+  const asleep = isBlank(node.url) && bound.unplaced && sleeperAt(state, url);
   if (asleep && dropIfEmpty(library, node.id)) {
     placeNode(library, bound.tree, asleep.id);
     bind(state, tab.id, asleep.id, bound.tree);

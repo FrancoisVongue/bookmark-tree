@@ -403,11 +403,11 @@ export function draw(container, ui) {
           </div>`
         : nothing}
       ${journalView(ui)}
-      ${ui.unsynced
-        ? html`<footer class="unsynced">
-            <span>${t(ui.unsynced.kind === 'here' ? 'unsyncedHere' : 'unsyncedElsewhere', ui.unsynced.count)}</span>
-            ${ui.unsynced.kind === 'here' ? html`<button class="pill" data-action="settings">${t('unsyncedBackUp')}</button>` : nothing}
-            ${act('unsynced-close', 'close', t('closeNotice'), 'shown')}
+      ${ui.notice
+        ? html`<footer class="notice">
+            <span>${ui.notice.text}</span>
+            ${ui.notice.button ? html`<button class="pill" data-action=${ui.notice.button.action}>${ui.notice.button.label}</button>` : nothing}
+            ${act('notice-close', 'close', t('closeNotice'), 'shown')}
           </footer>`
         : nothing}
 
