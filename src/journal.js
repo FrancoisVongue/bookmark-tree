@@ -14,7 +14,7 @@
 import { unplanNodes } from './model.js';
 
 export const DWELL = 1500; // Milliseconds at a node before it counts as having been there.
-const KEPT = 50;
+const KEPT = 100;
 
 /** The user's attention moved, at time `at`, to tab `tabId` (which may show no node, or be no tab at all). */
 export function attend(state, tabId, at) {

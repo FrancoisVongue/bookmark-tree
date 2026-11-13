@@ -3,13 +3,14 @@
 // selected, searched for, dragged, or open on top.
 
 import { descendantsOf, migrate, parentOf, rowsOf } from '../model.js';
+import { find } from '../find.js';
 import { draw, titleOf } from './view.js';
 
 export const log = (...args) => console.log('[tree panel]', ...args);
 export const app = document.getElementById('app');
 
 const kept = JSON.parse(localStorage.getItem('view') ?? '{}');
-export const newPane = (tree, size = 1) => ({ tree, size, rows: [], sel: new Set() });
+export const newPane = (tree, size = 1) => ({ tree, size, rows: [], sel: new Set() }); // (While searching, also `loose`: see found().)
 
 export const ui = {
   windowId: undefined,
@@ -22,6 +23,9 @@ export const ui = {
   trouble: undefined, // What the worker could not do: read the library, or save it.
   journal: [], // Where the user was before this, newest first: [{ node, tree, at }] (see journal.js).
   journalOpen: localStorage.getItem('journalOpen') === 'yes', // The whole list, or only its first line.
+  journalQuery: '', // What is searched for in the unfolded journal.
+  journalAll: false, // Whether the unfolded journal shows all its places, or only the latest.
+  places: { shown: [], more: 0, loose: undefined }, // What the unfolded journal shows (see layJournal).
   planOpen: localStorage.getItem('planOpen') === 'yes', // The same for the plan (the library's `plan`: what to open next).
   // Pages that do not fit in the synced storage: { kind: 'here' | 'elsewhere', count }, unless the user closed that notice.
   unsynced: undefined,
@@ -136,23 +140,36 @@ export function focusRow(pane, id) {
 
 // --- From the worker's state to the screen -------------------------------------
 
-/** The rows that match the search, and the rows above them that lead there. */
-/** Whether node `id` has every word of the search in its name, address or text. */
-function matches(id, query) {
+/** What a node is searched by: its name, address and text. */
+const textOf = (id) => {
   const node = ui.library.nodes[id];
-  const text = `${titleOf(node)} ${node.url ?? ''} ${node.note ?? ''}`.toLowerCase();
-  return query.toLowerCase().split(/\s+/).every((word) => text.includes(word));
-}
+  return `${titleOf(node)} ${node.url ?? ''} ${node.note ?? ''}`;
+};
 
+/**
+ * The rows that answer the search (see find.js) and the rows above them
+ * that lead there; and, when nothing answered it exactly, how it was read:
+ * { rows, loose: { how, as } | undefined }.
+ */
 function found(rows, query) {
+  const { hits, how, as } = find(rows, query, (row) => textOf(row.id));
+  const hit = new Set(hits);
   const out = [];
   let need = 0; // Walking up: a row shallower than the last one kept leads to it.
   for (const row of rows.toReversed()) {
-    if (!matches(row.id, query) && row.depth >= need) continue;
+    if (!hit.has(row) && row.depth >= need) continue;
     out.unshift(row);
     need = row.depth;
   }
-  return out;
+  return { rows: out, loose: how === 'exact' ? undefined : { how, as } };
+}
+
+const JOURNAL_SHOWN = 8; // Places in the unfolded journal at first; "more" shows the rest.
+/** What the unfolded journal shows: the latest places, or those that answer the search in it. */
+function layJournal() {
+  const { hits, how, as } = ui.journalQuery ? find(ui.journal, ui.journalQuery, (entry) => textOf(entry.node)) : { hits: ui.journal, how: 'exact' };
+  const shown = ui.journalQuery || ui.journalAll ? hits : hits.slice(0, JOURNAL_SHOWN);
+  ui.places = { shown, more: hits.length - shown.length, loose: how === 'exact' ? undefined : { how, as } };
 }
 
 function take(state, active) {
@@ -181,7 +198,8 @@ function layOut() {
   for (const pane of [...ui.panes, picker()]) {
     if (!pane) continue;
     const searching = ui.query && pane !== picker();
-    pane.rows = searching ? found(rowsOf(library, pane.tree, true), ui.query) : rowsOf(library, pane.tree, false, ui.live);
+    const { rows, loose } = searching ? found(rowsOf(library, pane.tree, true), ui.query) : { rows: rowsOf(library, pane.tree, false, ui.live) };
+    Object.assign(pane, { rows, loose });
     pane.sel = new Set([...pane.sel].filter((id) => rowOf(pane, id)));
   }
   if (!rowOf(here(), ui.cursor)) ui.cursor = rowOf(here(), ui.activeId)?.id ?? here().rows[0]?.id;
@@ -253,9 +271,10 @@ export async function refresh() {
   asked = false;
   if (moved && !mine) showActiveTree();
   // The user went to a tab the search would hide (a new one, say): the search is over.
-  if (moved && !mine && ui.query && ui.activeId && !matches(ui.activeId, ui.query)) ui.query = '';
+  if (moved && !mine && ui.query && ui.activeId && !find([ui.activeId], ui.query, textOf).hits.length) ui.query = '';
   followed = ui.activeId ?? null;
   layOut();
+  layJournal();
   findShared();
   remember();
   redraw();
