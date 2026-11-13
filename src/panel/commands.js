@@ -64,7 +64,7 @@ export function remove(pane, id, everywhere = false) {
   const ids = branches(pane, id);
   const go = async () => {
     await (everywhere ? op('delete', { ids }) : op('remove', { tree: pane.tree, ids }));
-    say(t('removed', ids.length));
+    say(t('removed', ids.length), true);
   };
   if (ids.length === 1) return go();
   if (everywhere) ask(t('askDelete', ids.length), t('deleteYes'), go);
@@ -75,7 +75,7 @@ export function remove(pane, id, everywhere = false) {
 export function removeTree(treeId) {
   ask(t('askDeleteTree', ui.library.trees[treeId].name), t('deleteYes'), async () => {
     await op('tree-remove', { tree: treeId });
-    say(t('treeDeleted'));
+    say(t('treeDeleted'), true);
   });
 }
 
@@ -124,6 +124,18 @@ export function setIcon(text) {
   closeOverlay();
 }
 
+/** Takes the last step back (or, with `again`, makes it again). The notice of what was done goes: its "Undo" was this. */
+export function undo(again = false) {
+  ui.toast = undefined;
+  send({ type: again ? 'redo' : 'undo' });
+}
+
+/** Closes the menu; the keyboard goes back to the row. */
+export function closeMenu() {
+  ui.menu = undefined;
+  redraw();
+}
+
 // --- Renaming (and typing an address) ------------------------------------------
 
 export function startRename(what) {
@@ -132,6 +144,7 @@ export function startRename(what) {
   const input = app.querySelector('.rename');
   input?.focus();
   input?.select();
+  if (input) input.scrollLeft = 0; // All of it is selected, and its beginning is what is seen.
 }
 
 export function endRename(save) {

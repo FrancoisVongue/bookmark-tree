@@ -189,3 +189,13 @@ svg.line {
   color: #fff;
   user-select: text;
 }
+
+.dialog footer button {
+  white-space: nowrap;
+}
+@media (prefers-color-scheme: dark) {
+  .trouble {
+    background: #5c1f1a;
+    color: #f9dedc;
+  }
+}

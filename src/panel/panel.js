@@ -14,10 +14,7 @@ const actions = {
   sleep: ({ pane, id }) => send({ type: 'sleep', ids: targets(pane, id), treeId: pane.tree }),
   remove: ({ pane, id }) => cmd.remove(pane, id),
   home: ({ id }) => send({ type: 'go-home', nodeId: id }),
-  undo: () => {
-    ui.toast = undefined;
-    send({ type: 'undo' });
-  },
+  undo: () => cmd.undo(),
   // Back to where the current tab is: its tree, its row.
   'show-active': async () => {
     showActiveTree();
@@ -86,7 +83,7 @@ const actions = {
   },
 };
 
-let opening; // A sleeping page about to be opened by a click.
+let chosen; // The row that was the one selected before the click now being handled, if it was that row.
 app.addEventListener('click', (event) => {
   if (endsDrag() || event.target.closest('input, .menu')) return;
   const el = event.target.closest('[data-action]');
@@ -102,14 +99,13 @@ app.addEventListener('click', (event) => {
     if (pane) pane.sel.clear();
     return redraw();
   }
+  // A double click renames - but only a row that was the selected one already: a click on any other row
+  // just goes there, at once, with no waiting to see whether a second click follows.
+  if (event.detail === 1) chosen = pane.sel.size === 1 && pane.sel.has(id) ? id : undefined;
   select(pane, id, event);
   redraw();
   const plain = !event.ctrlKey && !event.metaKey && !event.shiftKey && event.detail === 1;
-  if (!plain || pane === picker()) return;
-  // Going to an open tab is instant. Opening a sleeping page waits a moment,
-  // in case this is the first half of a double click (which renames).
-  if (ui.live.has(id)) cmd.open(pane, id);
-  else opening = setTimeout(() => cmd.open(pane, id), 220);
+  if (plain && pane !== picker()) cmd.open(pane, id);
 });
 
 function select(pane, id, event) {
@@ -130,9 +126,8 @@ app.addEventListener('dblclick', (event) => {
   const id = idAt(event.target);
   const pane = paneAt(event.target);
   const treeId = event.target.closest('.bar .tab[data-tree]')?.dataset.tree;
-  clearTimeout(opening);
   if (treeId) cmd.startRename({ tree: treeId });
-  else if (id && pane !== picker() && event.target.closest('.title')) cmd.startRename({ id, pane });
+  else if (id && id === chosen && pane !== picker() && event.target.closest('.title')) cmd.startRename({ id, pane });
 });
 
 // Middle click, as on a tab: closes a live node's tab (the node stays,
