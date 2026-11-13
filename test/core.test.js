@@ -185,7 +185,7 @@ test('a new tab opened while looking at a page goes right below it, and still wa
   tabOpened(state, { id: 3, url: 'https://c.example/' });
   tabClosed(state, 3);
   assert.equal(tabOpened(state, { id: 4, url: 'chrome://newtab/' }), 'new');
-  tabOpenedBeside(state, 4, 2);
+  tabOpenedBeside(state, 4, state.binding[2].node);
   const tree = state.library.trees[MAIN];
   const [a, b, c] = [1, 2].map((id) => state.binding[id].node).concat(tree.children[ROOT][1]);
   assert.deepEqual(tree.children[a], [b, state.binding[4].node]);
@@ -201,12 +201,12 @@ test('the tree the panel shows decides where a new tab goes, whatever page the u
   tabOpened(state, { id: 1, url: 'https://a.example/' });
   // The panel now shows the other, empty tree; the tab of the first is still the current one.
   tabOpened(state, { id: 2, url: 'chrome://newtab/' }, undefined, 'other');
-  assert.equal(tabOpenedBeside(state, 2, 1), false);
+  assert.equal(tabOpenedBeside(state, 2, state.binding[1].node), false);
   assert.deepEqual(state.library.trees.other.children[ROOT], [state.binding[2].node]);
   assert.deepEqual(state.library.trees[MAIN].children[ROOT], [state.binding[1].node]);
   // The next one is opened while looking at that new tab: right below it, in the same tree.
   tabOpened(state, { id: 3, url: 'chrome://newtab/' }, undefined, 'other');
-  tabOpenedBeside(state, 3, 2);
+  tabOpenedBeside(state, 3, state.binding[2].node);
   assert.deepEqual(state.library.trees.other.children[ROOT], [2, 3].map((id) => state.binding[id].node));
 });
 
@@ -245,4 +245,19 @@ test('an address typed in a new tab that a sleeping node of another tree has: th
   assert.equal(state.binding[7].node, a);
   assert.equal(Object.keys(state.library.nodes).length, 1);
   assert.deepEqual(state.library.trees[MAIN].children[ROOT], [a]);
+});
+
+test('a new tab opened while on a page inside a folded branch goes right below the branch', () => {
+  const state = createState();
+  tabOpened(state, { id: 1, url: 'https://a.example/' });
+  tabOpened(state, { id: 2, url: 'https://b.example/' }, 1);
+  tabOpened(state, { id: 3, url: 'https://c.example/' }, 2);
+  tabOpened(state, { id: 4, url: 'https://last.example/' });
+  const [a, b, c, last] = [1, 2, 3, 4].map((id) => state.binding[id].node);
+  state.library.trees[MAIN].collapsed[a] = true;
+  state.library.trees[MAIN].collapsed[b] = true;
+  tabOpened(state, { id: 5, url: 'chrome://newtab/' });
+  tabOpenedBeside(state, 5, c);
+  assert.deepEqual(state.library.trees[MAIN].children[ROOT], [a, state.binding[5].node, last]);
+  assert.deepEqual(rowsOf(state.library, MAIN).map((row) => row.id), [a, state.binding[5].node, last]);
 });

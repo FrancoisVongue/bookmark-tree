@@ -137,9 +137,14 @@ chrome.tabs.onCreated.addListener((created) => {
     const source = openedFrom.get(tab.id) ?? (arrived ? created.openerTabId : undefined);
     openedFrom.delete(tab.id);
     const result = core.tabOpened(state, tab, source, windowTree(tab.windowId), Date.now());
-    if (result === 'new') {
+    // Its node was made just now: here or, if this event woke the worker, a moment ago,
+    // when the worker lined itself up with the open tabs and put it at the end of the tree.
+    const late = result === 'known' && state.binding[tab.id].loose;
+    if (late && source !== undefined) core.tabOpenedFrom(state, tab.id, source);
+    else if (result === 'new' || late) {
       fresh.add(tab.id);
-      if (beside !== tab.id) core.tabOpenedBeside(state, tab.id, beside);
+      // Below the page the user was on. (A worker just woken does not know which tab was shown: where the user's attention was says it.)
+      core.tabOpenedBeside(state, tab.id, (beside !== tab.id && state.binding[beside]?.node) || state.attention?.node);
     }
     log('tab', tab.id, 'created ->', result, source === undefined ? `(beside tab ${beside})` : `(from tab ${source})`, tab.pendingUrl || tab.url);
   });

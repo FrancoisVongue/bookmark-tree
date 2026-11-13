@@ -149,15 +149,19 @@ export function tabOpened(state, tab, sourceTabId, treeId = MAIN, at) {
 }
 
 /**
- * A new tab the user opened while looking at `besideTabId`'s page goes right
- * below that page. Which tree it is in was decided before (the one the
- * window's panel shows) and is not changed here: if the page is not in that
- * tree, the new tab stays at its end.
+ * A new tab the user opened while at node `nodeId` goes right below that
+ * node - or, when a folded branch hides the node, right below the branch,
+ * where it can be seen. Which tree the tab is in was decided before (the one
+ * the window's panel shows) and is not changed here: if the node is not in
+ * that tree, the new tab stays at its end.
  */
-export function tabOpenedBeside(state, tabId, besideTabId) {
+export function tabOpenedBeside(state, tabId, nodeId) {
   const bound = state.binding[tabId];
-  const beside = state.binding[besideTabId];
-  return !!bound && !!beside && moveNode(state.library, bound.tree, bound.node, beside.node, 'after');
+  const tree = state.library.trees[bound?.tree];
+  if (!tree || !inTree(tree, nodeId)) return false;
+  let target = nodeId;
+  for (let up = parentOf(tree, nodeId); up !== ROOT; up = parentOf(tree, up)) if (tree.collapsed[up]) target = up;
+  return moveNode(state.library, bound.tree, bound.node, target, 'after');
 }
 
 /** The browser reported, after the fact, that `tabId` was opened from `sourceTabId`'s page. */
