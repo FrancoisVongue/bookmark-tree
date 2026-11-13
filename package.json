@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test test/*.test.js",
+    "pack": "rm -rf dist && mkdir dist && zip -qr dist/bookmark-tree-$(node -p \"require('./manifest.json').version\").zip manifest.json _locales icons src LICENSE -x '*.DS_Store' && ls -la dist",
     "test:browser": "for f in test/browser/*.mjs; do node $f || exit 1; done"
   },
   "devDependencies": {

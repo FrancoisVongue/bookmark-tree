@@ -71,6 +71,8 @@ Everything is kept on your computer, in the extension's storage. It leaves
 only to places that are yours: the GitHub repository you name, and Chrome's
 own synced storage of your Google account. There is no server of ours.
 
+The full statement is in [PRIVACY.md](PRIVACY.md).
+
 ## Not verified yet
 
 - Sync against the real GitHub (it is tested against a local stand-in).
@@ -82,6 +84,7 @@ own synced storage of your Google account. There is no server of ours.
 
     npm install        # only for the tests in a browser
     npm test           # the model, the operations, merging: plain Node
+    npm run pack       # a zip of what ships, in dist/, for the Chrome Web Store
     node test/browser/basics.mjs   # scenarios in a real Chromium, one file each
 
 The code is plain ES modules. `src/model.js`, `ops.js`, `core.js` and
