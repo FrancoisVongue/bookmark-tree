@@ -101,7 +101,7 @@ function rowView(row, pane, ui, { leads, included }, lit) {
       aria-level=${row.depth + 1}
       aria-selected=${pane.sel.has(row.id)}
       tabindex=${pane === ui.panes[ui.focus] && row.id === ui.cursor ? 0 : -1}
-      style="--depth:${row.depth}; --lit:${lit || 0}"
+      style="--depth:${row.depth}; --lit:${lit || 0}; margin-top:${-row.pull}px; transform:translateY(${row.shift}px)"
       title=${[title, node.url, ui.audible.has(row.id) && t('playing'), node.added && t('addedOn', new Date(node.added).toLocaleDateString())].filter(Boolean).join('\n')}
     >
       ${ui.audible.has(row.id) ? html`<span class="sound"></span>` : ''}
@@ -152,7 +152,7 @@ function litGuide(rows, id) {
 const looseView = (loose) =>
   loose ? html`<p class="loose">${loose.how === 'layout' ? t('foundAs', loose.as) : t('foundNear')}</p>` : nothing;
 
-/** One tree: its rows in sight (`pane.from`..`pane.to`, set in screen.js), with gaps as tall as the rows not drawn. The same view serves the panes of the panel and the picker. */
+/** One tree: its rows in sight, each where screen.js put it (`pull`, `shift`), with gaps as tall as the rows not drawn. The same view serves the panes of the panel and the picker. */
 function paneView(pane, index, ui) {
   const way = { leads: leadsToActive(pane, ui) };
   const guide = litGuide(pane.rows, ui.activeId);
@@ -176,14 +176,14 @@ function paneView(pane, index, ui) {
           </header>`
         : ''}
       ${looseView(pane.loose)}
-      <div class="tree" role="tree" aria-label=${tree.name}>
-        <div class="gap" style="height:calc(${pane.from} * var(--row))"></div>
+      <div class="tree ${ui.pointer?.pane === pane ? '' : 'calm'}" role="tree" aria-label=${tree.name} style="--tight:${ui.tight}px">
+        <div class="gap" style="height:${pane.before}px"></div>
         ${repeat(
           pane.rows.slice(pane.from, pane.to),
           (row) => row.id,
           (row, at) => rowView(row, pane, ui, way, guide && pane.from + at >= guide.from && pane.from + at < guide.to && guide.level),
         )}
-        <div class="gap" style="height:calc(${pane.rows.length - pane.to} * var(--row))"></div>
+        <div class="gap" style="height:${pane.after}px"></div>
       </div>
       ${pane.rows.length || picking ? '' : html`<p class="hint">${t(ui.query ? 'nothingFound' : 'emptyTree')}</p>`}
     </section>

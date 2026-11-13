@@ -10,7 +10,7 @@ export const log = (...args) => console.log('[tree panel]', ...args);
 export const app = document.getElementById('app');
 
 const kept = JSON.parse(localStorage.getItem('view') ?? '{}');
-// A pane: the tree it shows, its rows, and which of them are drawn (`from`..`to`: see inSight). (While searching, also `loose`: see found().)
+// A pane: the tree it shows, its rows with their places, and which of them are drawn (`from`..`to`, between gaps `before` and `after`: see inSight). (While searching, also `loose`: see found().)
 export const newPane = (tree, size = 1) => ({ tree, size, rows: [], from: 0, to: 0, sel: new Set() });
 
 export const ui = {
@@ -49,6 +49,8 @@ export const ui = {
   //   { kind: 'ask', question, yes, run }        a question before something is lost
   overlay: undefined,
   toast: undefined, // What was just done, with a way back.
+  tight: undefined, // The step between two rows of one level, in pixels (see place()).
+  pointer: undefined, // { pane, y }: where the pointer is over a tree, in a dense tree (see spread()).
 };
 
 // Commands on their way to the worker, and whether one has just come back:
@@ -77,33 +79,103 @@ export async function send(message) {
 }
 export const op = (name, args) => send({ type: 'op', op: name, args });
 
-// --- Which rows are drawn ---------------------------------------------------------
-// A tree may have thousands of rows; only those in sight, and a few beyond,
-// are in the page. Rows are all of one height, so the place of each is known
-// without drawing it. This is the one place that decides what is in sight.
+// --- Where rows are, and which are drawn --------------------------------------------
+// This is the one place that knows the geometry of a tree. A tree may have
+// thousands of rows; only those in sight, and a few beyond, are in the page.
+// The place of each is known without drawing it: a row is one height, and
+// stands a step below the row before it - a full step, or, if the user
+// asked for a denser tree (the settings page), a shorter one when both rows
+// are of the same level. So what is squeezed is a run of siblings, never
+// the distance from a parent to its first child.
 
 const ROW = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--row'));
 const SPARE = 12; // Rows drawn beyond each edge of what is seen,
 const STEP = 6; // and how many rows the view scrolls before the set of drawn rows changes.
 
+/** The step between two rows of one level: the row's height at the least, half of it at the most density. */
+const tightStep = () => ROW * (1 - Math.min(1, Math.max(0, Number(localStorage.getItem('density')) || 0)) / 2);
+addEventListener('storage', (event) => event.key === 'density' && arrange()); // The settings page moved the slider.
+
+/** Gives each row of a pane its place: `top`, and `pull` - how much closer than a full step it stands to the row above. */
+function place(pane) {
+  ui.tight = tightStep();
+  let top = 0;
+  pane.rows.forEach((row, at) => {
+    const pull = at > 0 && row.depth === pane.rows[at - 1].depth ? ROW - ui.tight : 0;
+    top += at > 0 ? ROW - pull : 0;
+    Object.assign(row, { top, pull, shift: 0 });
+  });
+  pane.height = pane.rows.length ? top + ROW : 0;
+}
+
 const paneEl = (pane) => app.querySelector(`.pane[data-pane="${pane === picker() ? 'picker' : ui.panes.indexOf(pane)}"]`);
 /** How far the top of a pane's tree is above the top of what the pane shows, in pixels (below it: negative). */
 const scrolled = (el) => el.getBoundingClientRect().top - el.querySelector('.tree').getBoundingClientRect().top;
+/** The first row of a pane whose bottom is below `y` (the number of rows, if none is). */
+function rowAt(pane, y) {
+  let [low, high] = [0, pane.rows.length];
+  while (low < high) {
+    const middle = (low + high) >> 1;
+    if (pane.rows[middle].top + ROW > y) high = middle;
+    else low = middle + 1;
+  }
+  return low;
+}
 
-/** Sets which rows of a pane are drawn, from where it is scrolled to. Says whether that changed. */
+/**
+ * Sets which rows of a pane are drawn (`from`..`to`), from where it is
+ * scrolled to, and how tall the gaps standing for the rest are (`before`,
+ * `after`). Says whether the set of rows changed.
+ */
 function inSight(pane) {
   const el = paneEl(pane);
-  const first = el ? Math.floor(scrolled(el) / ROW / STEP) * STEP : 0;
-  const count = Math.ceil((el?.clientHeight ?? innerHeight) / ROW) + STEP;
-  const from = Math.max(0, Math.min(first - SPARE, pane.rows.length - count - SPARE));
-  const to = Math.min(pane.rows.length, Math.max(first, 0) + count + SPARE);
+  const [seenFrom, seenTo] = el ? [scrolled(el), scrolled(el) + el.clientHeight] : [0, innerHeight];
+  const from = Math.max(0, Math.floor(rowAt(pane, seenFrom) / STEP) * STEP - SPARE);
+  const to = Math.min(pane.rows.length, Math.ceil(rowAt(pane, seenTo - ROW) / STEP) * STEP + STEP + SPARE);
   const changed = from !== pane.from || to !== pane.to;
-  Object.assign(pane, { from, to });
+  const [first, last] = [pane.rows[from], pane.rows[to - 1]];
+  // (The first row drawn still pulls itself up towards the row above, which is not there: the gap makes up for it.)
+  Object.assign(pane, { from, to, before: first ? first.top + first.pull : 0, after: last ? pane.height - last.top - ROW : 0 });
   return changed;
 }
 
+/**
+ * In a dense tree the rows around the pointer move apart, so that what is
+ * looked at is easy to read and to hit - like the middle of the eye. Rows
+ * are only shifted, never laid out anew, and by where the pointer is, not
+ * by time: what is under the pointer stays under it. The shift of a row is
+ * how much the squeezed steps between it and the pointer open up, each the
+ * more the nearer it is.
+ */
+function spread() {
+  const { pane, y } = ui.pointer ?? {};
+  const el = pane && ui.tight < ROW && !ui.drag && paneEl(pane);
+  if (!el) return;
+  const at = y - el.querySelector('.tree').getBoundingClientRect().top; // The pointer, measured down the tree.
+  const reach = 4.5 * ui.tight;
+  const near = (distance) => (Math.abs(distance) < reach ? Math.cos((Math.PI * distance) / (2 * reach)) ** 2 : 0);
+  // How much everything above a point has opened up, counted from the top of the rows drawn.
+  let opened = 0;
+  let atPointer;
+  for (let n = pane.from; n < pane.to; n++) {
+    const row = pane.rows[n];
+    const [start, end] = [n > pane.from ? pane.rows[n - 1].top : row.top, row.top]; // The step that leads to this row,
+    const more = row.pull / (end - start || 1); // and how much it opens per pixel, at the pointer itself.
+    if (atPointer === undefined && at < end) atPointer = opened + more * near((start + at) / 2 - at) * Math.max(0, at - start);
+    opened += more * near((start + end) / 2 - at) * (end - start);
+    row.shift = opened;
+  }
+  atPointer ??= opened;
+  for (let n = pane.from; n < pane.to; n++) pane.rows[n].shift -= atPointer;
+}
+
 export function redraw() {
-  for (const pane of [...ui.panes, picker()]) if (pane) inSight(pane);
+  for (const pane of [...ui.panes, picker()]) {
+    if (!pane) continue;
+    inSight(pane);
+    for (let n = pane.from; n < pane.to; n++) pane.rows[n].shift = 0;
+  }
+  spread();
   draw(app, ui);
 }
 
@@ -112,18 +184,29 @@ app.addEventListener(
   'scroll',
   (event) => {
     const pane = event.target.classList?.contains('pane') && paneAt(event.target);
-    if (pane && inSight(pane)) draw(app, ui);
+    if (pane && inSight(pane)) redraw();
   },
   true,
 );
 addEventListener('resize', () => redraw());
 
+// Where the pointer is over a tree, for spread(): followed once a frame, and only in a dense tree.
+let moved;
+function point(event) {
+  const pane = event.type === 'pointermove' && event.target.closest?.('.tree') ? paneAt(event.target) : undefined;
+  if (!pane && !ui.pointer) return;
+  ui.pointer = pane && ui.tight < ROW ? { pane, y: event.clientY } : undefined;
+  moved ??= requestAnimationFrame(() => ((moved = undefined), redraw()));
+}
+app.addEventListener('pointermove', point);
+app.addEventListener('pointerleave', point);
+
 /** Scrolls a pane just enough to have row `id` in sight, and draws it: a row far away is not in the page until then. */
 export function reveal(pane, id) {
-  const index = pane.rows.findIndex((row) => row.id === id);
+  const row = rowOf(pane, id);
   const el = paneEl(pane);
-  if (index === -1 || !el) return;
-  const top = index * ROW - scrolled(el); // Where the row is, from the top of what the pane shows.
+  if (!row || !el) return;
+  const top = row.top - scrolled(el); // Where the row is, from the top of what the pane shows.
   if (top < 0) el.scrollTop += top;
   else if (top + ROW > el.clientHeight) el.scrollTop += top + ROW - el.clientHeight;
   redraw();
@@ -253,6 +336,7 @@ function layOut() {
     const searching = ui.query && pane !== picker();
     const { rows, loose } = searching ? found(rowsOf(library, pane.tree, true), ui.query) : { rows: rowsOf(library, pane.tree, false, ui.live) };
     Object.assign(pane, { rows, loose });
+    place(pane);
     pane.sel = new Set([...pane.sel].filter((id) => rowOf(pane, id)));
   }
   if (!rowOf(here(), ui.cursor)) ui.cursor = rowOf(here(), ui.activeId)?.id ?? here().rows[0]?.id;

@@ -264,6 +264,24 @@ function trashView() {
   </section>`;
 }
 
+// How dense the trees are: kept where the panel keeps its view (this origin's own storage); the panel hears of a change at once.
+const appearanceView = () =>
+  html`<section>
+    <h2>${t('appearance')}</h2>
+    <label class="field">
+      ${t('density')}
+      <input
+        type="range"
+        min="0"
+        max="1"
+        step="0.05"
+        .value=${localStorage.getItem('density') ?? '0'}
+        @input=${(event) => localStorage.setItem('density', event.target.value)}
+      />
+    </label>
+    <p class="hint">${t('densityHint')}</p>
+  </section>`;
+
 const keysView = () =>
   html`<section>
     <h2>${t('shortcuts')}</h2>
@@ -282,7 +300,7 @@ function draw() {
     html`
       <h1>${t('settingsTitle')}</h1>
       ${page.trouble ? html`<p class="trouble">${page.trouble}</p>` : nothing}
-      ${syncView()} ${versionsView()} ${filesView()} ${trashView()} ${keysView()}
+      ${syncView()} ${versionsView()} ${filesView()} ${trashView()} ${appearanceView()} ${keysView()}
       ${page.said
         ? html`<div class="toast">
             <span>${page.said.text}</span>

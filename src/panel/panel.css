@@ -143,6 +143,15 @@
 
 .row {
   position: relative;
+  /*
+   * A row's fill (hovered, selected, the current tab's) is a band as tall as
+   * the step between rows, so that in a dense tree, where rows overlap, it
+   * does not cover its neighbours' names. The row under the pointer has
+   * room (see spread() in screen.js) and takes it all.
+   */
+  --fill: transparent;
+  --band: var(--tight, var(--row));
+  background: linear-gradient(var(--fill), var(--fill)) no-repeat 0 50% / 100% var(--band);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -153,17 +162,18 @@
   user-select: none;
 }
 .row:hover {
-  background: var(--hover);
+  --fill: var(--hover);
+  --band: var(--row);
 }
 .row.active {
-  background: var(--active-bg);
+  --fill: var(--active-bg);
   color: var(--active-text);
 }
 .row.selected {
-  background: var(--badge);
+  --fill: var(--badge);
 }
 .row.selected.active {
-  background: var(--active-bg);
+  --fill: var(--active-bg);
   box-shadow: inset 0 0 0 1px var(--accent);
 }
 /* A row kept in sight under a folded branch is not where it really sits: it has no branch of its own to fold. */
@@ -420,12 +430,12 @@
 }
 .dialog .row.selected,
 .dialog .row.active {
-  background: none;
+  --fill: transparent;
   color: inherit;
   box-shadow: none;
 }
 .dialog .row:hover {
-  background: var(--hover);
+  --fill: var(--hover);
 }
 /* The picker's list gives way, and scrolls, so the dialog fits the panel with its buttons in sight. */
 .dialog .pane {
@@ -564,5 +574,22 @@
 @media (prefers-reduced-motion: reduce) {
   .sound {
     animation: none;
+  }
+}
+
+/* In a dense tree rows overlap: what is pointed at, selected or current is drawn over its neighbours. */
+.row:hover,
+.row.selected,
+.row.active,
+.row:focus-visible {
+  z-index: 1;
+}
+/* Rows moved apart by the pointer come back softly once it has left; while it is there they follow it at once. */
+.tree.calm .row {
+  transition: transform 0.18s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tree.calm .row {
+    transition: none;
   }
 }
