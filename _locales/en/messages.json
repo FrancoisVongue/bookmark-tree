@@ -20,6 +20,18 @@
   "planFold": {
     "message": "Show only what is next"
   },
+  "foundAs": {
+    "message": "Nothing for that as typed. Read as “$1”:"
+  },
+  "foundNear": {
+    "message": "Nothing exact. Similar:"
+  },
+  "journalSearch": {
+    "message": "Search where you were"
+  },
+  "journalMore": {
+    "message": "Show $1 more"
+  },
   "journal": {
     "message": "Where you were"
   },

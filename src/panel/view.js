@@ -150,6 +150,10 @@ function litGuide(rows, id) {
   return { level, from, to };
 }
 
+/** A quiet line over results that are not what was typed, letter for letter: how the search was read instead. */
+const looseView = (loose) =>
+  loose ? html`<p class="loose">${loose.how === 'layout' ? t('foundAs', loose.as) : t('foundNear')}</p>` : nothing;
+
 /** One tree. The same view serves the panes of the panel and the picker. */
 function paneView(pane, index, ui) {
   const way = { leads: leadsToActive(pane, ui) };
@@ -173,6 +177,7 @@ function paneView(pane, index, ui) {
             ${act('pane-close', 'close', t('closePane'))}
           </header>`
         : ''}
+      ${looseView(pane.loose)}
       <div class="tree" role="tree" aria-label=${tree.name}>
         ${repeat(
           pane.rows,
@@ -303,7 +308,17 @@ function journalView(ui) {
         <span class="favicon glyph">${ICONS.clock}</span>
         ${ui.journalOpen ? html`<span class="title">${t('journal')}</span>` : place(ui.journal[0])} ${fold}
       </div>
-      ${ui.journalOpen ? html`<div class="places">${ui.journal.map(place)}</div>` : nothing}
+      ${ui.journalOpen
+        ? html`
+            <input class="journal-search" type="search" placeholder=${t('journalSearch')} aria-label=${t('journalSearch')} .value=${ui.journalQuery} />
+            ${looseView(ui.places.loose)}
+            <div class="places">
+              ${ui.places.shown.map(place)}
+              ${ui.places.shown.length ? nothing : html`<p class="loose">${t('nothingFound')}</p>`}
+              ${ui.places.more ? html`<button class="pill" data-action="journal-more">${t('journalMore', ui.places.more)}</button>` : nothing}
+            </div>
+          `
+        : nothing}
     </footer>
   `;
 }

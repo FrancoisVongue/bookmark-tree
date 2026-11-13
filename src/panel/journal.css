@@ -4,7 +4,7 @@
   flex: none;
   display: flex;
   flex-direction: column;
-  max-height: 45%;
+  max-height: 50%;
   border-top: 1px solid var(--badge);
   padding: 2px 6px;
   color: var(--dim);
@@ -91,4 +91,27 @@
 }
 .plan.drop-end {
   box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+/* Unfolded, the journal can be searched, and shows the latest places until asked for more. */
+.journal-search {
+  flex: none;
+  height: 26px;
+  margin: 0 0 4px;
+  padding: 0 8px;
+  font: inherit;
+  color: var(--text);
+  background: var(--badge);
+  border: 0;
+  border-radius: 13px;
+  user-select: text;
+}
+.journal-search:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.places .pill {
+  display: block;
+  margin: 2px auto 0;
+  font-size: 11px;
 }

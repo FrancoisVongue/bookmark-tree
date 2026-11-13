@@ -63,3 +63,12 @@ test('a page the user has been at leaves the plan; one only passed stays in it',
   attend(state, 3, STAY + 100); // Passed b.
   assert.deepEqual(state.library.plan, [b]);
 });
+
+test('a hundred places are kept, the oldest dropping off', () => {
+  const state = browsing();
+  for (let n = 0; n < 130; n++) tabOpened(state, { id: 100 + n, url: `https://p${n}.example/`, title: `p${n}` });
+  for (let n = 0; n <= 130; n++) attend(state, 100 + n, n * STAY);
+  assert.equal(state.journal.length, 100);
+  assert.equal(places(state).split(' ')[0], 'p129');
+  assert.equal(places(state).split(' ').at(-1), 'p30');
+});

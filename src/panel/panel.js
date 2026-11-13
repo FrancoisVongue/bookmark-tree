@@ -61,10 +61,15 @@ const actions = {
     refresh();
   },
   'journal-go': ({ el }) => cmd.revisit(el.dataset.node, el.dataset.tree),
+  'journal-more': () => {
+    ui.journalAll = true;
+    refresh();
+  },
   'journal-toggle': () => {
     ui.journalOpen = !ui.journalOpen;
+    Object.assign(ui, { journalQuery: '', journalAll: false }); // Unfolded anew, it starts from the latest places.
     localStorage.setItem('journalOpen', ui.journalOpen ? 'yes' : 'no');
-    redraw();
+    refresh();
   },
   'plan-go': ({ el }) => cmd.revisit(el.dataset.node),
   unplan: ({ el }) => op('unplan', { ids: [el.closest('.place').dataset.node] }),
@@ -172,8 +177,9 @@ app.addEventListener('focusout', (event) => {
 });
 
 app.addEventListener('input', (event) => {
-  if (!event.target.closest('.search')) return;
-  ui.query = event.target.value;
+  if (event.target.closest('.journal-search')) ui.journalQuery = event.target.value;
+  else if (event.target.closest('.search')) ui.query = event.target.value;
+  else return;
   refresh();
 });
 

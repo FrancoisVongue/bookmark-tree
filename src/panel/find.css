@@ -1,0 +1,9 @@
+/* Searching: the line over results that are not letter for letter what was typed (see find.js). */
+
+.loose {
+  flex: none;
+  margin: 2px 8px 4px;
+  color: var(--dim);
+  font-size: 11px;
+  line-height: 1.4;
+}

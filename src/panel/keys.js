@@ -17,13 +17,18 @@ addEventListener('keydown', (event) => {
     if (event.key === 'Enter' && event.target.closest('.icons')) cmd.setIcon(event.target.value);
     return;
   }
+  if (event.key === 'Enter' && event.target.closest?.('.journal-search')) {
+    // The first place found is the one meant.
+    const [first] = ui.places.shown;
+    return first && cmd.revisit(first.node, first.tree);
+  }
   if (event.key === 'Escape') {
     if (ui.overlay?.kind === 'ask') return closeOverlay(); // "No" to a question, and nothing else.
     if (ui.drag) endDrag();
     ui.menu = undefined;
     for (const pane of ui.panes) pane.sel.clear();
-    if (ui.query) {
-      ui.query = '';
+    if (ui.query || ui.journalQuery) {
+      Object.assign(ui, { query: '', journalQuery: '' });
       refresh();
     }
     return closeOverlay();
