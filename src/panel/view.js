@@ -364,7 +364,7 @@ export function draw(container, ui) {
     html`<button class="act shown ${place}" data-action=${action} title=${title} ?disabled=${disabled}>${ICONS[icon]}</button>`;
   // A split button looks pressed while the trees lie its way.
   const split = (way, icon) =>
-    html`<button class="act shown ${way === 'row' ? 'apart' : ''}" data-action="split-${way}" title=${t(icon)} aria-pressed=${ui.panes.length > 1 && ui.split === way}>
+    html`<button class="act shown" data-action="split-${way}" title=${t(icon)} aria-pressed=${ui.panes.length > 1 && ui.split === way}>
       ${ICONS[icon]}
     </button>`;
   render(
@@ -379,8 +379,8 @@ export function draw(container, ui) {
         <div class="tools">
           ${tool('new-tab', 'add', t('newTab'))} ${tool('new-group', 'group', `${t('newGroup')} (Ctrl+G)`)}
           ${tool('new-note', 'note', `${t('newNote')} (Ctrl+M)`)}
-          ${tool('undo', 'undo', `${t('undo')} (Ctrl+Z)`, { disabled: !ui.canUndo, place: 'apart' })}
-          ${tool('show-active', 'locate', t('showActive'), { disabled: !ui.activeTree, place: 'apart' })}
+          ${tool('undo', 'undo', `${t('undo')} (Ctrl+Z)`, { disabled: !ui.canUndo })}
+          ${tool('show-active', 'locate', t('showActive'), { disabled: !ui.activeTree })}
           ${split('row', 'splitRow')} ${split('column', 'splitColumn')} ${tool('more', 'more', t('more'), { place: 'end' })}
         </div>
       </header>
