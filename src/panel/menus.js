@@ -5,6 +5,7 @@ import { t } from '../i18n.js';
 import { here, openBeside, openMenu, rename, rowOf, targets, ui, under } from './screen.js';
 import * as cmd from './commands.js';
 import { keyOf } from './keymap.js';
+import { isAway, removeLabel } from './view.js';
 
 const item = (label, run, hint, disabled = false) => ({ label: t(label), hint, disabled, run });
 
@@ -38,13 +39,13 @@ export function rowMenu(pane, id) {
     !isGroup(node) && item(planned ? 'planRemove' : 'planAdd', () => cmd.plan(ids, !planned)),
     item(node.keep ? 'keepNot' : 'keep', () => cmd.keep(ids, !node.keep)),
     page && item(node.pinned ? 'unpin' : 'pin', () => cmd.pin(ids, !node.pinned)),
-    node.home && node.url !== node.home.url && item('goHome', () => cmd.goHome(id)),
+    isAway(node) && item('goHome', () => cmd.goHome(id)),
     null,
     item('indent', () => cmd.indent(pane, ids), keyOf('indent')),
     item('outdent', () => cmd.outdent(pane, ids), keyOf('outdent')),
     item('addFromTreeHere', () => cmd.openPicker(pane, id), '', !hasOtherTrees()),
     null,
-    item(rowOf(pane, id).collapsed ? 'removeBranch' : 'remove', () => cmd.remove(pane, id), keyOf('remove')),
+    item(removeLabel(rowOf(pane, id)), () => cmd.remove(pane, id), keyOf('remove')),
     item('deleteEverywhere', () => cmd.remove(pane, id, true), keyOf('deleteEverywhere')),
   ];
 }

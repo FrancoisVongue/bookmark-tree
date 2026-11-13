@@ -2,7 +2,7 @@
 // the library itself; it owns only this: which trees are shown, what is
 // selected, searched for, dragged, or open on top.
 
-import { descendantsOf, migrate, parentOf, rowsOf } from '../model.js';
+import { descendantsOf, parentOf, rowsOf } from '../model.js';
 import { find } from '../find.js';
 import { draw, titleOf } from './view.js';
 
@@ -506,7 +506,7 @@ function layJournal() {
 }
 
 function take(state, active) {
-  ui.library = migrate(state.library);
+  ui.library = state.library;
   ui.trouble = state.trouble;
   ui.journal = state.journal;
   // Of the two things to say, the one about more pages.

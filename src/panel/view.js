@@ -34,7 +34,7 @@ const ICONS = {
 // The icons offered, eight to a row. No table fits everyone's work, so two
 // rows are about no subject at all (marks, colours), and the dialog takes
 // any emoji or letter typed by hand.
-export const EMOJI = [
+const EMOJI = [
   '⭐ ❤️ 🔥 ✅ ❌ ⚠️ ❓ 💡', // marks
   '🔴 🟠 🟡 🟢 🔵 🟣 🟤 🟥', // colours
   '📌 🔒 🔑 🔔 🎯 🚀 📅 ⏰', // what matters, and when
@@ -57,7 +57,10 @@ export const titleOf = (node) =>
   node.name || (isNote(node) ? firstLine(node.note) || t('note') : node.title || node.url || t('untitled'));
 
 /** Away from its home: the address it first had, or was pinned to. */
-const isAway = (node) => node.home && node.url !== node.home.url;
+export const isAway = (node) => node.home && node.url !== node.home.url;
+
+/** What removing a row is called: a folded row goes with all it hides. (What it does is `branches` in screen.js.) */
+export const removeLabel = (row) => (row.collapsed ? 'removeBranch' : 'remove');
 
 export function iconView(node) {
   if (node.icon) return html`<span class="favicon emoji">${node.icon}</span>`;
@@ -81,12 +84,12 @@ function rowView(row, pane, ui, { leads, included }, lit) {
     live ? 'live' : 'asleep',
     isGroup(node) && 'group',
     row.id === ui.activeId && 'active',
-    row.kept && 'kept',
     leads.has(row.id) && 'leads',
     pane.sel.has(row.id) && 'selected',
     included?.has(row.id) && 'included',
     row.kids && 'parent',
     row.collapsed && 'collapsed',
+    row.kept && 'kept', // (No style of its own: the scenarios tell such rows by it.)
     node.pinned && 'pinned',
     ui.audible.has(row.id) && 'playing',
     lit && 'lit',
@@ -126,7 +129,7 @@ function rowView(row, pane, ui, { leads, included }, lit) {
             <span class="acts">
               ${isAway(node) && !node.pinned ? home('') : ''} ${act('child', 'add', t('newChild'))}
               ${live ? act('sleep', 'sleep', t('sleep')) : ''}
-              ${act('remove', 'trash', t(row.collapsed ? 'removeBranch' : 'remove'), 'danger')}
+              ${act('remove', 'trash', t(removeLabel(row)), 'danger')}
             </span>
           `}
     </div>
@@ -200,15 +203,14 @@ function paneView(pane, index, ui) {
 
 const treeLabel = (tree) => (tree.icon ? `${tree.icon} ${tree.name}` : tree.name);
 
-function treeTabs(ui, current, action) {
-  return Object.values(ui.library.trees).map((tree) =>
-    ui.renaming?.tree === tree.id
-      ? html`<input class="rename tree-name" .value=${tree.name} aria-label=${t('renameHint')} />`
-      : html`<button class="tab ${tree.id === current ? 'current' : ''}" data-action=${action} data-tree=${tree.id}>
-          <span>${treeLabel(tree)}</span>
-        </button>`,
+/** The trees to pick from, as tabs. */
+const treeTabs = (trees, current) =>
+  trees.map(
+    (tree) =>
+      html`<button class="tab ${tree.id === current ? 'current' : ''}" data-action="picker-tree" data-tree=${tree.id}>
+        <span>${treeLabel(tree)}</span>
+      </button>`,
   );
-}
 
 /** The table of trees: each in its cell, to click, drag to another cell, or (an empty cell) to start a tree in. */
 function treeGrid(ui) {
@@ -247,11 +249,10 @@ function pickerView(ui) {
   const picker = ui.overlay;
   const { pane, id } = picker.into;
   const where = id ? t('addInto', titleOf(ui.library.nodes[id])) : t('addToEnd', ui.library.trees[pane.tree].name);
-  const sources = { ...ui, library: { ...ui.library, trees: { ...ui.library.trees } } };
-  delete sources.library.trees[pane.tree]; // Not from the tree they go to.
+  const sources = Object.values(ui.library.trees).filter((tree) => tree.id !== pane.tree); // Not from the tree they go to.
   return dialog(html`
     <h2>${where}</h2>
-    <div class="tabs">${treeTabs(sources, picker.tree, 'picker-tree')}</div>
+    <div class="tabs">${treeTabs(sources, picker.tree)}</div>
     ${paneView(picker, 'picker', ui)}
     <footer>
       <button data-action="overlay-close">${t('cancel')}</button>

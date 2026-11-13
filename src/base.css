@@ -10,8 +10,6 @@
   --active-text: #041e49;
   --accent: #0b57d0;
   --badge: #e9eef6;
-  --row: 30px;
-  --indent: 18px;
 }
 @media (prefers-color-scheme: dark) {
   :root {

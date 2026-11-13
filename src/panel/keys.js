@@ -75,8 +75,8 @@ addEventListener('keydown', (event) => {
     Delete: () => cmd.remove(pane, id, event.shiftKey),
     F2: () => cmd.startRename({ id, pane }),
     Tab: () => (event.shiftKey ? cmd.outdent : cmd.indent)(pane, ids),
-    d: () => ctrl && cmd.duplicate(pane, ids),
-    a: () => ctrl && selectAlso(pane),
+    d: () => cmd.duplicate(pane, ids), // (With Ctrl: a letter alone is not a key of the tree, see below.)
+    a: () => selectAlso(pane),
   };
   const key = keys[event.key] ?? keys[letter];
   if (!key || (event.key.length === 1 && event.key !== ' ' && !ctrl)) return;

@@ -54,13 +54,6 @@
 .place:hover {
   background: var(--hover);
 }
-.place .title {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .place .when {
   flex: none;
   color: var(--dim);

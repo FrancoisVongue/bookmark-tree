@@ -53,7 +53,7 @@ app.addEventListener('click', (event) => {
   if (pane) setFocus(pane);
   // A click inside a dialog lands on the overlay behind it too: that is not "close".
   if (el && !(el.dataset.action === 'overlay-close' && event.target !== el)) {
-    return actions[el.dataset.action]?.({ pane, id, el, event });
+    return actions[el.dataset.action]?.({ pane, id, el });
   }
   if (!id) {
     // A click on nothing lets go of the selection.
