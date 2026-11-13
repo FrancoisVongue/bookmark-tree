@@ -225,3 +225,24 @@ test('a node remembers the day its tab was last opened or closed; one kept open 
   tabOpened(state, { id: 2, url: 'https://a.example/' }, undefined, MAIN, 60 * DAY);
   assert.equal(node.touched, 60);
 });
+
+test('an address typed in a new tab that a sleeping node of another tree has: the node is shown in this tree too', () => {
+  const state = createState();
+  state.library.trees.other = { id: 'other', name: 'Other', children: {}, collapsed: {} };
+  tabOpened(state, { id: 1, url: 'https://a.example/' });
+  const a = state.binding[1].node;
+  tabClosed(state, 1);
+  // The panel shows the other tree; a new tab there is taken to that address.
+  tabOpened(state, { id: 2, url: 'chrome://newtab/' }, undefined, 'other');
+  tabChanged(state, { id: 2, url: 'https://a.example/', title: 'A' });
+  assert.deepEqual(state.binding[2], { node: a, tree: 'other' });
+  assert.deepEqual(state.library.trees.other.children[ROOT], [a]);
+  assert.deepEqual(state.library.trees[MAIN].children[ROOT], [a]);
+  assert.equal(Object.keys(state.library.nodes).length, 1);
+  // After a restart of the browser (every tab has a new id) the tab finds its node wherever it is, and nothing is added.
+  state.binding = {};
+  reconcile(state, [{ id: 7, url: 'https://a.example/', title: 'A' }], () => 'other');
+  assert.equal(state.binding[7].node, a);
+  assert.equal(Object.keys(state.library.nodes).length, 1);
+  assert.deepEqual(state.library.trees[MAIN].children[ROOT], [a]);
+});
