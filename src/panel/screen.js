@@ -198,7 +198,7 @@ export function redraw() {
 app.addEventListener(
   'scroll',
   (event) => {
-    const pane = event.target.classList?.contains('pane') && paneAt(event.target);
+    const pane = event.target.classList?.contains('pane') && (paneAt(event.target) ?? picker());
     if (pane && inSight(pane)) redraw();
   },
   true,
@@ -230,9 +230,10 @@ export function reveal(pane, id) {
 export const here = () => (ui.panes.includes(ui.focus) ? ui.focus : ui.panes[0]);
 export const picker = () => (ui.overlay?.kind === 'picker' ? ui.overlay : undefined);
 export const idAt = (el) => el.closest?.('.row')?.dataset.id;
+/** The pane of the panel an element is in. (The picker's pane, on top, is not one of them: it has verbs of its own, below.) */
 export const paneAt = (el) => {
-  const id = el.closest?.('.pane')?.dataset.pane;
-  return [...ui.panes, picker()].find((pane) => pane?.id === id);
+  const id = el.closest?.('.panes .pane')?.dataset.pane;
+  return ui.panes.find((pane) => pane.id === id);
 };
 /** The row of node `id` in the page, if it is drawn (see inSight). */
 export const rowEl = (pane, id) => paneEl(pane)?.querySelector(`.row[data-id="${id}"]`);
@@ -347,6 +348,14 @@ export function openOverlay(overlay) {
 }
 /** The pane on top to choose nodes of tree `treeId` from; they go `into` { pane, id }. */
 export const pick = (treeId, into) => openOverlay({ kind: 'picker', ...newPane(treeId), into });
+
+/** In the picker: shows another tree to choose from, and marks or unmarks a row of it. */
+export const pickFrom = (treeId) => pick(treeId, picker().into);
+export function togglePicked(id) {
+  const { sel } = picker();
+  if (!sel.delete(id)) sel.add(id);
+  redraw();
+}
 
 /** Shows a menu at a point: items { label, hint, disabled, run }; `null` is a separator, `false` and `undefined` are left out. */
 export function openMenu(x, y, items, opener) {

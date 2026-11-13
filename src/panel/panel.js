@@ -1,7 +1,7 @@
 // The panel's entry: the mouse, and the start. It turns what the user does
 // into commands for the worker (see screen.js for what the panel itself owns).
 
-import { allOfJournal, app, arrange, closeMenu, closeNotice, closeOverlay, closePane, deselect, here, idAt, log, menuUnder, openMenu, paneAt, pick, picker, pointAt, redraw, refresh, revealActive, rowOf, search, searchJournal, select, setFocus, show, showActiveTree, split, targets, toggleStrip, ui, watch } from './screen.js';
+import { allOfJournal, app, arrange, closeMenu, closeNotice, closeOverlay, closePane, deselect, here, idAt, log, menuUnder, openMenu, paneAt, pickFrom, picker, pointAt, redraw, refresh, revealActive, rowOf, search, searchJournal, select, setFocus, show, showActiveTree, split, targets, togglePicked, toggleStrip, ui, watch } from './screen.js';
 import { mainMenu, rowMenu, treeMenu } from './menus.js';
 import { endsDrag } from './drag.js';
 import * as cmd from './commands.js';
@@ -30,7 +30,7 @@ const actions = {
   more: ({ el }) => menuUnder(el, mainMenu()),
   'split-row': () => split('row'),
   'split-column': () => split('column'),
-  'picker-tree': ({ el }) => pick(el.dataset.tree, picker().into),
+  'picker-tree': ({ el }) => pickFrom(el.dataset.tree),
   'picker-add': ({ el }) => cmd.addPicked('take' in el.dataset),
   icon: ({ el }) => cmd.setIcon(el.dataset.icon),
   settings: cmd.openSettings,
@@ -55,6 +55,7 @@ app.addEventListener('click', (event) => {
   if (el && !(el.dataset.action === 'overlay-close' && event.target !== el)) {
     return actions[el.dataset.action]?.({ pane, id, el });
   }
+  if (id && !pane) return togglePicked(id); // A row of the pane on top, to choose from: a click marks it.
   if (!id) {
     // A click on nothing lets go of the selection.
     return pane ? deselect(pane) : redraw();
@@ -62,9 +63,9 @@ app.addEventListener('click', (event) => {
   // A double click renames - but only a row that was the selected one already: a click on any other row
   // just goes there, at once, with no waiting to see whether a second click follows.
   if (event.detail === 1) chosen = pane.sel.size === 1 && pane.sel.has(id) ? id : undefined;
-  select(pane, id, pane === picker() || event.ctrlKey || event.metaKey ? 'toggle' : event.shiftKey ? 'range' : undefined);
+  select(pane, id, event.ctrlKey || event.metaKey ? 'toggle' : event.shiftKey ? 'range' : undefined);
   const plain = !event.ctrlKey && !event.metaKey && !event.shiftKey && event.detail === 1;
-  if (plain && pane !== picker()) cmd.open(pane, id);
+  if (plain) cmd.open(pane, id);
 });
 
 app.addEventListener('dblclick', (event) => {
@@ -72,7 +73,7 @@ app.addEventListener('dblclick', (event) => {
   const pane = paneAt(event.target);
   const treeId = event.target.closest('.bar .tab[data-tree]')?.dataset.tree;
   if (treeId) cmd.startRename({ tree: treeId });
-  else if (id && id === chosen && pane !== picker() && event.target.closest('.title')) cmd.startRename({ id, pane });
+  else if (pane && id && id === chosen && event.target.closest('.title')) cmd.startRename({ id, pane });
 });
 
 // Middle click, as on a tab: closes a live node's tab (the node stays,
@@ -80,7 +81,7 @@ app.addEventListener('dblclick', (event) => {
 app.addEventListener('auxclick', (event) => {
   const id = idAt(event.target);
   const pane = paneAt(event.target);
-  if (!id || event.button !== 1 || pane === picker()) return;
+  if (!pane || !id || event.button !== 1) return;
   if (ui.live.has(id)) cmd.sleepOne(id);
   else cmd.remove(pane, id);
 });
@@ -92,7 +93,7 @@ app.addEventListener('contextmenu', (event) => {
   const id = idAt(event.target);
   const treeId = event.target.closest('.tab[data-tree]')?.dataset.tree;
   if (treeId) return openMenu(event.clientX, event.clientY, treeMenu(treeId));
-  if (!pane || pane === picker()) return;
+  if (!pane) return;
   setFocus(pane);
   if (!id) return openMenu(event.clientX, event.clientY, mainMenu());
   if (pane.sel.has(id)) pointAt(id);
