@@ -104,7 +104,7 @@ function rowView(row, pane, ui, { leads, included }, lit) {
       role="treeitem"
       aria-level=${row.depth + 1}
       aria-selected=${pane.sel.has(row.id)}
-      tabindex=${pane === ui.panes[ui.focus] && row.id === ui.cursor ? 0 : -1}
+      tabindex=${pane === ui.focus && row.id === ui.cursor ? 0 : -1}
       style="--depth:${row.depth}; --lit:${lit || 0}; --gap:${row.gap}px; margin-top:${-row.pull}px; transform:translateY(${row.shift}px)"
       title=${[title, node.url, ui.audible.has(row.id) && t('playing'), node.added && t('addedOn', new Date(node.added).toLocaleDateString())].filter(Boolean).join('\n')}
     >
@@ -164,7 +164,7 @@ function paneView(pane, index, ui) {
   const way = { leads: leadsToActive(pane, ui) };
   const guide = litGuide(pane.rows, ui.activeId);
   const picking = pane === ui.overlay;
-  const focused = pane === ui.panes[ui.focus];
+  const focused = pane === ui.focus;
   const tree = ui.library.trees[pane.tree];
   // In the picker a chosen node brings its subtree along: show that.
   way.included = picking ? new Set([...pane.sel].flatMap((id) => descendantsOf(tree, id))) : undefined;
@@ -172,7 +172,7 @@ function paneView(pane, index, ui) {
     ${index > 0 ? html`<div class="divider" data-divider=${index}></div>` : ''}
     <section
       class="pane ${focused ? 'focused' : ''} ${ui.drop?.pane === pane && ui.drop.position === 'end' ? 'drop-end' : ''}"
-      data-pane=${index}
+      data-pane=${pane.id}
       style="flex-grow:${pane.size ?? 1}"
     >
       ${ui.panes.length > 1 && !picking
@@ -213,7 +213,7 @@ function treeTabs(ui, current, action) {
 /** The table of trees: each in its cell, to click, drag to another cell, or (an empty cell) to start a tree in. */
 function treeGrid(ui) {
   const { columns, cells } = gridOf(ui.library);
-  const current = ui.panes[ui.focus].tree;
+  const current = ui.focus.tree;
   const cellView = (id, cell) => {
     const drop = ui.drop?.cell === cell ? 'drop' : '';
     if (!id) return html`<button class="cell ${drop}" data-action="tree-add" data-cell=${cell} title=${t('newTree')}>${ICONS.add}</button>`;
@@ -382,7 +382,7 @@ export function draw(container, ui) {
         </div>
       </header>
       ${planView(ui)}
-      <main class="panes split-${ui.split}">${ui.panes.map((pane, index) => paneView(pane, index, ui))}</main>
+      <main class="panes split-${ui.split}">${repeat(ui.panes, (pane) => pane.id, (pane, index) => paneView(pane, index, ui))}</main>
       ${ui.toast
         ? html`<div class="toasts">${toastView(ui.toast)}</div>`
         : nothing}

@@ -10,8 +10,9 @@ export const log = (...args) => console.log('[tree panel]', ...args);
 export const app = document.getElementById('app');
 
 const kept = JSON.parse(localStorage.getItem('view') ?? '{}');
-// A pane: the tree it shows, its rows with their places, and which of them are drawn (`from`..`to`, between gaps `before` and `after`: see inSight). (While searching, also `loose`: see found().)
-export const newPane = (tree, size = 1) => ({ tree, size, rows: [], from: 0, to: 0, sel: new Set() });
+// A pane: its own id (what it is known by in the page, whatever its place among the panes), the tree it shows, its rows with their places, and which of them are drawn (`from`..`to`, between gaps `before` and `after`: see inSight). (While searching, also `loose`: see found().)
+let panes = 0;
+export const newPane = (tree, size = 1) => ({ id: `p${++panes}`, tree, size, rows: [], from: 0, to: 0, sel: new Set() });
 
 export const ui = {
   windowId: undefined,
@@ -33,7 +34,7 @@ export const ui = {
   canUndo: false,
   canRedo: false,
   panes: (kept.panes ?? []).map((pane) => newPane(pane.tree, pane.size)), // The trees shown: { tree, size, rows, sel }.
-  focus: 0, // The pane the user works in.
+  focus: undefined, // The pane the user works in (the first, until one is chosen: see here()).
   split: kept.split ?? 'column', // Panes one under another, or 'row': side by side.
   query: '', // What is searched for.
   cursor: undefined, // The row the keyboard is on, in the focused pane.
@@ -107,7 +108,7 @@ function place(pane) {
   pane.height = pane.rows.length ? top + ROW : 0;
 }
 
-const paneEl = (pane) => app.querySelector(`.pane[data-pane="${pane === picker() ? 'picker' : ui.panes.indexOf(pane)}"]`);
+const paneEl = (pane) => app.querySelector(`.pane[data-pane="${pane.id}"]`);
 /** How far the top of a pane's tree is above the top of what the pane shows, in pixels (below it: negative). */
 const scrolled = (el) => el.getBoundingClientRect().top - el.querySelector('.tree').getBoundingClientRect().top;
 /** The first row of a pane whose bottom is below `y` (the number of rows, if none is). */
@@ -225,12 +226,12 @@ export function reveal(pane, id) {
   redraw();
 }
 
-export const here = () => ui.panes[ui.focus];
+export const here = () => (ui.panes.includes(ui.focus) ? ui.focus : ui.panes[0]);
 export const picker = () => (ui.overlay?.kind === 'picker' ? ui.overlay : undefined);
 export const idAt = (el) => el.closest?.('.row')?.dataset.id;
 export const paneAt = (el) => {
-  const index = el.closest?.('.pane')?.dataset.pane;
-  return index === 'picker' ? picker() : ui.panes[index];
+  const id = el.closest?.('.pane')?.dataset.pane;
+  return [...ui.panes, picker()].find((pane) => pane?.id === id);
 };
 /** The row of node `id` in the page, if it is drawn (see inSight). */
 export const rowEl = (pane, id) => paneEl(pane)?.querySelector(`.row[data-id="${id}"]`);
@@ -286,10 +287,9 @@ export function say(text, undo = false) {
 }
 
 export function setFocus(pane) {
-  const index = ui.panes.indexOf(pane);
-  if (index === -1 || index === ui.focus) return;
+  if (!ui.panes.includes(pane) || pane === here()) return;
   for (const other of ui.panes) other.sel.clear();
-  ui.focus = index;
+  ui.focus = pane;
   ui.cursor = undefined;
   remember(); // New tabs go to the tree of the pane the user works in: the worker hears of it at once.
 }
@@ -319,7 +319,6 @@ export function openBeside(treeId) {
 
 export function closePane(pane) {
   ui.panes.splice(ui.panes.indexOf(pane), 1);
-  ui.focus = 0;
   arrange();
 }
 
@@ -335,7 +334,6 @@ export function split(way) {
     setFocus(ui.panes[1]);
   } else if (ui.split === way) {
     ui.panes = [here()];
-    ui.focus = 0;
   }
   ui.split = way;
   arrange();
@@ -529,7 +527,7 @@ function layOut() {
   const cursorWas = { tree: here()?.tree, at: here()?.rows.findIndex((row) => row.id === ui.cursor) ?? -1 }; // Among the rows as they were.
   ui.panes = ui.panes.filter((pane) => library.trees[pane.tree]);
   if (!ui.panes.length) ui.panes = [newPane(Object.keys(library.trees)[0])];
-  ui.focus = Math.min(ui.focus, ui.panes.length - 1);
+  ui.focus = here();
   if (picker() && !library.trees[picker().tree]) ui.overlay = undefined;
   for (const pane of [...ui.panes, picker()]) {
     if (!pane) continue;

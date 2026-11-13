@@ -77,7 +77,7 @@ function planAtPointer() {
 /** The place in a pane to drop rows or a link at. */
 function placeAtPointer() {
   const paneEl = paneElAtPointer();
-  const pane = paneEl && ui.panes[paneEl.dataset.pane];
+  const pane = paneEl && paneAt(paneEl);
   if (!pane || !['rows', 'link'].includes(ui.drag.kind)) return;
   const drop = dropAt(pane, paneEl, gesture.pointer.y);
   return drop.targetId !== undefined && inDragged(pane, drop.targetId) ? undefined : drop;
@@ -134,7 +134,7 @@ export function endDrag() {
 /** Dragging the line between two panes gives one more room and the other less. */
 function resize(divider) {
   const [before, after] = [ui.panes[divider - 1], ui.panes[divider]];
-  const [a, b] = [divider - 1, divider].map((index) => app.querySelector(`.pane[data-pane="${index}"]`).getBoundingClientRect());
+  const [a, b] = [before, after].map((pane) => app.querySelector(`.pane[data-pane="${pane.id}"]`).getBoundingClientRect());
   const { x, y } = gesture.pointer;
   const along = ui.split === 'row' ? (x - a.left) / (b.right - a.left) : (y - a.top) / (b.bottom - a.top);
   const share = Math.max(0.1, Math.min(0.9, along));
