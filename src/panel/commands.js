@@ -6,7 +6,7 @@ import { toHtml, toOutline } from '../bookmarks.js';
 import { t } from '../i18n.js';
 import { askForBookmarks, saveFile } from '../page.js';
 import { titleOf } from './view.js';
-import { app, arrange, ask, branches, closeOverlay, here, newPane, op, redraw, refresh, rowEl, rowOf, say, send, setFocus, ui, under } from './screen.js';
+import { ask, branches, closeOverlay, endRenaming, here, op, pick, picker, refresh, rename, rowOf, say, send, show, ui, under, unsay } from './screen.js';
 
 export const activate = (pane, id, where) =>
   send({ type: 'activate', nodeId: id, treeId: pane.tree, windowId: ui.windowId, where });
@@ -15,9 +15,8 @@ export const toggle = (pane, id) => op('collapse', { tree: pane.tree, id, collap
 
 /** Back to a place from the journal: its tree is shown, its page opened (again, if it sleeps). */
 export function revisit(id, tree) {
-  here().tree = treeFor(ui.library, id, tree);
+  show(here(), treeFor(ui.library, id, tree));
   activate(here(), id);
-  arrange();
 }
 
 /** Copies of nodes and of all that is under them, right after them. */
@@ -51,7 +50,7 @@ export async function newGroup(pane, target) {
 export async function newTree(cell) {
   const id = crypto.randomUUID();
   await op('tree-add', { id, name: t('newTree'), cell });
-  here().tree = id;
+  show(here(), id);
   await refresh();
   startRename({ tree: id });
 }
@@ -80,31 +79,11 @@ export function removeTree(treeId) {
 }
 
 /**
- * The two split buttons. With one tree shown, either shows a second beside
- * it (the same tree, until another is chosen in the table). With several, the
- * button of the way they lie now leaves only the focused one; the other
- * button turns them.
- */
-export function split(way) {
-  if (ui.panes.length === 1) {
-    ui.panes.push(newPane(here().tree));
-    setFocus(ui.panes[1]);
-  } else if (ui.split === way) {
-    ui.panes = [here()];
-    ui.focus = 0;
-  }
-  ui.split = way;
-  arrange();
-}
-
-/**
  * Opens the picker: another tree, to choose nodes from. They will be shown in
  * `pane`'s tree too: under row `id`, or at the end of the tree without one.
  */
 export function openPicker(pane, id) {
-  const other = Object.keys(ui.library.trees).find((treeId) => treeId !== pane.tree);
-  ui.overlay = { kind: 'picker', ...newPane(other), into: { pane, id } };
-  arrange();
+  pick(Object.keys(ui.library.trees).find((treeId) => treeId !== pane.tree), { pane, id });
 }
 
 /** Addresses in a piece of text, one per line, as new sleeping pages. */
@@ -126,45 +105,25 @@ export function setIcon(text) {
 
 /** Takes the last step back (or, with `again`, makes it again). The notice of what was done goes: its "Undo" was this. */
 export function undo(again = false) {
-  ui.toast = undefined;
+  unsay();
   send({ type: again ? 'redo' : 'undo' });
-}
-
-/** Closes the menu; the keyboard goes back to the row. */
-export function closeMenu() {
-  ui.menu = undefined;
-  redraw();
 }
 
 // --- Renaming (and typing an address) ------------------------------------------
 
-export function startRename(what) {
-  ui.renaming = what;
-  redraw();
-  const input = app.querySelector('.rename');
-  input?.focus();
-  input?.select();
-  if (input) input.scrollLeft = 0; // All of it is selected, and its beginning is what is seen.
-}
+export const startRename = rename;
 
 export function endRename(save) {
-  const renaming = ui.renaming;
-  if (!renaming) return;
-  const text = app.querySelector('.rename')?.value ?? '';
-  ui.renaming = undefined;
-  redraw();
-  if (renaming.tree) {
-    if (save) op('tree-rename', { tree: renaming.tree, name: text });
-    return;
-  }
+  const { renaming, text } = endRenaming();
+  if (!renaming || !save) return;
+  if (renaming.tree) return op('tree-rename', { tree: renaming.tree, name: text });
   const node = ui.library.nodes[renaming.id];
-  if (save && renaming.field === 'url') {
+  if (renaming.field === 'url') {
     if (text !== node.url) op('address', { id: renaming.id, url: text });
-  } else if (save && text !== titleOf(node)) {
+  } else if (text !== titleOf(node)) {
     // Typing the page's own title back means "no name of my own".
     op('rename', { id: renaming.id, name: text === node.title ? '' : text });
   }
-  rowEl(renaming.pane, renaming.id)?.focus();
 }
 
 // --- A tree as a file, as bookmarks; the rest is on the settings page ----------

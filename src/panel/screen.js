@@ -255,7 +255,12 @@ export const onTop = () => ui.menu ?? ui.overlay ?? ui.renaming;
  */
 function settleFocus() {
   const within = (selector) => app.querySelector(selector)?.contains(document.activeElement);
-  if (ui.renaming) return; // Its field took the keyboard when it appeared (see startRename).
+  if (ui.renaming) {
+    // The field of the name being typed has it, with all of the name selected and its beginning in sight.
+    const field = app.querySelector('.rename');
+    if (field && document.activeElement !== field) (field.focus(), field.select(), (field.scrollLeft = 0));
+    return;
+  }
   if (ui.menu) return within('.menu') || app.querySelector('.menu')?.focus();
   // A question waits on its "yes", the table of icons in its field, a pane to choose from on itself.
   const first = { ask: '.primary', icons: '.any' }[ui.overlay?.kind] ?? '';
@@ -301,6 +306,178 @@ export function focusRow(pane, id) {
   ui.cursor = id;
   reveal(pane, id);
   rowEl(pane, id)?.focus({ preventScroll: true });
+}
+
+// --- What the rest of the panel may ask of the screen -------------------------------
+// The other parts ask; only this file changes `ui`.
+
+/** Shows a tree in a pane. (A tree just made, which the panel has not heard of yet, appears with the worker's next state.) */
+export function show(pane, treeId) {
+  pane.tree = treeId;
+  pane.sel.clear();
+  if (ui.library.trees[treeId]) arrange();
+}
+
+/** One more pane, showing tree `treeId`. */
+export function openBeside(treeId) {
+  ui.panes.push(newPane(treeId));
+  arrange();
+}
+
+export function closePane(pane) {
+  ui.panes.splice(ui.panes.indexOf(pane), 1);
+  ui.focus = 0;
+  arrange();
+}
+
+/**
+ * The two split buttons. With one tree shown, either shows a second beside
+ * it (the same tree, until another is chosen in the table). With several, the
+ * button of the way they lie now leaves only the focused one; the other
+ * button turns them.
+ */
+export function split(way) {
+  if (ui.panes.length === 1) {
+    ui.panes.push(newPane(here().tree));
+    setFocus(ui.panes[1]);
+  } else if (ui.split === way) {
+    ui.panes = [here()];
+    ui.focus = 0;
+  }
+  ui.split = way;
+  arrange();
+}
+
+/** Opens something on top of the trees (see `ui.overlay` for what it may be). */
+export function openOverlay(overlay) {
+  ui.overlay = overlay;
+  arrange();
+}
+/** The pane on top to choose nodes of tree `treeId` from; they go `into` { pane, id }. */
+export const pick = (treeId, into) => openOverlay({ kind: 'picker', ...newPane(treeId), into });
+
+/** Shows a menu at a point: items { label, hint, disabled, run }; `null` is a separator, `false` and `undefined` are left out. */
+export function openMenu(x, y, items, opener) {
+  const run = (entry) => () => {
+    closeMenu();
+    entry.run();
+  };
+  const shown = items.filter((entry) => entry !== false && entry !== undefined);
+  ui.menu = { x, y, opener, items: shown.map((entry) => entry && { ...entry, run: run(entry) }) };
+  redraw();
+  // Keep it on screen.
+  const box = app.querySelector('.menu').getBoundingClientRect();
+  ui.menu.x = Math.max(4, Math.min(x, innerWidth - box.width - 4));
+  ui.menu.y = Math.max(4, Math.min(y, innerHeight - box.height - 4));
+  redraw();
+}
+
+/** A menu hanging from a button. Pressing the button again closes it. */
+export function menuUnder(button, items) {
+  if (ui.menu?.opener === button) return closeMenu();
+  const box = button.getBoundingClientRect();
+  openMenu(box.right, box.bottom, items, button);
+}
+
+/** Closes the menu; the keyboard goes back to the row. */
+export function closeMenu() {
+  ui.menu = undefined;
+  redraw();
+}
+
+/** Selects row `id`: alone, or - `how` - 'toggle' it among the selected, or the 'range' from the cursor to it. The cursor goes there (it stays for a range: it is the range's anchor). */
+export function select(pane, id, how) {
+  if (how === 'range' && rowOf(pane, ui.cursor)) {
+    const ids = pane.rows.map((row) => row.id);
+    const [from, to] = [ids.indexOf(ui.cursor), ids.indexOf(id)].sort((a, b) => a - b);
+    pane.sel = new Set(ids.slice(from, to + 1));
+    return redraw();
+  }
+  if (how !== 'toggle') pane.sel = new Set([id]);
+  else if (!pane.sel.delete(id)) pane.sel.add(id);
+  ui.cursor = id;
+  redraw();
+}
+/** Adds rows to the selected (all of a pane's, without `ids`). */
+export function selectAlso(pane, ids = pane.rows.map((row) => row.id)) {
+  pane.sel = new Set([...pane.sel, ...ids]);
+  redraw();
+}
+/** Lets go of the selection: a pane's, or everywhere. */
+export function deselect(pane) {
+  for (const each of pane ? [pane] : ui.panes) each.sel.clear();
+  redraw();
+}
+/** Puts the cursor on a row without changing what is selected. */
+export function pointAt(id) {
+  ui.cursor = id;
+}
+
+/** What is typed in the search field, and in the journal's. */
+export function search(text) {
+  ui.query = text;
+  arrange();
+}
+export function searchJournal(text) {
+  ui.journalQuery = text;
+  arrange();
+}
+
+/** Folds or unfolds the journal or the plan ('journal' | 'plan'). Unfolded anew, the journal starts from its latest places. */
+export function toggleStrip(name) {
+  ui[`${name}Open`] = !ui[`${name}Open`];
+  localStorage.setItem(`${name}Open`, ui[`${name}Open`] ? 'yes' : 'no');
+  if (name === 'journal') Object.assign(ui, { journalQuery: '', journalAll: false });
+  arrange();
+}
+export function allOfJournal() {
+  ui.journalAll = true;
+  arrange();
+}
+
+/** The notice about what is not synced stays closed until there is something else to say. */
+export function closeNotice() {
+  localStorage.setItem('unsyncedClosed', ui.unsynced.kind);
+  arrange();
+}
+
+/** Starts typing a name: of row { id, pane } (its address, with `field: 'url'`), or of { tree }. The field takes the keyboard (see settleFocus). */
+export function rename(what) {
+  ui.renaming = what;
+  redraw();
+}
+/** Ends it: gives what was being named and what was typed, { renaming, text } (nothing, if no name was being typed). */
+export function endRenaming() {
+  const renaming = ui.renaming;
+  if (!renaming) return {};
+  const text = app.querySelector('.rename')?.value ?? '';
+  ui.renaming = undefined;
+  if (renaming.id) ui.cursor = renaming.id; // The keyboard goes back to the row that was named.
+  redraw();
+  return { renaming, text };
+}
+
+/** Takes the notice of what was done away. */
+export function unsay() {
+  clearTimeout(toastTimer);
+  ui.toast = undefined;
+  redraw();
+}
+
+/** What is dragged (see `ui.drag`), or nothing any more; and where it would land. */
+export function setDrag(drag) {
+  ui.drag = drag;
+  if (!drag) ui.drop = undefined;
+  redraw();
+}
+export function setDrop(drop) {
+  ui.drop = drop;
+  redraw();
+}
+
+/** The window whose tabs this panel shows. */
+export function watch(windowId) {
+  ui.windowId = windowId;
 }
 
 // --- From the worker's state to the screen -------------------------------------

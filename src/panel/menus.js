@@ -1,39 +1,11 @@
-// The menus: what can be done with a row, a tree, the panel.
+// What the menus hold: what can be done with a row, a tree, the panel. (Showing a menu is the screen's: see openMenu in screen.js.)
 
 import { gridOf, isGroup, isNote, planOf } from '../model.js';
 import { t } from '../i18n.js';
-import { app, arrange, here, newPane, op, redraw, rowOf, send, targets, ui, under } from './screen.js';
+import { here, op, openBeside, openMenu, openOverlay, rename, rowOf, send, targets, ui, under } from './screen.js';
 import * as cmd from './commands.js';
 
 const item = (label, run, hint, disabled = false) => ({ label: t(label), hint, disabled, run });
-
-/** Shows a menu at a point. `null` is a separator; `false` and `undefined` entries are left out. */
-export function openMenu(x, y, items) {
-  const run = (entry) => () => {
-    ui.menu = undefined;
-    redraw();
-    entry.run();
-  };
-  const shown = items.filter((entry) => entry !== false && entry !== undefined);
-  ui.menu = { x, y, items: shown.map((entry) => entry && { ...entry, run: run(entry) }) };
-  redraw();
-  // Keep it on screen.
-  const box = app.querySelector('.menu').getBoundingClientRect();
-  ui.menu.x = Math.max(4, Math.min(x, innerWidth - box.width - 4));
-  ui.menu.y = Math.max(4, Math.min(y, innerHeight - box.height - 4));
-  redraw();
-}
-
-/** A menu hanging from a button. Pressing the button again closes it. */
-export function menuUnder(button, items) {
-  if (ui.menu?.opener === button) {
-    ui.menu = undefined;
-    return redraw();
-  }
-  const box = button.getBoundingClientRect();
-  openMenu(box.right, box.bottom, items);
-  ui.menu.opener = button;
-}
 
 const hasOtherTrees = () => Object.keys(ui.library.trees).length > 1;
 /** Whether any of the nodes, or anything under them, is awake (`live`) or asleep. */
@@ -62,7 +34,7 @@ export function rowMenu(pane, id) {
     item('rename', () => cmd.startRename({ id, pane }), 'F2'),
     page && item('editAddress', () => cmd.startRename({ id, pane, field: 'url' })),
     page && item('copyLink', () => navigator.clipboard.writeText(links())),
-    item('changeIcon', () => ((ui.overlay = { kind: 'icons', ids }), redraw())),
+    item('changeIcon', () => openOverlay({ kind: 'icons', ids })),
     item('duplicate', () => cmd.duplicate(pane, ids), 'Ctrl+D'),
     !isGroup(node) && (planned ? item('planRemove', () => op('unplan', { ids })) : item('planAdd', () => op('plan', { ids }))),
     item(node.keep ? 'keepNot' : 'keep', () => op('keep', { ids, keep: !node.keep })),
@@ -82,8 +54,8 @@ export function treeMenu(treeId) {
   const ids = Object.keys(ui.library.trees);
   return [
     item('rename', () => cmd.startRename({ tree: treeId })),
-    item('changeIcon', () => ((ui.overlay = { kind: 'icons', tree: treeId }), redraw())),
-    item('openBeside', () => (ui.panes.push(newPane(treeId)), arrange())),
+    item('changeIcon', () => openOverlay({ kind: 'icons', tree: treeId })),
+    item('openBeside', () => openBeside(treeId)),
     null,
     item('saveToBookmarks', () => cmd.saveToBookmarks(treeId)),
     item('exportBookmarks', () => cmd.downloadBookmarks(treeId)),

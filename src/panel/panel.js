@@ -1,8 +1,8 @@
 // The panel's entry: the mouse, and the start. It turns what the user does
 // into commands for the worker (see screen.js for what the panel itself owns).
 
-import { app, arrange, closeOverlay, here, idAt, log, newPane, op, paneAt, picker, redraw, refresh, revealActive, rowOf, send, setFocus, showActiveTree, targets, ui } from './screen.js';
-import { mainMenu, menuUnder, openMenu, rowMenu, treeMenu } from './menus.js';
+import { allOfJournal, app, arrange, closeMenu, closeNotice, closeOverlay, closePane, deselect, here, idAt, log, menuUnder, op, openMenu, paneAt, pick, picker, pointAt, redraw, refresh, revealActive, rowOf, search, searchJournal, select, send, setFocus, show, showActiveTree, split, targets, toggleStrip, ui, watch } from './screen.js';
+import { mainMenu, rowMenu, treeMenu } from './menus.js';
 import { endsDrag } from './drag.js';
 import * as cmd from './commands.js';
 import './keys.js';
@@ -24,24 +24,13 @@ const actions = {
   'new-tab': () => cmd.newTab(here()),
   'new-group': () => cmd.newGroup(here(), rowOf(here(), ui.cursor)?.id),
   'new-note': () => cmd.newNote(here()),
-  'tree-show': ({ el }) => {
-    here().tree = el.dataset.tree;
-    here().sel.clear();
-    arrange();
-  },
+  'tree-show': ({ el }) => show(here(), el.dataset.tree),
   'tree-add': ({ el }) => cmd.newTree(Number(el.dataset.cell)),
-  'pane-close': ({ pane }) => {
-    ui.panes.splice(ui.panes.indexOf(pane), 1);
-    ui.focus = 0;
-    arrange();
-  },
+  'pane-close': ({ pane }) => closePane(pane),
   more: ({ el }) => menuUnder(el, mainMenu()),
-  'split-row': () => cmd.split('row'),
-  'split-column': () => cmd.split('column'),
-  'picker-tree': ({ el }) => {
-    ui.overlay = { kind: 'picker', ...newPane(el.dataset.tree), into: picker().into };
-    arrange();
-  },
+  'split-row': () => split('row'),
+  'split-column': () => split('column'),
+  'picker-tree': ({ el }) => pick(el.dataset.tree, picker().into),
   // What is chosen in the picker is shown here too, or (the "move" button) moves here.
   'picker-add': ({ el }) => {
     const { tree, sel, into } = picker();
@@ -52,29 +41,13 @@ const actions = {
   },
   icon: ({ el }) => cmd.setIcon(el.dataset.icon),
   settings: cmd.openSettings,
-  // The notice stays closed until there is something else to say.
-  'unsynced-close': () => {
-    localStorage.setItem('unsyncedClosed', ui.unsynced.kind);
-    arrange();
-  },
+  'unsynced-close': closeNotice,
   'journal-go': ({ el }) => cmd.revisit(el.dataset.node, el.dataset.tree),
-  'journal-more': () => {
-    ui.journalAll = true;
-    arrange();
-  },
-  'journal-toggle': () => {
-    ui.journalOpen = !ui.journalOpen;
-    Object.assign(ui, { journalQuery: '', journalAll: false }); // Unfolded anew, it starts from the latest places.
-    localStorage.setItem('journalOpen', ui.journalOpen ? 'yes' : 'no');
-    arrange();
-  },
+  'journal-more': allOfJournal,
+  'journal-toggle': () => toggleStrip('journal'),
   'plan-go': ({ el }) => cmd.revisit(el.dataset.node),
   unplan: ({ el }) => op('unplan', { ids: [el.closest('.place').dataset.node] }),
-  'plan-toggle': () => {
-    ui.planOpen = !ui.planOpen;
-    localStorage.setItem('planOpen', ui.planOpen ? 'yes' : 'no');
-    redraw();
-  },
+  'plan-toggle': () => toggleStrip('plan'),
   'overlay-close': closeOverlay,
   yes: () => {
     const { run } = ui.overlay;
@@ -96,31 +69,15 @@ app.addEventListener('click', (event) => {
   }
   if (!id) {
     // A click on nothing lets go of the selection.
-    if (pane) pane.sel.clear();
-    return redraw();
+    return pane ? deselect(pane) : redraw();
   }
   // A double click renames - but only a row that was the selected one already: a click on any other row
   // just goes there, at once, with no waiting to see whether a second click follows.
   if (event.detail === 1) chosen = pane.sel.size === 1 && pane.sel.has(id) ? id : undefined;
-  select(pane, id, event);
-  redraw();
+  select(pane, id, pane === picker() || event.ctrlKey || event.metaKey ? 'toggle' : event.shiftKey ? 'range' : undefined);
   const plain = !event.ctrlKey && !event.metaKey && !event.shiftKey && event.detail === 1;
   if (plain && pane !== picker()) cmd.open(pane, id);
 });
-
-function select(pane, id, event) {
-  if (pane === picker() || event.ctrlKey || event.metaKey) {
-    if (!pane.sel.delete(id)) pane.sel.add(id);
-  } else if (event.shiftKey && rowOf(pane, ui.cursor)) {
-    const ids = pane.rows.map((row) => row.id);
-    const [from, to] = [ids.indexOf(ui.cursor), ids.indexOf(id)].sort((a, b) => a - b);
-    pane.sel = new Set(ids.slice(from, to + 1));
-    return; // The cursor stays: it is the anchor of the range.
-  } else {
-    pane.sel = new Set([id]);
-  }
-  ui.cursor = id;
-}
 
 app.addEventListener('dblclick', (event) => {
   const id = idAt(event.target);
@@ -150,8 +107,8 @@ app.addEventListener('contextmenu', (event) => {
   if (!pane || pane === picker()) return;
   setFocus(pane);
   if (!id) return openMenu(event.clientX, event.clientY, mainMenu());
-  if (!pane.sel.has(id)) pane.sel = new Set([id]);
-  ui.cursor = id;
+  if (pane.sel.has(id)) pointAt(id);
+  else select(pane, id);
   openMenu(event.clientX, event.clientY, rowMenu(pane, id));
 });
 
@@ -160,9 +117,7 @@ app.addEventListener('contextmenu', (event) => {
 addEventListener(
   'pointerdown',
   (event) => {
-    if (!ui.menu || event.target.closest?.('.menu') || ui.menu.opener?.contains(event.target)) return;
-    ui.menu = undefined;
-    redraw();
+    if (ui.menu && !event.target.closest?.('.menu') && !ui.menu.opener?.contains(event.target)) closeMenu();
   },
   true,
 );
@@ -172,15 +127,13 @@ app.addEventListener('focusout', (event) => {
 });
 
 app.addEventListener('input', (event) => {
-  if (event.target.closest('.journal-search')) ui.journalQuery = event.target.value;
-  else if (event.target.closest('.search')) ui.query = event.target.value;
-  else return;
-  arrange();
+  if (event.target.closest('.journal-search')) searchJournal(event.target.value);
+  else if (event.target.closest('.search')) search(event.target.value);
 });
 
 async function main() {
   // (A scenario may open the panel as a page of one window and point it at another.)
-  ui.windowId = Number(new URLSearchParams(location.search).get('window')) || (await chrome.windows.getCurrent()).id;
+  watch(Number(new URLSearchParams(location.search).get('window')) || (await chrome.windows.getCurrent()).id);
   chrome.runtime.onMessage.addListener((message) => {
     if (message?.type === 'changed') refresh();
   });
