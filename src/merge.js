@@ -50,6 +50,28 @@ function diffTree(was, tree, changed) {
   return { name: tree.name, renamed: tree.name !== was.name, icon: tree.icon, redrawn: tree.icon !== was.icon, put, out, collapsed };
 }
 
+/**
+ * The part of a library that is about the nodes `ids` (a Set): the others
+ * are left out, their children moving up into their place.
+ */
+export function only(library, ids) {
+  const trees = {};
+  for (const tree of Object.values(library.trees)) {
+    const children = {};
+    const walk = (id, under) => {
+      for (const kid of kidsOf(tree, id)) {
+        if (ids.has(kid)) (children[under] ??= []).push(kid);
+        walk(kid, ids.has(kid) ? kid : under);
+      }
+    };
+    walk(ROOT, ROOT);
+    const collapsed = Object.fromEntries(Object.entries(tree.collapsed).filter(([id]) => ids.has(id)));
+    trees[tree.id] = { ...tree, children, collapsed };
+  }
+  const nodes = Object.fromEntries(Object.entries(library.nodes).filter(([id]) => ids.has(id)));
+  return { ...library, nodes, trees, trash: [] };
+}
+
 /** What changed from `base` to `mine`. */
 export function diff(base, mine) {
   const d = { nodes: {}, trees: {}, gone: Object.keys(base.trees).filter((id) => !mine.trees[id]) };

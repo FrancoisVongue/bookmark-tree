@@ -85,6 +85,7 @@ async function init() {
   state.library.trash = state.library.trash.filter((entry) => entry.at > keepFrom);
   await reconcile();
   await backUp();
+  unsynced = (await loadChannel()).unsynced ?? unsynced;
 }
 
 // --- Facts from the browser ----------------------------------------------------
@@ -101,7 +102,11 @@ chrome.tabs.onCreated.addListener((created) => {
     // Read it again: the address is often not set yet when the event fires,
     // and the round trip gives the "opened from" report time to arrive.
     const tab = (await chrome.tabs.get(created.id).catch(() => null)) ?? created;
-    const source = openedFrom.get(tab.id);
+    // A tab that comes from another tab with a page already in it was opened by that page, whichever
+    // way the browser tells it: a link (reported apart), or its menu ("search for the selected text").
+    // One that comes empty is a new tab the user asked for.
+    const arrived = !core.isBlank(tab.pendingUrl || tab.url);
+    const source = openedFrom.get(tab.id) ?? (arrived ? created.openerTabId : undefined);
     openedFrom.delete(tab.id);
     const result = core.tabOpened(state, tab, source, windowTree(tab.windowId), Date.now());
     if (result === 'new') {
@@ -134,7 +139,7 @@ chrome.tabs.onRemoved.addListener((tabId) =>
     fresh.delete(tabId);
     openedFrom.delete(tabId);
     log('tab', tabId, 'closed, node', state.binding[tabId]?.node);
-    core.tabClosed(state, tabId);
+    core.tabClosed(state, tabId, Date.now());
   }),
 );
 
@@ -255,7 +260,7 @@ async function adopt(library) {
  */
 async function sync() {
   const settings = await loadSync();
-  if (!settings?.repo || !settings.token) return;
+  if (!loaded || !settings?.repo || !settings.token) return;
   try {
     for (let attempt = 1; ; attempt++) {
       const remote = await github.pull(settings);
@@ -275,8 +280,6 @@ async function sync() {
         throw error;
       }
       log('synced', saved ? '(nothing to save)' : '(saved a version)', news ? '(took theirs in)' : '');
-      // The others get all this from the same place: it is not news for the quick way, and we are in step again.
-      await saveChannel({ ...(await loadChannel()), published: mine, lost: false });
       return saveSync({ ...settings, version, base: mine, at: Date.now(), error: undefined });
     }
   } catch (error) {
@@ -302,37 +305,39 @@ async function backUp() {
 }
 
 // The quick way between the user's computers (see channel.js), through the
-// storage the browser keeps in sync. Its state is in local storage under `channel`.
+// storage the browser keeps in sync. What this computer knows of it is in
+// local storage under `channel`.
 
 const cells = {
   get: () => chrome.storage.sync.get(null),
-  set: (more) => chrome.storage.sync.set(more),
-  remove: (keys) => chrome.storage.sync.remove(keys),
+  set: (items) => chrome.storage.sync.set(items),
+  remove: (names) => chrome.storage.sync.remove(names),
 };
-const loadChannel = async () => (await chrome.storage.local.get('channel')).channel ?? channel.newState(newId().slice(0, 8));
-const saveChannel = (ch) => chrome.storage.local.set({ channel: ch });
+const loadChannel = async () => (await chrome.storage.local.get('channel')).channel ?? channel.newState(newId());
+// How many pages do not fit in the synced storage: those this computer keeps to itself, and another one does.
+let unsynced = { here: 0, elsewhere: 0 };
+// The library as it was when last told to the others (JSON): telling the same again is skipped.
+let told;
 
-/** Tells the other computers what changed here, and takes in what changed there. */
+/** Takes in what the other computers changed, and tells them what changed here. */
 async function exchange() {
-  const ch = await loadChannel();
-  const next = structuredClone(state.library);
+  if (!loaded) return; // A library that could not be read must not be told to anyone, nor replaced behind the user's back.
+  const ch = { gone: [], ...(await loadChannel()) }; // (`gone`: the state an older version kept had none.)
   try {
-    const told = await channel.publish(cells, ch, core.shared(state.library), Date.now());
-    const known = ch.published;
-    const lost = await channel.receive(cells, ch, next, Date.now(), core.shared);
-    ch.lost ||= !told || lost;
-    if (JSON.stringify(next) !== JSON.stringify(state.library)) {
-      // What does not fit is not taken in (and then the others do not know it from us).
-      await adopt(next).catch((error) => ((ch.published = known), Promise.reject(error)));
+    const next = structuredClone(state.library);
+    if (await channel.receive(cells, ch, next, Date.now())) {
+      await adopt(next);
       log('took in changes from another computer');
     }
+    core.keepFresh(state, Date.now());
+    const mine = core.shared(state.library);
+    if (JSON.stringify(mine) !== told) unsynced.here = await channel.publish(cells, ch, mine);
+    told = JSON.stringify(mine);
+    unsynced.elsewhere = await channel.awayElsewhere(cells, ch);
+    await chrome.storage.local.set({ channel: { ...ch, unsynced } });
   } catch (error) {
-    log('exchange failed', error.message); // Over the browser's quota, most likely.
-    ch.lost = true;
+    log('exchange failed', error.message); // Tried again in a minute, from what was known before.
   }
-  await saveChannel(ch);
-  // Out of step: only the full library, through GitHub, puts that right.
-  if (ch.lost) await sync();
 }
 
 /** Opens an empty tab as a new node: top-level, or a child / next sibling of `nodeId`. */
@@ -355,6 +360,7 @@ async function handle(message, sender) {
         windows: state.windows,
         audible: audible.map((tab) => state.binding[tab.id]?.node).filter(Boolean),
         trouble,
+        unsynced,
         canUndo: undo.length > 0,
         canRedo: redo.length > 0,
       };
@@ -409,7 +415,7 @@ async function handle(message, sender) {
     }
     case 'sync-get': {
       const { token, base, ...shown } = (await loadSync()) ?? {};
-      return { ...shown, hasToken: !!token, outOfStep: (await loadChannel()).lost };
+      return { ...shown, hasToken: !!token };
     }
     case 'sync-set': {
       // A new place starts from nothing in common; an empty token field keeps the token.
@@ -471,7 +477,7 @@ chrome.commands.onCommand.addListener((command, tab) => {
 });
 
 // Once a day the library is synced in full by itself (and whenever the user
-// asks); once a minute, and whenever another computer tells something, the
+// asks); once a minute, and whenever another computer writes something, the
 // quick exchange runs.
 const TIMERS = { sync: [SYNC_EVERY_MINUTES, sync], exchange: [1, exchange], backup: [60, backUp] };
 chrome.alarms.onAlarm.addListener((alarm) => TIMERS[alarm.name] && enqueue(alarm.name, TIMERS[alarm.name][1]));

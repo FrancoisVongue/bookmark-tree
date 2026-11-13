@@ -1,4 +1,16 @@
 {
+  "unsyncedHere": {
+    "message": "Not everything is synced: your $1 oldest pages stay on this computer only."
+  },
+  "unsyncedElsewhere": {
+    "message": "You see the fresh part of your library: $1 older pages are on another computer only."
+  },
+  "unsyncedBackUp": {
+    "message": "Back up"
+  },
+  "closeNotice": {
+    "message": "Close"
+  },
   "extDescription": {
     "message": "Your pages as trees, in the side panel."
   },
@@ -331,9 +343,6 @@
   },
   "goToVersion": {
     "message": "Go to this version"
-  },
-  "outOfStep": {
-    "message": "This computer is out of step with your others. Sync with GitHub to catch up."
   },
   "addColumn": {
     "message": "Table of trees: add a column"

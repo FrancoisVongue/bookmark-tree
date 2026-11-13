@@ -1,96 +1,150 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MAIN, createLibrary, rowsOf } from '../src/model.js';
+import { DAY, MAIN, createLibrary, problems, rowsOf } from '../src/model.js';
 import { ops } from '../src/ops.js';
 import { newState, publish, receive } from '../src/channel.js';
 
-/** What the browser keeps in sync between devices, here in memory. */
+/** What the browser keeps in sync between computers, here in memory. `writes` counts the items written. */
 function sharedStore() {
   const cells = {};
-  return {
+  const store = {
     cells,
+    writes: [],
     get: async () => structuredClone(cells),
-    set: async (more) => void Object.assign(cells, structuredClone(more)),
+    set: async (more) => (store.writes.push(...Object.keys(more)), void Object.assign(cells, structuredClone(more))),
     remove: async (keys) => keys.forEach((key) => delete cells[key]),
   };
+  return store;
 }
-const device = (name) => ({ state: newState(name), library: createLibrary() });
-const add = (who, id, title = id) => ops.add(who.library, { tree: MAIN, nodes: [{ id, url: `https://${id}/`, title }] });
-const outline = (who) => rowsOf(who.library, MAIN, true).map((row) => row.id).join(' ');
-/** One round: tell, then listen. */
-async function exchange(store, who) {
-  const told = await publish(store, who.state, who.library, 1);
-  const lost = await receive(store, who.state, who.library, 1);
-  return { told, lost };
+const computer = (name) => ({ ch: newState(name), library: createLibrary() });
+/** A page added on day `day`. */
+const add = (who, id, day = 1000, target) =>
+  ops.add(who.library, { tree: MAIN, nodes: [{ id, url: `https://${id}.example/`, title: id }], target, position: target && 'inside' }, day * DAY);
+const outline = (who, tree = MAIN) => rowsOf(who.library, tree, true).map((row) => '.'.repeat(row.depth) + row.id).join(' ');
+/** One round, as the worker does it: listen, then tell. */
+async function exchange(store, who, budget) {
+  await receive(store, who.ch, who.library, 1);
+  assert.deepEqual(problems(who.library), []);
+  return publish(store, who.ch, who.library, budget);
 }
+const rounds = async (store, computers, budget) => {
+  for (let n = 0; n < 3; n++) for (const who of computers) await exchange(store, who, budget);
+};
 
-test('changes travel both ways and are not echoed back', async () => {
+test('two libraries become one, and then nothing more is written', async () => {
   const store = sharedStore();
-  const [a, b] = [device('a'), device('b')];
+  const [a, b] = [computer('a'), computer('b')];
   add(a, 'x');
-  add(b, 'y');
-  await exchange(store, a);
-  await exchange(store, b);
-  await exchange(store, a);
-  // Both have both. (Each put the other's page where the other had it: first.)
-  assert.equal(outline(a), 'y x');
-  assert.equal(outline(b), 'x y');
-  const cells = Object.keys(store.cells).length;
-  await exchange(store, a);
-  await exchange(store, b);
-  assert.equal(Object.keys(store.cells).length, cells); // Nothing new to tell.
+  add(a, 'y', 1000, 'x');
+  add(b, 'z');
+  ops['tree-add'](a.library, { id: 'work', name: 'Work' });
+  ops['tree-icon'](a.library, { tree: 'work', icon: '🔥' });
+  ops.collapse(a.library, { tree: MAIN, id: 'x', collapsed: true });
+  await rounds(store, [a, b]);
+  assert.equal(outline(a), 'x .y z');
+  assert.deepEqual(b.library.nodes, a.library.nodes);
+  assert.deepEqual(b.library.trees, a.library.trees);
+  store.writes.length = 0;
+  await rounds(store, [a, b]);
+  assert.deepEqual(store.writes, []);
 });
 
-test('a removal and a rename arrive', async () => {
+test('a removal, a rename and a move arrive; what was restored is not removed again', async () => {
   const store = sharedStore();
-  const [a, b] = [device('a'), device('b')];
+  const [a, b] = [computer('a'), computer('b')];
+  for (const id of ['x', 'y', 'z']) add(a, id);
+  await rounds(store, [a, b]);
+  ops.delete(a.library, { ids: ['y'] }, 5);
+  ops.rename(a.library, { id: 'x', name: 'Mine' });
+  ops.move(b.library, { tree: MAIN, ids: ['z'], target: 'x', position: 'before' });
+  await rounds(store, [a, b]);
+  assert.equal(outline(b), 'z x');
+  assert.equal(outline(a), 'z x');
+  assert.equal(b.library.nodes.x.name, 'Mine');
+  assert.deepEqual(b.library.trash.map((entry) => entry.node.id), ['y']);
+  ops.restore(b.library, { tree: MAIN, ids: ['y'] });
+  await rounds(store, [a, b]);
+  assert.equal(outline(a), 'z x y');
+  assert.equal(outline(b), 'z x y');
+});
+
+test('both write at once: the changes of both are kept', async () => {
+  const store = sharedStore();
+  const [a, b] = [computer('a'), computer('b')];
   add(a, 'x');
-  add(a, 'y');
-  await exchange(store, a);
-  await exchange(store, b);
-  ops.remove(a.library, { tree: MAIN, ids: ['x'] }, 5);
-  ops.rename(a.library, { id: 'y', name: 'Mine' });
-  await exchange(store, a);
-  assert.deepEqual(await exchange(store, b), { told: true, lost: false });
-  assert.equal(outline(b), 'y');
-  assert.equal(b.library.nodes.y.name, 'Mine');
-  assert.deepEqual(b.library.trash.map((entry) => entry.node.id), ['x']);
+  await rounds(store, [a, b]);
+  // Neither has seen the other's change when it writes: b's head replaces a's.
+  ops.rename(a.library, { id: 'x', name: 'Renamed' });
+  add(b, 'n');
+  const before = await store.get();
+  await publish(store, a.ch, a.library);
+  for (const key in store.cells) delete store.cells[key];
+  Object.assign(store.cells, before);
+  await publish(store, b.ch, b.library);
+  await rounds(store, [a, b]);
+  assert.equal(a.library.nodes.x.name, 'Renamed');
+  assert.equal(b.library.nodes.x.name, 'Renamed');
+  assert.equal(outline(a), 'x n');
 });
 
-test('added and removed between two tellings leaves no trace', async () => {
+test('a computer with nothing does not take anything away from one that has much', async () => {
   const store = sharedStore();
-  const a = device('a');
+  const [a, b] = [computer('a'), computer('b')];
   add(a, 'x');
-  ops.remove(a.library, { tree: MAIN, ids: ['x'] }, 5);
-  a.library.trash = [];
+  ops['tree-add'](a.library, { id: 'work', name: 'Work' });
   await exchange(store, a);
-  assert.deepEqual(Object.keys(store.cells), []);
+  // b, new and empty, writes before it has heard of a: its head replaces a's.
+  for (const key in store.cells) delete store.cells[key];
+  await exchange(store, b);
+  await rounds(store, [a, b]);
+  assert.deepEqual(Object.keys(a.library.trees), [MAIN, 'work']);
+  assert.equal(outline(a), 'x');
+  assert.equal(outline(b), 'x');
+  assert.deepEqual(Object.keys(b.library.trees), [MAIN, 'work']);
 });
 
-test('a change too big for a cell is not sent, and the others learn they are out of step', async () => {
+test('too big to sync whole: the fresh part travels with its parents, the rest stays where it is', async () => {
   const store = sharedStore();
-  const [a, b] = [device('a'), device('b')];
-  for (let i = 0; i < 200; i++) add(a, `page-${i}`, 'a long title '.repeat(5));
-  assert.equal((await exchange(store, a)).told, false);
-  assert.equal((await exchange(store, b)).lost, true);
-  assert.equal(outline(b), '');
-  add(a, 'small');
-  await exchange(store, a);
-  assert.deepEqual(await exchange(store, b), { told: true, lost: false });
-  assert.equal(outline(b), 'small');
+  const [a, b] = [computer('a'), computer('b')];
+  // An old folder with old pages; one page in it is fresh.
+  ops['note-add'](a.library, { tree: MAIN, id: 'folder', name: 'Folder' }, 10 * DAY);
+  for (let n = 0; n < 60; n++) add(a, `old${n}`, 10 + n, 'folder');
+  add(a, 'fresh', 2000, 'folder');
+  for (let n = 0; n < 20; n++) add(a, `new${n}`, 1900 + n);
+  const budget = 1500;
+  const hidden = await exchange(store, a, budget);
+  await rounds(store, [a, b], budget);
+  assert.ok(hidden > 0 && hidden < 81, `${hidden} stay behind`);
+  // b has the freshest, under its old folder; a has lost nothing.
+  assert.ok(outline(b).startsWith('folder '), outline(b));
+  assert.ok(outline(b).includes('.fresh') && outline(b).includes('new19'));
+  assert.equal(Object.keys(b.library.nodes).length, 82 - hidden);
+  assert.equal(Object.keys(a.library.nodes).length, 82);
+  assert.equal(rowsOf(a.library, MAIN, true).length, 82);
+  assert.deepEqual(a.library.trash, []);
+  assert.ok(JSON.stringify(store.cells).length < budget * 1.2);
+  // A page b never got is deleted on a: b hears nothing of it, and a page b has is renamed: b hears that.
+  ops.delete(a.library, { ids: ['old0'] }, 5);
+  ops.rename(a.library, { id: 'fresh', name: 'Still fresh' });
+  store.writes.length = 0;
+  await rounds(store, [a, b], budget);
+  assert.equal(b.library.nodes.fresh.name, 'Still fresh');
+  assert.equal(Object.keys(a.library.nodes).length, 81);
+  store.writes.length = 0;
+  await rounds(store, [a, b], budget);
+  assert.deepEqual(store.writes, []);
 });
 
-test('a device away for too long finds cells missing and is out of step', async () => {
+test('months nobody touched are not written again', async () => {
   const store = sharedStore();
-  const [a, b] = [device('a'), device('b')];
-  for (let i = 0; i < 35; i++) {
-    add(a, `n${i}`);
-    await exchange(store, a);
-  }
-  assert.equal(Object.keys(store.cells).length, 30);
-  assert.equal((await exchange(store, b)).lost, true);
-  assert.equal(outline(b).split(' ').length, 30); // It took what was still there.
-  add(a, 'next');
+  const a = computer('a');
+  for (let n = 0; n < 40; n++) add(a, `p${n}`, 100 + n * 20); // Spread over many months.
   await exchange(store, a);
-  assert.equal((await exchange(store, b)).lost, false);
+  const first = store.writes.filter((name) => name.startsWith('p.')).length;
+  store.writes.length = 0;
+  add(a, 'today', 3000);
+  await exchange(store, a);
+  const again = store.writes.filter((name) => name.startsWith('p.')).length;
+  assert.ok(first > 20, `${first} pieces at first`);
+  assert.equal(again, 2); // The new month, and the trees.
 });

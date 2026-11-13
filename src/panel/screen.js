@@ -19,6 +19,8 @@ export const ui = {
   shared: new Map(), // Node id -> names of the other trees it is in.
   activeId: undefined, // The node of this window's current tab.
   trouble: undefined, // What the worker could not do: read the library, or save it.
+  // Pages that do not fit in the synced storage: { kind: 'here' | 'elsewhere', count }, unless the user closed that notice.
+  unsynced: undefined,
   canUndo: false,
   canRedo: false,
   panes: (kept.panes ?? []).map((pane) => newPane(pane.tree, pane.size)), // The trees shown: { tree, size, rows, sel }.
@@ -128,6 +130,10 @@ function found(rows, query) {
 function take(state, active) {
   ui.library = migrate(state.library);
   ui.trouble = state.trouble;
+  // Of the two things to say, the one about more pages.
+  const { here, elsewhere } = state.unsynced;
+  const kind = here + elsewhere === 0 ? undefined : here >= elsewhere ? 'here' : 'elsewhere';
+  ui.unsynced = kind && localStorage.getItem('unsyncedClosed') !== kind ? { kind, count: state.unsynced[kind] } : undefined;
   ui.canUndo = state.canUndo;
   ui.canRedo = state.canRedo;
   ui.live = new Set(Object.values(state.binding).map((bound) => bound.node));

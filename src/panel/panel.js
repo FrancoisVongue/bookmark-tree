@@ -49,6 +49,11 @@ const actions = {
   },
   icon: ({ el }) => cmd.setIcon(el.dataset.icon),
   settings: cmd.openSettings,
+  // The notice stays closed until there is something else to say.
+  'unsynced-close': () => {
+    localStorage.setItem('unsyncedClosed', ui.unsynced.kind);
+    refresh();
+  },
   'overlay-close': closeOverlay,
   yes: () => {
     const { run } = ui.overlay;

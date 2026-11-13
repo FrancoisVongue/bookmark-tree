@@ -30,7 +30,9 @@ with a library you care about, and keep backups (Settings has a button).
   file of any browser; export a tree as such a file.
 - **Backups:** the library is put aside every hour on this computer, and can
   be saved whole as a file.
-- **Sync** between your computers through a private GitHub repository of
+- **Sync** between your computers with no setup, through the storage Chrome
+  keeps in sync for your account (the freshest pages first, if the library
+  outgrows it); and through a private GitHub repository of
   your own, with every sync kept as a version you can go back to.
 
 The extension never moves or reorders the browser's own tabs. It listens to

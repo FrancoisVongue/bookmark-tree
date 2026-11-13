@@ -86,7 +86,29 @@ await round();
 await show('A removed /b, B added a group, one round');
 await round();
 await show('a round with nothing new: no new cells');
-console.log('  out of step:', (await A.msg({ type: 'sync-get' })).outOfStep, (await B.msg({ type: 'sync-get' })).outOfStep);
+console.log('  kept back:', JSON.stringify((await A.msg({ type: 'get-state' })).unsynced), JSON.stringify((await B.msg({ type: 'get-state' })).unsynced));
+
+// Too much to sync whole: 2000 pages with long random addresses. The browser's own limits apply here.
+const random = () => Array.from(crypto.getRandomValues(new Uint8Array(45)), (byte) => byte.toString(16).padStart(2, '0')).join('');
+const many = Array.from({ length: 2000 }, (_, n) => ({ id: `m${n}`, url: `https://example.com/${random()}`, title: `Page number ${n}` }));
+await A.msg({ type: 'op', op: 'add', args: { tree: 'main', nodes: many } });
+const before = Date.now();
+await round();
+await sleep(500);
+const [atA, atB] = [await A.msg({ type: 'get-state' }), await B.msg({ type: 'get-state' })];
+const stored = await A.panel.evaluate(() => chrome.storage.sync.getBytesInUse(null));
+console.log(`\n== 2000 more pages at A, one round (${Date.now() - before} ms)`);
+console.log('  nodes at A:', Object.keys(atA.library.nodes).length, '| at B:', Object.keys(atB.library.nodes).length, '| synced storage:', stored, 'bytes in', Object.keys(await A.panel.evaluate(() => chrome.storage.sync.get(null))).length, 'items');
+console.log('  kept back:', JSON.stringify(atA.unsynced), JSON.stringify(atB.unsynced));
+for (const who of [A, B]) {
+  await who.panel.reload(); await sleep(900);
+  console.log(`  notice at ${who.name}:`, await who.panel.locator('.unsynced span').textContent().catch(() => 'NONE'));
+}
+await A.panel.screenshot({ path: `${os.tmpdir()}/tree-unsynced.png` });
+await A.panel.click('[data-action="unsynced-close"]'); await sleep(400);
+console.log('  after closing it at A:', await A.panel.locator('.unsynced').count());
+await round();
+console.log('  another round: nodes at A still', Object.keys((await A.msg({ type: 'get-state' })).library.nodes).length);
 
 console.log('\nERRORS:', errors.length ? `\n${errors.join('\n')}` : 'none');
 await A.ctx.close();

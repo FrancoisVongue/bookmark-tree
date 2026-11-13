@@ -1,7 +1,8 @@
 // The library: pages the user keeps, arranged in trees. Pure data, no Chrome.
 //
-//   library.nodes  { [nodeId]: { id, url, title, added?, name?, icon?, home?, note? } }
-//                  a page; `added` is when it came into the library, `name`
+//   library.nodes  { [nodeId]: { id, url, title, added?, touched?, name?, icon?, home?, note? } }
+//                  a page; `added` is when it came into the library,
+//                  `touched` the day its tab was last opened or closed, `name`
 //                  the user's own title, `icon` an emoji, `home` { url, title }
 //                  the address it is pinned to. A node with `note` (markdown
 //                  text) is a note, not a page.
@@ -28,7 +29,15 @@ export function createLibrary() {
   return { nodes: {}, trees: { [MAIN]: { id: MAIN, name: 'Main', children: {}, collapsed: {} } }, trash: [] };
 }
 
-export const newId = () => crypto.randomUUID();
+/** A new id: 12 letters, 72 random bits. Short, because ids are most of what does not squeeze. */
+export function newId() {
+  const bytes = crypto.getRandomValues(new Uint8Array(9));
+  return btoa(String.fromCharCode(...bytes)).replaceAll('+', '-').replaceAll('/', '_');
+}
+
+export const DAY = 24 * 3600 * 1000;
+/** The day (counted from 1970) a node was last used: its tab opened or closed, or else the node added. */
+export const freshOf = (node) => node.touched ?? Math.floor((node.added ?? 0) / DAY);
 
 /** `node`, marked as added to the library at time `at` (left as it is when the time is not known). */
 export const stamped = (node, at) => (at === undefined ? node : { ...node, added: at });

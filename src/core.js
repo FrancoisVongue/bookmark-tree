@@ -12,10 +12,12 @@
 // stay until the user deletes them.
 
 import {
+  DAY,
   MAIN,
   ROOT,
   addNode,
   createLibrary,
+  freshOf,
   inTree,
   isGroup,
   isNote,
@@ -73,6 +75,23 @@ function sleeperAt(state, url) {
   );
 }
 
+/** Marks a node as used at time `at` (to the day; nothing, when the time is not known). */
+function touch(node, at) {
+  if (node && at !== undefined) node.touched = Math.floor(at / DAY);
+}
+
+/**
+ * Pages kept open count as used, however long ago they were opened: once a
+ * month each is marked so. (What is used decides what other computers get
+ * first when the library is too big to sync whole: see channel.js.)
+ */
+export function keepFresh(state, at) {
+  for (const id of liveIds(state)) {
+    const node = state.library.nodes[id];
+    if (node && Math.floor(at / DAY) - freshOf(node) >= 30) touch(node, at);
+  }
+}
+
 /**
  * A new tab or a new note the user did nothing with: no address or text, no
  * name, no children. It leaves no trace. Returns whether it was dropped.
@@ -102,6 +121,7 @@ export function tabOpened(state, tab, sourceTabId, treeId = MAIN, at) {
   const url = urlOf(tab);
   const wake = (id) => {
     binding[tab.id] = { node: id, tree: treeFor(library, id, treeId) };
+    touch(library.nodes[id], at);
     return 'woken';
   };
 
@@ -180,11 +200,12 @@ export function tabChanged(state, tab) {
  * A tab closed: its node falls asleep. A pinned node goes back home; an
  * empty new tab leaves nothing behind.
  */
-export function tabClosed(state, tabId) {
+export function tabClosed(state, tabId, at) {
   const { library, binding } = state;
   const id = binding[tabId]?.node;
   delete binding[tabId];
   const node = library.nodes[id];
+  touch(node, at);
   if (node?.home) Object.assign(node, node.home);
   dropIfEmpty(library, id);
 }
@@ -206,7 +227,7 @@ export function reconcile(state, tabs, treeOf = () => MAIN, at) {
   const open = new Set(tabs.map((tab) => String(tab.id)));
   for (const tabId in binding) {
     const bound = binding[tabId];
-    if (!open.has(tabId)) tabClosed(state, tabId);
+    if (!open.has(tabId)) tabClosed(state, tabId, at);
     else if (!library.nodes[bound.node]) delete binding[tabId];
     else bound.tree = treeFor(library, bound.node, bound.tree);
   }

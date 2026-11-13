@@ -19,7 +19,7 @@ const page = {
   library: undefined,
   trouble: undefined, // What the worker could not do: read the library, or save it.
   tree: undefined, // The tree this window's panel shows: restored pages go there.
-  sync: {}, // { repo, hasToken, at, error, outOfStep }
+  sync: {}, // { repo, hasToken, at, error }
   versions: undefined, // [{ ref, at, local }], or undefined while they are being fetched.
   keys: {}, // The browser-wide shortcuts as they are set now: { [command]: keys }.
   busy: false,
@@ -208,7 +208,7 @@ function syncView() {
       ${t('syncToken')}
       <input name="token" type="password" placeholder=${sync.hasToken ? t('syncTokenSaved') : 'github_pat_…'} />
     </label>
-    ${status} ${sync.outOfStep ? html`<p class="hint error">${t('outOfStep')}</p>` : nothing}
+    ${status}
     <div class="buttons">
       ${button('sync-save', t(busy ? 'syncBusy' : 'syncSave'), { primary: true })} ${button('sync-now', t('syncNow'), { disabled: !sync.repo })}
     </div>

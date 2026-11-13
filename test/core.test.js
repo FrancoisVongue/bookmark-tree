@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { MAIN, ROOT, rowsOf } from '../src/model.js';
 import {
   createState,
+  keepFresh,
   reconcile,
   tabChanged,
   tabClosed,
@@ -207,4 +208,20 @@ test('the tree the panel shows decides where a new tab goes, whatever page the u
   tabOpened(state, { id: 3, url: 'chrome://newtab/' }, undefined, 'other');
   tabOpenedBeside(state, 3, 2);
   assert.deepEqual(state.library.trees.other.children[ROOT], [2, 3].map((id) => state.binding[id].node));
+});
+
+test('a node remembers the day its tab was last opened or closed; one kept open is marked once a month', () => {
+  const state = createState();
+  const DAY = 24 * 3600 * 1000;
+  tabOpened(state, { id: 1, url: 'https://a.example/' }, undefined, MAIN, 10 * DAY);
+  const node = state.library.nodes[state.binding[1].node];
+  assert.equal(node.touched, undefined);
+  keepFresh(state, 39 * DAY);
+  assert.equal(node.touched, undefined);
+  keepFresh(state, 40 * DAY);
+  assert.equal(node.touched, 40);
+  tabClosed(state, 1, 50 * DAY);
+  assert.equal(node.touched, 50);
+  tabOpened(state, { id: 2, url: 'https://a.example/' }, undefined, MAIN, 60 * DAY);
+  assert.equal(node.touched, 60);
 });
