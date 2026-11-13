@@ -24,11 +24,12 @@ export const ui = {
   activeTree: undefined, // and the tree that tab is in.
   trouble: undefined, // What the worker could not do: read the library, or save it.
   journal: [], // Where the user was before this, newest first: [{ node, tree, at }] (see journal.js).
-  journalOpen: localStorage.getItem('journalOpen') === 'yes', // The whole list, or only its first line.
+  // Which strips are unfolded to their whole list (see strip in view.js). (Read once from where an older version kept it.)
+  open: kept.open ?? { journal: localStorage.getItem('journalOpen') === 'yes', plan: localStorage.getItem('planOpen') === 'yes' },
+  unsyncedClosed: kept.unsyncedClosed ?? localStorage.getItem('unsyncedClosed') ?? undefined, // The notice about what is not synced the user closed: 'here' | 'elsewhere'.
   journalQuery: '', // What is searched for in the unfolded journal.
   journalAll: false, // Whether the unfolded journal shows all its places, or only the latest.
   places: { shown: [], more: 0, loose: undefined }, // What the unfolded journal shows (see layJournal).
-  planOpen: localStorage.getItem('planOpen') === 'yes', // The same for the plan (the library's `plan`: what to open next).
   // Pages that do not fit in the synced storage: { kind: 'here' | 'elsewhere', count }, unless the user closed that notice.
   unsynced: undefined,
   canUndo: false,
@@ -416,8 +417,7 @@ export function searchJournal(text) {
 
 /** Folds or unfolds the journal or the plan ('journal' | 'plan'). Unfolded anew, the journal starts from its latest places. */
 export function toggleStrip(name) {
-  ui[`${name}Open`] = !ui[`${name}Open`];
-  localStorage.setItem(`${name}Open`, ui[`${name}Open`] ? 'yes' : 'no');
+  ui.open[name] = !ui.open[name];
   if (name === 'journal') Object.assign(ui, { journalQuery: '', journalAll: false });
   arrange();
 }
@@ -428,7 +428,7 @@ export function allOfJournal() {
 
 /** The notice about what is not synced stays closed until there is something else to say. */
 export function closeNotice() {
-  localStorage.setItem('unsyncedClosed', ui.unsynced.kind);
+  ui.unsyncedClosed = ui.unsynced.kind;
   arrange();
 }
 
@@ -512,7 +512,7 @@ function take(state, active) {
   // Of the two things to say, the one about more pages.
   const { here, elsewhere } = state.unsynced;
   const kind = here + elsewhere === 0 ? undefined : here >= elsewhere ? 'here' : 'elsewhere';
-  ui.unsynced = kind && localStorage.getItem('unsyncedClosed') !== kind ? { kind, count: state.unsynced[kind] } : undefined;
+  ui.unsynced = kind && ui.unsyncedClosed !== kind ? { kind, count: state.unsynced[kind] } : undefined;
   ui.canUndo = state.canUndo;
   ui.canRedo = state.canRedo;
   ui.live = new Set(Object.values(state.binding).map((bound) => bound.node));
@@ -561,7 +561,7 @@ function findShared() {
 let shownTree;
 /** Remembers the layout for next time, and tells the worker which tree new tabs of this window go to. */
 function remember() {
-  const view = { panes: ui.panes.map(({ tree, size }) => ({ tree, size })), split: ui.split };
+  const view = { panes: ui.panes.map(({ tree, size }) => ({ tree, size })), split: ui.split, open: ui.open, unsyncedClosed: ui.unsyncedClosed };
   localStorage.setItem('view', JSON.stringify(view));
   if (shownTree === here().tree) return;
   shownTree = here().tree;

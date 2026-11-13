@@ -286,9 +286,29 @@ function ago(at) {
 }
 
 /**
- * The journal of attention, at the bottom: the place the user was at before
- * this one, a click away; unfolded, all the places before it.
+ * A strip: one line that folds out into a list of places. The journal (what
+ * is behind, under the trees) and the plan (what is ahead, above them) are
+ * the same thing with different places in it.
+ *   name      'journal' | 'plan': its class, and the action of its fold button, `<name>-toggle`
+ *   open      whether the list is unfolded (`whole`: the heading is shown even while folded)
+ *   first     the place shown in the heading's stead while folded; `count`: how many more there are
+ *   body      what is under the heading while unfolded
  */
+function strip({ name, icon, heading, open, whole = open, first, count, body, foldable = true, more = '' }) {
+  const fold = foldable ? act(`${name}-toggle`, 'chevron', t(`${name}${open ? 'Fold' : 'Unfold'}`), 'shown fold') : nothing;
+  return html`
+    <section class="strip ${name} ${open ? 'open' : ''} ${more}">
+      <div class="strip-head">
+        <span class="favicon glyph">${ICONS[icon]}</span>
+        ${whole ? html`<span class="title">${heading}</span>` : first}
+        ${!whole && count ? html`<span class="when">+${count}</span>` : nothing} ${fold}
+      </div>
+      ${whole ? body : nothing}
+    </section>
+  `;
+}
+
+/** The journal, at the bottom: where the user was before this, a click away; unfolded, the latest places, to search in. */
 function journalView(ui) {
   if (!ui.journal.length) return nothing;
   const place = ({ node, tree, at }) => html`
@@ -297,62 +317,54 @@ function journalView(ui) {
       <span class="when">${ago(at)}</span>
     </button>
   `;
-  const fold = act('journal-toggle', 'chevron', t(ui.journalOpen ? 'journalFold' : 'journalUnfold'), 'shown');
-  return html`
-    <footer class="journal ${ui.journalOpen ? 'open' : ''}">
-      <div class="journal-head">
-        <span class="favicon glyph">${ICONS.clock}</span>
-        ${ui.journalOpen ? html`<span class="title">${t('journal')}</span>` : place(ui.journal[0])} ${fold}
+  return strip({
+    name: 'journal',
+    icon: 'clock',
+    heading: t('journal'),
+    open: ui.open.journal,
+    first: place(ui.journal[0]),
+    body: html`
+      <input class="journal-search" type="search" placeholder=${t('journalSearch')} aria-label=${t('journalSearch')} .value=${ui.journalQuery} />
+      ${looseView(ui.places.loose)}
+      <div class="places">
+        ${ui.places.shown.map(place)}
+        ${ui.places.shown.length ? nothing : html`<p class="loose">${t('nothingFound')}</p>`}
+        ${ui.places.more ? html`<button class="pill" data-action="journal-more">${t('journalMore', ui.places.more)}</button>` : nothing}
       </div>
-      ${ui.journalOpen
-        ? html`
-            <input class="journal-search" type="search" placeholder=${t('journalSearch')} aria-label=${t('journalSearch')} .value=${ui.journalQuery} />
-            ${looseView(ui.places.loose)}
-            <div class="places">
-              ${ui.places.shown.map(place)}
-              ${ui.places.shown.length ? nothing : html`<p class="loose">${t('nothingFound')}</p>`}
-              ${ui.places.more ? html`<button class="pill" data-action="journal-more">${t('journalMore', ui.places.more)}</button>` : nothing}
-            </div>
-          `
-        : nothing}
-    </footer>
-  `;
+    `,
+  });
 }
 
 /**
  * The plan, at the top: what to open next, a click away; unfolded, all that
- * is planned, in order (dragging changes it). It is the journal's other
- * half - what is ahead above the tree, what is behind below it - and, like
- * the journal, never holds the page the user is at.
+ * is planned, in order (dragging changes it). Like the journal, it never
+ * holds the page the user is at.
  */
 function planView(ui) {
   const ids = planOf(ui.library).filter((id) => id !== ui.activeId);
   // Nothing planned takes no room - until something is dragged that could be.
   if (!ids.length && !['rows', 'plan'].includes(ui.drag?.kind)) return nothing;
+  // An entry is a button to go there, and beside it a button to take it off the plan.
   const entry = (id) => html`
-    <div
-      class="place ${ui.drop?.plan && ui.drop.before === id ? 'drop-before' : ''}"
-      role="button"
-      data-action="plan-go"
-      data-node=${id}
-      title=${t('planGo')}
-    >
-      ${iconView(ui.library.nodes[id])}<span class="title">${titleOf(ui.library.nodes[id])}</span>
+    <div class="place ${ui.drop?.plan && ui.drop.before === id ? 'drop-before' : ''}" data-node=${id}>
+      <button class="go" data-action="plan-go" data-node=${id} title=${t('planGo')}>
+        ${iconView(ui.library.nodes[id])}<span class="title">${titleOf(ui.library.nodes[id])}</span>
+      </button>
       ${act('unplan', 'close', t('planRemove'))}
     </div>
   `;
-  const whole = ui.planOpen || !ids.length; // The heading, then the list; else the first entry in the heading's place.
-  const fold = ids.length ? act('plan-toggle', 'chevron', t(ui.planOpen ? 'planFold' : 'planUnfold'), 'shown') : nothing;
-  return html`
-    <section class="journal plan ${ui.planOpen ? 'open' : ''} ${ui.drop?.plan && !ui.drop.before ? 'drop-end' : ''}">
-      <div class="journal-head">
-        <span class="favicon glyph">${ICONS.next}</span>
-        ${whole ? html`<span class="title">${t(ids.length ? 'plan' : 'planDrop')}</span>` : entry(ids[0])}
-        ${!whole && ids.length > 1 ? html`<span class="when">+${ids.length - 1}</span>` : nothing} ${fold}
-      </div>
-      ${whole && ids.length ? html`<div class="places">${ids.map(entry)}</div>` : nothing}
-    </section>
-  `;
+  return strip({
+    name: 'plan',
+    icon: 'next',
+    heading: t(ids.length ? 'plan' : 'planDrop'),
+    open: ui.open.plan,
+    whole: ui.open.plan || !ids.length,
+    first: ids.length ? entry(ids[0]) : nothing,
+    count: ids.length - 1,
+    body: ids.length ? html`<div class="places">${ids.map(entry)}</div>` : nothing,
+    foldable: ids.length > 0,
+    more: `ahead ${ui.drop?.plan && !ui.drop.before ? 'drop-end' : ''}`,
+  });
 }
 
 /** Draws the panel from `ui` (see screen.js). */
