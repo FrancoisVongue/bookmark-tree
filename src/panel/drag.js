@@ -3,7 +3,9 @@
 // child, on its top or bottom edge to place a sibling, below the tree to make
 // a top-level node, on another tree's name in the table of trees to put them
 // at the end of that tree. Subtrees come along. Dragging moves: rows dropped
-// into another tree leave the one they came from.
+// into another tree leave the one they came from. Rows dropped on the plan
+// (the strip at the top) are planned and stay where they are; the plan's
+// own entries are dragged within it, to change their order.
 //
 // A tree is dragged the same way, by its name, to another cell of the table
 // of trees. A link dragged in from a page is the browser's own drag (ours
@@ -17,7 +19,8 @@ import { pagesIn } from './commands.js';
 
 // The gesture in progress, from the button going down to the click after it.
 const gesture = {
-  press: undefined, // { x, y, id, pane } on a row, { x, y, tree } on a tree's name, or { divider } on the line between panes.
+  // { x, y, id, pane } on a row, { x, y, tree } on a tree's name, { x, y, plan } on an entry of the plan, or { divider } on the line between panes.
+  press: undefined,
   pointer: { x: 0, y: 0 },
   unfold: undefined, // A timer: a folded row opens when something is held over it.
   dragged: false, // The button came up after a drag: the click that follows is not a click.
@@ -56,27 +59,36 @@ const paneElAtPointer = () => atPointer('.panes .pane');
 
 /** The cell of the table of trees to drop on: any cell for a tree, the cell of another tree for rows. */
 function cellAtPointer() {
-  const el = ui.drag.kind !== 'link' && atPointer('.grid [data-cell]');
+  const el = ['rows', 'tree'].includes(ui.drag.kind) && atPointer('.grid [data-cell]');
   if (!el) return;
   const { cell, tree } = el.dataset;
   if (ui.drag.kind === 'rows' && (!tree || tree === ui.drag.from)) return;
   return { cell: Number(cell), tree };
 }
 
+/** The place in the plan to drop rows or one of its own entries at: before the first entry the pointer is above the middle of. */
+function planAtPointer() {
+  if (!['rows', 'plan'].includes(ui.drag.kind) || !atPointer('.plan')) return;
+  const entries = [...app.querySelectorAll('.plan .place')].filter((el) => !ui.drag.ids.includes(el.dataset.node));
+  const next = entries.find((el) => gesture.pointer.y < el.getBoundingClientRect().top + el.offsetHeight / 2);
+  return { plan: true, before: next?.dataset.node };
+}
+
 /** The place in a pane to drop rows or a link at. */
 function placeAtPointer() {
   const paneEl = paneElAtPointer();
   const pane = paneEl && ui.panes[paneEl.dataset.pane];
-  if (!pane || ui.drag.kind === 'tree') return;
+  if (!pane || !['rows', 'link'].includes(ui.drag.kind)) return;
   const drop = dropAt(pane, paneEl, gesture.pointer.y);
   return drop.targetId !== undefined && inDragged(pane, drop.targetId) ? undefined : drop;
 }
 
-const same = (a, b) => a?.cell === b?.cell && a?.pane === b?.pane && a?.targetId === b?.targetId && a?.position === b?.position;
+const same = (a, b) =>
+  a?.plan === b?.plan && a?.before === b?.before && a?.cell === b?.cell && a?.pane === b?.pane && a?.targetId === b?.targetId && a?.position === b?.position;
 
 /** Where the dragged thing would land. */
 function updateDrop() {
-  const drop = cellAtPointer() ?? placeAtPointer();
+  const drop = cellAtPointer() ?? planAtPointer() ?? placeAtPointer();
   if (same(drop, ui.drop)) return;
   ui.drop = drop;
   clearTimeout(gesture.unfold);
@@ -138,6 +150,8 @@ app.addEventListener('pointerdown', (event) => {
   gesture.dragged = false;
   const tab = event.target.closest('.grid .tab[data-tree]');
   if (event.button === 0 && tab) gesture.press = { x: event.clientX, y: event.clientY, tree: tab.dataset.tree };
+  const planned = event.target.closest('.plan .place');
+  if (event.button === 0 && planned && !event.target.closest('button')) gesture.press = { x: event.clientX, y: event.clientY, plan: planned.dataset.node };
   if (event.button !== 0 || event.target.closest('button, input, .menu, .overlay')) return;
   const divider = event.target.closest('.divider');
   const id = idAt(event.target);
@@ -158,6 +172,7 @@ addEventListener('pointermove', (event) => {
   if (ui.drag || Math.hypot(event.clientX - press.x, event.clientY - press.y) < 5) return;
   app.setPointerCapture(event.pointerId); // Keep hearing the pointer outside the panel.
   if (press.tree) return startDrag({ kind: 'tree', tree: press.tree, label: ui.library.trees[press.tree].name });
+  if (press.plan) return startDrag({ kind: 'plan', ids: [press.plan], label: titleOf(ui.library.nodes[press.plan]) });
   const ids = targets(press.pane, press.id);
   const title = titleOf(ui.library.nodes[press.id]);
   startDrag({ kind: 'rows', ids, from: press.pane.tree, label: ids.length > 1 ? `${title} +${ids.length - 1}` : title });
@@ -172,7 +187,8 @@ addEventListener('pointerup', () => {
   endDrag();
   gesture.dragged = true;
   if (!drop) return;
-  if (drag.kind === 'tree') op('grid-move', { tree: drag.tree, cell: drop.cell });
+  if (drop.plan) op('plan', { ids: drag.ids, before: drop.before });
+  else if (drag.kind === 'tree') op('grid-move', { tree: drag.tree, cell: drop.cell });
   else moveRows(drag, drop);
 });
 

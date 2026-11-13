@@ -17,8 +17,9 @@
 //                          collapsed: { [id]: bool } } }
 //   d.gone   [treeId]                   trees deleted
 //   d.grid   the table of trees, if it changed (taken whole)
+//   d.plan   the plan of what to open next, if it changed (taken whole)
 
-import { ROOT, descendantsOf, forgetLoose, inTree, kidsOf, moveNode, parentOf, placeNode, removeNode } from './model.js';
+import { ROOT, descendantsOf, forgetLoose, inTree, kidsOf, moveNode, parentOf, placeNode, planOf, removeNode } from './model.js';
 
 export const EMPTY = { nodes: {}, trees: {}, trash: [] };
 const NO_TREE = { children: {}, collapsed: {} };
@@ -69,7 +70,9 @@ export function only(library, ids) {
     trees[tree.id] = { ...tree, children, collapsed };
   }
   const nodes = Object.fromEntries(Object.entries(library.nodes).filter(([id]) => ids.has(id)));
-  return { ...library, nodes, trees, trash: [] };
+  const part = { ...library, nodes, trees, trash: [] };
+  if (library.plan) part.plan = planOf(part);
+  return part;
 }
 
 /** What changed from `base` to `mine`. */
@@ -85,10 +88,11 @@ export function diff(base, mine) {
     if (!quiet) d.trees[treeId] = entry;
   }
   if (!same(base.grid, mine.grid)) d.grid = mine.grid;
+  if (!same(planOf(base), planOf(mine))) d.plan = planOf(mine);
   return d;
 }
 
-export const isEmpty = (d) => !Object.keys(d.nodes).length && !Object.keys(d.trees).length && !d.gone.length && !d.grid;
+export const isEmpty = (d) => !Object.keys(d.nodes).length && !Object.keys(d.trees).length && !d.gone.length && !d.grid && !d.plan;
 
 /** Puts `id` under `parent`, right after sibling `after` (first, without one), as far as the tree allows. */
 function put(out, treeId, id, parent, after) {
@@ -122,6 +126,8 @@ export function apply(out, d, at) {
   }
   for (const treeId of d.gone) if (out.trees[treeId] && Object.keys(out.trees).length > 1) delete out.trees[treeId];
   if (d.grid) out.grid = structuredClone(d.grid);
+  if (d.plan?.length) out.plan = [...d.plan];
+  else if (d.plan) delete out.plan;
   forgetLoose(out, at);
   out.trash = out.trash.filter((entry) => !out.nodes[entry.node.id]);
   return out;

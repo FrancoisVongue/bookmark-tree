@@ -20,10 +20,12 @@ import {
   moveNode,
   parentOf,
   placeNode,
+  planNodes,
   removeNode,
   renameNode,
   setCollapsed,
   stamped,
+  unplanNodes,
 } from './model.js';
 
 /** `ids` in tree order, without those that sit under another of them. */
@@ -146,6 +148,13 @@ export const ops = {
   },
   'note-text'(library, { id, text }) {
     if (library.nodes[id] && isNote(library.nodes[id])) library.nodes[id].note = text;
+  },
+  /** Puts pages into the plan of what to open next: at its end, or before its entry `before`. */
+  plan(library, { ids, before }) {
+    planNodes(library, ids, before);
+  },
+  unplan(library, { ids }) {
+    unplanNodes(library, ids);
   },
   /** A new tree; in cell `cell` of the table of trees, or the first free one. */
   'tree-add'(library, { id, name, cell }) {

@@ -1,6 +1,6 @@
 // The menus: what can be done with a row, a tree, the panel.
 
-import { gridOf, isNote } from '../model.js';
+import { gridOf, isGroup, isNote, planOf } from '../model.js';
 import { t } from '../i18n.js';
 import { app, here, newPane, op, redraw, refresh, rowOf, send, targets, ui, under } from './screen.js';
 import * as cmd from './commands.js';
@@ -45,6 +45,7 @@ export function rowMenu(pane, id) {
   const node = ui.library.nodes[id];
   const tree = pane.tree;
   const page = !isNote(node);
+  const planned = planOf(ui.library).includes(id);
   const links = () => ids.map((each) => ui.library.nodes[each].url).join('\n');
   return [
     !page && item('openNote', () => cmd.activate(pane, id)),
@@ -63,6 +64,7 @@ export function rowMenu(pane, id) {
     page && item('copyLink', () => navigator.clipboard.writeText(links())),
     item('changeIcon', () => ((ui.overlay = { kind: 'icons', ids }), redraw())),
     item('duplicate', () => op('duplicate', { tree, ids }), 'Ctrl+D'),
+    !isGroup(node) && (planned ? item('planRemove', () => op('unplan', { ids })) : item('planAdd', () => op('plan', { ids }))),
     page && item(node.home ? 'unpin' : 'pin', () => op('pin', { ids, pinned: !node.home })),
     node.home && node.url !== node.home.url && item('goHome', () => send({ type: 'go-home', nodeId: id })),
     null,

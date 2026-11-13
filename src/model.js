@@ -17,6 +17,8 @@
 //   library.trash  [{ node, at }]  nodes the user deleted, newest last; they
 //                  are in no tree and can be put back for a while.
 //
+//   library.plan   [nodeId]  what the user means to open next, in order
+//
 //   library.grid   { columns, rows, cells: [treeId | null] }  where each tree
 //                  sits in the table of trees at the top of the panel
 //
@@ -70,6 +72,35 @@ export function problems(library) {
   }
   for (const id in library.nodes) if (!held.has(id)) found.push(`${id} is in no tree`);
   return found;
+}
+
+/**
+ * The plan: the nodes to open next, in order. Whatever is stored, each comes
+ * out once, and only those that are still nodes.
+ */
+export const planOf = (library) => [...new Set(library.plan ?? [])].filter((id) => library.nodes[id]);
+
+/** Leaves `ids` in the plan: what is kept of it is what the plan is (no plan, when nothing is). */
+function setPlan(library, ids) {
+  if (ids.length) library.plan = ids;
+  else delete library.plan;
+}
+
+/**
+ * Puts pages into the plan, before its entry `before` or (without one) at
+ * its end. Those already in it move there. A group has no page to open.
+ */
+export function planNodes(library, ids, before) {
+  const added = ids.filter((id) => library.nodes[id] && !isGroup(library.nodes[id]));
+  const rest = planOf(library).filter((id) => !added.includes(id));
+  const at = rest.indexOf(before);
+  rest.splice(at === -1 ? rest.length : at, 0, ...added);
+  setPlan(library, rest);
+}
+
+/** Takes nodes out of the plan. */
+export function unplanNodes(library, ids) {
+  if (library.plan) setPlan(library, planOf(library).filter((id) => !ids.includes(id)));
 }
 
 /**

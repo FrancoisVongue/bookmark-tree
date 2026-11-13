@@ -31,7 +31,7 @@
 //       before                    the last snapshot taken in from elsewhere: what
 //                                 my own ones since were made from
 
-import { DAY, ROOT, freshOf, kidsOf, parentOf, removeNode } from './model.js';
+import { DAY, ROOT, freshOf, kidsOf, parentOf, planOf, removeNode } from './model.js';
 import { EMPTY, apply, diff, isEmpty, only } from './merge.js';
 
 export const BUDGET = 90_000; // Of the 102,400 bytes the browser allows.
@@ -107,7 +107,9 @@ async function encode(library, ids, gone) {
     return { ...tree, rows, collapsed: Object.keys(collapsed).map((id) => number.get(id)) };
   });
   const items = {};
-  const head = { v: 1, top: await store({ trees, grid: part.grid, gone }, items), months: [] };
+  const plan = planOf(part).map((id) => number.get(id));
+  const top = { trees, grid: part.grid, gone, ...(plan.length && { plan }) };
+  const head = { v: 1, top: await store(top, items), months: [] };
   for (const nodes of months.values()) head.months.push(await store(nodes, items));
   head.id = await nameOf(JSON.stringify(head));
   const size = Object.entries(items).reduce((sum, [name, piece]) => sum + name.length + piece.length + 2, JSON.stringify(head).length + 40);
@@ -156,6 +158,7 @@ async function read(all) {
   });
   const library = { nodes: Object.fromEntries(nodes.map((node) => [node.id, node])), trees: Object.fromEntries(trees.map((tree) => [tree.id, tree])), trash: [] };
   if (top.grid) library.grid = top.grid;
+  if (top.plan) library.plan = top.plan.map((n) => nodes[n].id);
   return { id: head.id, clock: head.clock ?? {}, library, gone: top.gone };
 }
 

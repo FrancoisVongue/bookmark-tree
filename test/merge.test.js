@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MAIN, ROOT, addNode, createLibrary, rowsOf } from '../src/model.js';
+import { MAIN, ROOT, addNode, createLibrary, planOf, rowsOf } from '../src/model.js';
 import { ops } from '../src/ops.js';
-import { EMPTY, merge } from '../src/merge.js';
+import { EMPTY, diff, isEmpty, merge, only } from '../src/merge.js';
 
 function library(outline) {
   const lib = createLibrary();
@@ -83,4 +83,18 @@ test("a tree's icon travels", () => {
   const mine = structuredClone(base);
   mine.trees[MAIN].icon = '🔥';
   assert.equal(merge(base, mine, structuredClone(base), 1).trees[MAIN].icon, '🔥');
+});
+
+test('the plan travels whole; a page one side does not have is not in its plan', () => {
+  const base = createLibrary();
+  for (const id of ['a', 'b']) addNode(base, MAIN, { id, url: `https://${id}/`, title: id });
+  const mine = structuredClone(base);
+  mine.plan = ['b', 'a'];
+  const theirs = structuredClone(base);
+  ops.delete(theirs, { ids: ['a'] }, 1);
+  const merged = merge(base, mine, theirs, 2);
+  assert.deepEqual(planOf(merged), ['b']);
+  // Nothing planned on either side: nothing to tell.
+  assert.equal(isEmpty(diff(base, structuredClone(base))), true);
+  assert.deepEqual(planOf(only(mine, new Set(['a']))), ['a']);
 });

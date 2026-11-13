@@ -11,6 +11,8 @@
 // the places to go back to. Like the binding of tabs, it is true for this
 // browser session only, and is no part of the library. Pure: no Chrome here.
 
+import { unplanNodes } from './model.js';
+
 export const DWELL = 1500; // Milliseconds at a node before it counts as having been there.
 const KEPT = 50;
 
@@ -22,6 +24,7 @@ export function attend(state, tabId, at) {
   if (was && at - was.since >= DWELL) {
     const others = (state.journal ?? []).filter((entry) => entry.node !== was.node);
     state.journal = [{ node: was.node, tree: was.tree, at }, ...others].slice(0, KEPT);
+    unplanNodes(state.library, [was.node]); // Been there: it is no longer something to open next.
   }
   state.attention = now && { node: now.node, tree: now.tree, since: at };
 }

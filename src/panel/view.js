@@ -2,7 +2,7 @@
 
 import { html, render, nothing } from '../vendor/lit-html/lit-html.js';
 import { repeat } from '../vendor/lit-html/directives/repeat.js';
-import { descendantsOf, gridOf, isGroup, isNote, parentOf } from '../model.js';
+import { descendantsOf, gridOf, isGroup, isNote, parentOf, planOf } from '../model.js';
 import { t } from '../i18n.js';
 
 const svg = (path) => html`<svg viewBox="0 0 20 20" width="16" height="16"><path fill-rule="evenodd" d=${path} /></svg>`;
@@ -18,6 +18,7 @@ const ICONS = {
   group: svg('M3 5.5A1.5 1.5 0 0 1 4.5 4h3.3l1.6 1.8h6.1A1.5 1.5 0 0 1 17 7.3v7.2a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 14.5z'),
   note: svg('M5 3h7l3 3v11H5zm1.6 1.6v10.8h6.8V7h-2.6V4.6zM8 9h4v1.4H8zm0 2.8h4v1.4H8z'),
   undo: svg('M8.5 4 3.5 8.5l5 4.5V10c3 0 5 1 6.5 4-.3-4.5-2.8-7.3-6.5-7.6z'),
+  next: svg('M4 9.2h8.6L9.4 6l1.1-1.1L15.6 10l-5.1 5.1L9.4 14l3.2-3.2H4z'),
   clock: svg('M10 3a7 7 0 1 1 0 14 7 7 0 0 1 0-14zm0 1.6a5.4 5.4 0 1 0 0 10.8 5.4 5.4 0 0 0 0-10.8zm-.7 2h1.4v3.1l2.3 1.4-.7 1.2-3-1.8z'),
   search: svg('M8.7 3a5.7 5.7 0 0 1 4.5 9.2l3.6 3.5-1.1 1.1-3.6-3.5A5.7 5.7 0 1 1 8.7 3zm0 1.6a4.1 4.1 0 1 0 0 8.2 4.1 4.1 0 0 0 0-8.2z'),
   splitRow: svg('M3 4h14v12H3zm1.5 1.5v9h4.7v-9zm6.3 0v9h4.7v-9z'),
@@ -311,6 +312,42 @@ function journalView(ui) {
   `;
 }
 
+/**
+ * The plan, at the top: what to open next, a click away; unfolded, all that
+ * is planned, in order (dragging changes it). It is the journal's other
+ * half - what is ahead above the tree, what is behind below it - and, like
+ * the journal, never holds the page the user is at.
+ */
+function planView(ui) {
+  const ids = planOf(ui.library).filter((id) => id !== ui.activeId);
+  // Nothing planned takes no room - until something is dragged that could be.
+  if (!ids.length && !['rows', 'plan'].includes(ui.drag?.kind)) return nothing;
+  const entry = (id) => html`
+    <div
+      class="place ${ui.drop?.plan && ui.drop.before === id ? 'drop-before' : ''}"
+      role="button"
+      data-action="plan-go"
+      data-node=${id}
+      title=${t('planGo')}
+    >
+      ${iconView(ui.library.nodes[id])}<span class="title">${titleOf(ui.library.nodes[id])}</span>
+      ${act('unplan', 'close', t('planRemove'))}
+    </div>
+  `;
+  const whole = ui.planOpen || !ids.length; // The heading, then the list; else the first entry in the heading's place.
+  const fold = ids.length ? act('plan-toggle', 'chevron', t(ui.planOpen ? 'planFold' : 'planUnfold'), 'shown') : nothing;
+  return html`
+    <section class="journal plan ${ui.planOpen ? 'open' : ''} ${ui.drop?.plan && !ui.drop.before ? 'drop-end' : ''}">
+      <div class="journal-head">
+        <span class="favicon glyph">${ICONS.next}</span>
+        ${whole ? html`<span class="title">${t(ids.length ? 'plan' : 'planDrop')}</span>` : entry(ids[0])}
+        ${!whole && ids.length > 1 ? html`<span class="when">+${ids.length - 1}</span>` : nothing} ${fold}
+      </div>
+      ${whole && ids.length ? html`<div class="places">${ids.map(entry)}</div>` : nothing}
+    </section>
+  `;
+}
+
 /** Draws the panel from `ui` (see screen.js). */
 export function draw(container, ui) {
   if (!ui.library) return;
@@ -338,6 +375,7 @@ export function draw(container, ui) {
           ${split('column', 'splitColumn')} ${tool('more', 'more', t('more'))}
         </div>
       </header>
+      ${planView(ui)}
       <main class="panes split-${ui.split}">${ui.panes.map((pane, index) => paneView(pane, index, ui))}</main>
       ${journalView(ui)}
       ${ui.unsynced

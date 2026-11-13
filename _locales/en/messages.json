@@ -1,4 +1,25 @@
 {
+  "plan": {
+    "message": "Next"
+  },
+  "planGo": {
+    "message": "Open it"
+  },
+  "planAdd": {
+    "message": "Plan to open next"
+  },
+  "planRemove": {
+    "message": "Take out of the plan"
+  },
+  "planDrop": {
+    "message": "Drop here what to open next"
+  },
+  "planUnfold": {
+    "message": "Show all that is planned"
+  },
+  "planFold": {
+    "message": "Show only what is next"
+  },
   "journal": {
     "message": "Where you were"
   },

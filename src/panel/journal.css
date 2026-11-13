@@ -31,12 +31,13 @@
 }
 .places {
   min-height: 0;
-  overflow-y: auto;
+  overflow: hidden auto;
   padding-bottom: 4px;
 }
 .place {
   flex: 1;
   min-width: 0;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -65,4 +66,29 @@
   color: var(--dim);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
+}
+
+/* The plan mirrors the journal: at the top, what is ahead; its list unfolds downwards. */
+.plan {
+  border-top: 0;
+  border-bottom: 1px solid var(--badge);
+}
+.plan [data-action='plan-toggle'] svg {
+  transform: rotate(90deg);
+}
+.plan.open [data-action='plan-toggle'] svg {
+  transform: rotate(-90deg);
+}
+.plan .place {
+  cursor: pointer;
+}
+.place:hover .act {
+  display: grid;
+}
+/* Where something dragged would land in the plan: before an entry, or at its end. */
+.place.drop-before {
+  box-shadow: 0 -2px 0 var(--accent);
+}
+.plan.drop-end {
+  box-shadow: inset 0 -2px 0 var(--accent);
 }

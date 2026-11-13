@@ -66,6 +66,13 @@ const actions = {
     localStorage.setItem('journalOpen', ui.journalOpen ? 'yes' : 'no');
     redraw();
   },
+  'plan-go': ({ el }) => cmd.revisit(el.dataset.node),
+  unplan: ({ el }) => op('unplan', { ids: [el.closest('.place').dataset.node] }),
+  'plan-toggle': () => {
+    ui.planOpen = !ui.planOpen;
+    localStorage.setItem('planOpen', ui.planOpen ? 'yes' : 'no');
+    redraw();
+  },
   'overlay-close': closeOverlay,
   yes: () => {
     const { run } = ui.overlay;

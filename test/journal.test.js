@@ -53,3 +53,13 @@ test('a node that is gone is not a place to go back to', () => {
   delete state.library.nodes[state.binding[1].node];
   assert.equal(places(state), '');
 });
+
+test('a page the user has been at leaves the plan; one only passed stays in it', () => {
+  const state = browsing();
+  const [a, b] = [1, 2].map((tab) => state.binding[tab].node);
+  state.library.plan = [a, b];
+  attend(state, 1, 0);
+  attend(state, 2, STAY); // Was at a for a while.
+  attend(state, 3, STAY + 100); // Passed b.
+  assert.deepEqual(state.library.plan, [b]);
+});

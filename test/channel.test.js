@@ -198,3 +198,18 @@ test('both write several times without hearing each other: still nothing is lost
     assert.equal(who.library.nodes.x.name, 'Named on a');
   }
 });
+
+test('the plan goes through the synced storage, in order', async () => {
+  const store = sharedStore();
+  const [a, b] = [computer('a'), computer('b')];
+  for (const id of ['x', 'y', 'z']) add(a, id);
+  ops.plan(a.library, { ids: ['z', 'x'] });
+  await rounds(store, [a, b]);
+  assert.deepEqual(b.library.plan, ['z', 'x']);
+  ops.unplan(b.library, { ids: ['z'] });
+  await rounds(store, [a, b]);
+  assert.deepEqual(a.library.plan, ['x']);
+  ops.unplan(a.library, { ids: ['x'] });
+  await rounds(store, [a, b]);
+  assert.equal('plan' in b.library, false);
+});

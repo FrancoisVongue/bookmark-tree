@@ -22,6 +22,7 @@ export const ui = {
   trouble: undefined, // What the worker could not do: read the library, or save it.
   journal: [], // Where the user was before this, newest first: [{ node, tree, at }] (see journal.js).
   journalOpen: localStorage.getItem('journalOpen') === 'yes', // The whole list, or only its first line.
+  planOpen: localStorage.getItem('planOpen') === 'yes', // The same for the plan (the library's `plan`: what to open next).
   // Pages that do not fit in the synced storage: { kind: 'here' | 'elsewhere', count }, unless the user closed that notice.
   unsynced: undefined,
   canUndo: false,
@@ -32,8 +33,10 @@ export const ui = {
   query: '', // What is searched for.
   cursor: undefined, // The row the keyboard is on, in the focused pane.
   renaming: undefined, // { id, pane, field? } or { tree }.
-  drag: undefined, // { kind: 'rows', ids, from, label }, { kind: 'tree', tree, label } or { kind: 'link' } while something is dragged.
-  drop: undefined, // Where it would land: { pane, targetId, position } in a pane, { cell, tree } in the table of trees.
+  // What is dragged: { kind: 'rows', ids, from, label }, { kind: 'tree', tree, label }, { kind: 'plan', ids, label } (an entry of the plan) or { kind: 'link' }.
+  drag: undefined,
+  // Where it would land: { pane, targetId, position } in a pane, { cell, tree } in the table of trees, { plan, before } in the plan.
+  drop: undefined,
   menu: undefined, // { x, y, items, opener }: `opener` is the button it hangs from, if any.
   // The one thing open on top of the panel, if any:
   //   { kind: 'picker', into, tree, rows, sel }  a pane to choose nodes of another tree
