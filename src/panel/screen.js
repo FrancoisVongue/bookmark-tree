@@ -5,6 +5,7 @@
 import { DAY, ROOT, descendantsOf, inTree, parentOf, rowsOf } from '../model.js';
 import { find } from '../find.js';
 import { QUICK, answers, narrowedTo, topmost, withLeads } from './filter.js';
+import { outOfSight } from './sound.js';
 import { t } from '../i18n.js';
 import { draw, titleOf } from './view.js';
 
@@ -12,7 +13,7 @@ export const log = (...args) => console.log('[tree panel]', ...args);
 export const app = document.getElementById('app');
 
 const kept = JSON.parse(localStorage.getItem('view') ?? '{}');
-// A pane: its own id (what it is known by in the page, whatever its place among the panes), the tree it shows, its rows with their places, and which of them are drawn (`from`..`to`, between gaps `before` and `after`: see inSight). (Also `count`, `first` and, while searching, `loose`: see rowsFor.)
+// A pane: its own id (what it is known by in the page, whatever its place among the panes), the tree it shows, its rows with their places, what of its tree is in sight (`sight`) and which rows are drawn (`from`..`to`, between gaps `before` and `after`: see inSight). (Also `count`, `first` and, while searching, `loose`: see rowsFor.)
 let panes = 0;
 export const newPane = (tree, size = 1) => ({ id: `p${++panes}`, tree, size, rows: [], from: 0, to: 0, sel: new Set() });
 
@@ -21,6 +22,8 @@ export const ui = {
   library: undefined,
   live: new Set(), // Ids of nodes that have a tab.
   audible: new Set(), // Ids of nodes whose tab is making sound.
+  hushed: new Set(), // Those of them the user sent away from the stack at the bottom: each stays away until it stops playing.
+  sounds: { ids: [], more: 0 }, // What that stack holds: the playing pages whose row is not in sight (see outOfSight in sound.js). Worked out with every drawing.
   shared: new Map(), // Node id -> names of the other trees it is in.
   activeId: undefined, // The node of this window's current tab,
   activeTree: undefined, // and the tree that tab is in.
@@ -130,13 +133,14 @@ function rowAt(pane, y) {
 }
 
 /**
- * Sets which rows of a pane are drawn (`from`..`to`), from where it is
- * scrolled to, and how tall the gaps standing for the rest are (`before`,
+ * Sets what of a pane's tree is in sight (`sight`: from..to, in pixels down
+ * the tree) from where it is scrolled to; from that, which rows are drawn
+ * (`from`..`to`), and how tall the gaps standing for the rest are (`before`,
  * `after`). Says whether the set of rows changed.
  */
 function inSight(pane) {
   const el = paneEl(pane);
-  const [seenFrom, seenTo] = el ? [scrolled(el), scrolled(el) + el.clientHeight] : [0, innerHeight];
+  const [seenFrom, seenTo] = (pane.sight = el ? [scrolled(el), scrolled(el) + el.clientHeight] : [0, innerHeight]);
   const from = Math.max(0, Math.floor(rowAt(pane, seenFrom) / STEP) * STEP - SPARE);
   const to = Math.min(pane.rows.length, Math.ceil(rowAt(pane, seenTo - ROW) / STEP) * STEP + STEP + SPARE);
   const changed = from !== pane.from || to !== pane.to;
@@ -145,6 +149,15 @@ function inSight(pane) {
   Object.assign(pane, { from, to, before: first ? first.top + first.pull : 0, after: last ? pane.height - last.top - ROW : 0 });
   return changed;
 }
+
+/** Whether node `id` has a row in sight: one of a pane's rows (not folded away, nor left out by its filter or the search), its middle within what the pane shows. */
+const isSeen = (id) =>
+  ui.panes.some((pane) => {
+    const middle = rowOf(pane, id)?.top + ROW / 2;
+    return middle > pane.sight[0] && middle < pane.sight[1];
+  });
+/** The playing pages to put in the stack at the bottom, as things stand. */
+const soundsNow = () => outOfSight([...ui.audible], isSeen, ui.hushed);
 
 /**
  * In a dense tree the rows around the pointer move apart, so that what is
@@ -196,20 +209,30 @@ export function redraw() {
   }
   spread();
   for (const pane of ui.panes) pane.line = dropLine(pane);
+  ui.sounds = soundsNow();
   draw(app, ui);
   settleFocus();
+  room ??= watchRoom();
 }
 
-// Scrolling brings other rows in sight. (The event does not bubble: it is caught on its way down.)
+// Scrolling brings other rows in sight - to be drawn, or a playing one, to leave the stack or join it. (The event does not bubble: it is caught on its way down.)
 app.addEventListener(
   'scroll',
   (event) => {
     const pane = event.target.classList?.contains('pane') && (paneAt(event.target) ?? picker());
-    if (pane && inSight(pane)) redraw();
+    if (pane && (inSight(pane) || JSON.stringify(soundsNow()) !== JSON.stringify(ui.sounds))) redraw();
   },
   true,
 );
-addEventListener('resize', () => redraw());
+// So does a change of the room the panes have: the window resized, a strip unfolded, a notice come or gone. (And the first drawing, made before there was anything to measure.)
+let room; // What watches it, from the first drawing on: the panes are one element ever after.
+function watchRoom() {
+  const panes = app.querySelector('.panes');
+  if (!panes) return undefined;
+  const watching = new ResizeObserver(() => redraw());
+  watching.observe(panes);
+  return watching;
+}
 
 // Where the pointer is over a tree, for spread(): followed once a frame, and only in a dense tree.
 let moved;
@@ -508,6 +531,12 @@ export async function closeNotice() {
   refresh();
 }
 
+/** Sends a playing page away from the stack at the bottom, until it stops playing (see take). */
+export function hush(id) {
+  ui.hushed.add(id);
+  redraw();
+}
+
 /** Starts typing a name: of row { id, pane } (its address, with `field: 'url'`), or of { tree }. The field takes the keyboard (see settleFocus). */
 export function rename(what) {
   ui.renaming = what;
@@ -625,6 +654,7 @@ function take(state, active) {
   ui.canRedo = state.canRedo;
   ui.live = new Set(Object.values(state.binding).map((bound) => bound.node));
   ui.audible = new Set(state.audible);
+  ui.hushed = new Set(state.audible.filter((id) => ui.hushed.has(id))); // What has stopped playing is no longer sent away: it may play again.
   ui.activeId = state.binding[active?.id]?.node;
   ui.activeTree = state.binding[active?.id]?.tree;
 }

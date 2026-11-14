@@ -1,8 +1,9 @@
 // The one owner of the state. It hears what happens to tabs (facts), takes
 // commands from the panels, saves the result and tells the panels it changed.
-// What it asks of the browser in return is five things, all in `browser`
-// below: open a tab, show one, close some, send one to an address, give one
-// a window of its own. It never reorders tabs.
+// What it asks of the browser in return is five things about tabs, all in
+// `browser` below: open a tab, show one, close some, send one to an address,
+// give one a window of its own - and one about itself: to hide its panel.
+// It never reorders tabs.
 
 import { descendantsOf, expire, goneOf, isGroup, isNote, migrate, newId, problems, treeFor, validTree } from './model.js';
 import { QUIET, ops } from './ops.js';
@@ -15,7 +16,7 @@ import { warningOf } from './safety.js';
 
 const log = (...args) => console.log('[tree]', ...args);
 
-// Everything the worker asks the browser to do to tabs. (Asking what tabs there are is not doing.)
+// Everything the worker asks the browser to do: to tabs, and to its own panel. (Asking what tabs there are is not doing.)
 const browser = {
   /** A new tab: `{ windowId, url?, active?, index? }`; without an address, an empty one. */
   open: (tab) => chrome.tabs.create(tab),
@@ -28,6 +29,12 @@ const browser = {
   navigate: (tabId, url) => chrome.tabs.update(tabId, { url }),
   /** Gives a tab a window of its own. */
   detach: (tabId) => chrome.windows.create({ tabId }),
+  /**
+   * Hides the panel in a window. Chrome can do that from version 141; an
+   * older one leaves the panel where it is. (The opposite cannot be asked
+   * for at all: Chrome opens a panel only at the user's own press.)
+   */
+  hidePanel: (windowId) => chrome.sidePanel.close?.({ windowId }).catch(() => {}),
 };
 
 let state = core.createState();
@@ -182,6 +189,14 @@ chrome.tabs.onRemoved.addListener((tabId) =>
 chrome.tabs.onReplaced.addListener((addedId, removedId) =>
   enqueue('tab replaced', () => core.tabReplaced(state, addedId, removedId)),
 );
+
+// A window gone full screen is all for its page: the panel hides. Leaving
+// full screen brings nothing back by itself (see hidePanel): the key or the
+// button opens the panel, as ever.
+chrome.windows.onBoundsChanged.addListener(async ({ id }) => {
+  const now = await chrome.windows.get(id).catch(() => undefined);
+  if (now?.state === 'fullscreen') browser.hidePanel(id);
+});
 
 // --- Commands ------------------------------------------------------------------
 
