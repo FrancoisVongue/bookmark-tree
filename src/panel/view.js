@@ -174,9 +174,10 @@ const emptyView = (ui) => html`<p class="hint">${t(ui.query ? 'nothingFound' : '
  * with a button to take it off the list), and how many are ticked. With the
  * filter on: what is shown alone - or, while that is being saved, a field
  * for its name (`naming`: what is typed there, see `ui.typing`) - how much of
- * the tree that is, "save" and "clear".
+ * the tree that is, "save" and "clear". (Without a filter the line is still
+ * there and says so - see draw - so nothing moves between a tree that has
+ * one and a tree that has none.)
  */
-/** The line under the tools that says what the tree's filter is. It is always there, so nothing moves when one tree has a filter and the next has none. */
 function filteredView({ ticking, saved, picked, by, save, shown, of }, naming) {
   if (ticking) {
     return html`
