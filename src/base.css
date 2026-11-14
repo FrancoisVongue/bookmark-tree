@@ -109,6 +109,7 @@
   --inset: rgb(31 31 31 / 0.035); /* A block set into a page of text: code, a quote, a table's heading. */
   --line: rgb(31 31 31 / 0.08); /* Where two regions of one tone meet, and the tone alone cannot part them. */
   --rule: rgb(31 31 31 / 0.14); /* A line that is read, not felt: between the columns and the rows of a table. */
+  --stripe: rgb(31 31 31 / 0.022); /* Every other row of a table: felt along the row, not seen as stripes. */
   /*
    * Code is another material than text, and says so: it lies on a dark ground
    * whatever the page's, and is read by colour. Few colours, each with a role.
@@ -160,6 +161,7 @@
     --inset: rgb(237 237 237 / 0.05);
     --line: rgb(237 237 237 / 0.1);
     --rule: rgb(237 237 237 / 0.16);
+    --stripe: rgb(237 237 237 / 0.028);
     --code-bg: #111112; /* Set into the page: darker than the ground. */
     --active-bg: #283a54;
     --active-text: #d6e4fb;

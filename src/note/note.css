@@ -383,7 +383,10 @@ main {
 /*
  * A table is read down its columns and along its rows: a line between every
  * two of each, one frame around them all, the heading on a ground of its
- * own. A table too wide for the page scrolls in its own frame.
+ * own, every other row under a veil that is felt along the row and not seen
+ * as stripes. It takes the whole width of the text, and its columns share
+ * it - equally, or as they were set (see Grid in blocks.js). A table of more
+ * columns than the page can hold scrolls in its own frame.
  */
 .tiptap .tableWrapper {
   overflow-x: auto;
@@ -397,6 +400,8 @@ main {
 .tiptap table {
   border-collapse: separate;
   border-spacing: 0;
+  width: 100%;
+  table-layout: fixed; /* The columns are as wide as they are said to be, whatever is written in them. */
   border: 1px solid var(--rule);
   border-radius: 8px;
   line-height: 1.5;
@@ -405,9 +410,8 @@ main {
 .tiptap th,
 .tiptap td {
   position: relative;
-  /* An empty cell must still be wide enough to click into. */
-  min-width: 3em;
   padding: 7px 14px;
+  overflow-wrap: anywhere; /* A long word breaks in a narrow column, and does not run into the next. */
   border-right: 1px solid var(--rule);
   border-bottom: 1px solid var(--rule);
   text-align: left;
@@ -421,6 +425,10 @@ main {
 }
 .tiptap th {
   background: var(--inset);
+}
+/* The second row under the heading, the fourth, and so on. */
+.tiptap tr:nth-child(2n + 3) > td {
+  background: var(--stripe);
 }
 /* The frame's corners are the cells' too. */
 .tiptap tr:first-child > :first-child {
@@ -438,7 +446,7 @@ main {
 .tiptap :is(td, th) > p {
   margin: 0;
 }
-.tiptap .selectedCell {
+.tiptap tr > .selectedCell {
   background: var(--badge);
 }
 /*
@@ -511,6 +519,38 @@ main {
 }
 .table-tools .add {
   background: var(--hover);
+}
+/* A handle is pressed for its menu and dragged to move its row or column. */
+.table-tools .handle {
+  cursor: grab;
+  touch-action: none;
+}
+.table-tools .handle:active {
+  cursor: grabbing;
+}
+/* The line between two columns, under the pointer: a little stronger than it was, and it says it can be dragged. */
+.table-tools .divider {
+  position: absolute;
+  width: 11px;
+  cursor: col-resize;
+  touch-action: none;
+}
+.table-tools .divider::after {
+  content: '';
+  position: absolute;
+  inset: 0 4px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--dim) 55%, transparent);
+}
+/* Where a dragged row or column will land: here, so the accent. */
+.table-tools .drop {
+  position: absolute;
+  border-radius: 1px;
+  background: var(--accent);
+  pointer-events: none;
+}
+.table-tools [hidden] {
+  display: none;
 }
 .table-tools .add.column {
   width: 12px;

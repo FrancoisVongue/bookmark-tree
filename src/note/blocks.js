@@ -7,6 +7,7 @@
 import { Decoration, DecorationSet, InputRule, Node as Part, Plugin, PluginKey, Table, TableCell, TableHeader, Text, TextSelection } from '../vendor/tiptap/tiptap.js';
 import { t } from '../i18n.js';
 import { block, literal, write } from './folds.js';
+import { delimiter, moved, percents, settled, widthsOf } from './widths.js';
 
 const mac = navigator.platform.startsWith('Mac');
 /** A key as the person's keyboard has it. */
@@ -378,6 +379,14 @@ export function rules(md) {
   md.block.ruler.before('fence', 'fold', foldRule, breaks);
   md.block.ruler.before('reference', 'footnote', footnoteRule, breaks);
   md.inline.ruler.before('link', 'footnote_ref', footnoteRefRule);
+  // A table's widths are in its row of dashes, which markdown's reader reads for the sides only: they are taken from the line itself.
+  md.core.ruler.push('table_widths', (state) => {
+    const lines = state.src.split('\n');
+    for (const token of state.tokens) {
+      const widths = token.type === 'table_open' && token.map ? widthsOf(lines[token.map[0] + 1] ?? '') : null;
+      if (widths) token.attrSet('data-widths', widths.join(','));
+    }
+  });
   md.renderer.rules.footnote_ref = (tokens, i) => `<sup data-footnote-ref="${md.utils.escapeHtml(tokens[i].meta)}"></sup>`;
 }
 
@@ -385,9 +394,11 @@ export function rules(md) {
 // A table is what markdown's table can hold, and no more: lines of text in a
 // cell, a column that is set left, right or in the middle, no cell that
 // spans others. So what is seen is what is kept - and what is done to it
-// (rows sorted, a row or a column moved) is done to the note itself.
+// (rows sorted, a row or a column moved) is done to the note itself. It takes
+// the whole width of the text, and its columns share that width: equally,
+// or as they were set (how the note keeps that: widths.js).
 
-const ALIGN = { left: ':---', center: ':---:', right: '---:' };
+export const NARROWEST = 64; // No column is narrower than this, in px: a table of many columns scrolls sideways before its columns are.
 const SORT = {
   0: '<svg class="line" viewBox="0 0 10 16" width="9" height="14.4"><path d="M2.500 6.500 5 4l2.500 2.500M2.500 9.500 5 12l2.500-2.500" /></svg>',
   1: '<svg class="line" viewBox="0 0 10 16" width="9" height="14.4"><path d="M5 12.500v-9M2 6.500l3-3 3 3" /></svg>',
@@ -413,8 +424,6 @@ function replaceTable(tr, pos, table, row, column) {
   tr.replaceWith(pos, pos + tr.doc.nodeAt(pos).nodeSize, table);
   tr.setSelection(TextSelection.near(tr.doc.resolve(cellAt(table, pos, row, column) + 1)));
 }
-/** `list` with the things at `a` and `b` in each other's places. */
-const swapped = (list, a, b) => list.map((one, i) => (i === a ? list[b] : i === b ? list[a] : one));
 const children = (node) => Array.from({ length: node.childCount }, (_, i) => node.child(i));
 
 // Sorting. A column of numbers is sorted as numbers - "1 204", "1,204.50", "$15", "7%" are numbers - and any other the way
@@ -467,6 +476,47 @@ export const Cell = cell(TableCell);
 export const HeaderCell = cell(TableHeader);
 
 export const Grid = Table.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      // The columns' widths, as shares of the table's (see widths.js) - or null, when they share it equally.
+      widths: {
+        default: null,
+        parseHTML: (element) => element.getAttribute('data-widths')?.split(',').map(Number) ?? null,
+        renderHTML: ({ widths }) => (widths ? { 'data-widths': widths.join(',') } : {}),
+      },
+    };
+  },
+
+  // The table in its frame, with a column of the page for each of its own: that is where the widths are said.
+  addNodeView() {
+    return ({ node }) => {
+      const dom = el('div', { className: 'tableWrapper' });
+      const table = el('table', {}, dom);
+      const columns = el('colgroup', {}, table);
+      const body = el('tbody', {}, table);
+      const show = () => {
+        const parts = percents(node.attrs.widths, node.firstChild.childCount);
+        columns.replaceChildren(...parts.map((part) => Object.assign(el('col'), { style: `width: ${part}%` })));
+        table.style.minWidth = `${parts.length * NARROWEST}px`;
+        // What the shares add up to: a width that is dragged is written in the same measure, so the other columns keep their dashes.
+        table.dataset.sum = Math.max(100, (node.attrs.widths ?? []).reduce((sum, one) => sum + one, 0));
+      };
+      show();
+      return {
+        dom,
+        contentDOM: body,
+        update(next) {
+          if (next.type !== node.type) return false;
+          node = next;
+          show();
+          return true;
+        },
+        ignoreMutation: (mutation) => mutation.type !== 'selection' && !body.contains(mutation.target),
+      };
+    };
+  },
+
   addCommands() {
     return {
       ...this.parent?.(),
@@ -477,21 +527,38 @@ export const Grid = Table.extend({
         if (dispatch) tr.setSelection(TextSelection.near(tr.doc.resolve(cellAt(at.node, at.pos, row, column) + 1)));
         return true;
       },
-      /** The row the cursor is in changes places with the one above it (`by` -1) or below it (1). The heading stays the heading. */
+      /** The row the cursor is in moves `by` rows: up (below zero) or down. The heading stays the heading. */
       moveRow: (by) => ({ state, tr, dispatch }) => {
         const at = tableAt(state);
         const to = at?.row + by;
-        if (!at || at.row < 1 || to < 1 || to >= at.node.childCount) return false;
-        if (dispatch) replaceTable(tr, at.pos, at.node.type.create(at.node.attrs, swapped(children(at.node), at.row, to)), to, at.column);
+        if (!at || !by || at.row < 1 || to < 1 || to >= at.node.childCount) return false;
+        if (dispatch) replaceTable(tr, at.pos, at.node.type.create(at.node.attrs, moved(children(at.node), at.row, to)), to, at.column);
         return true;
       },
-      /** The column the cursor is in changes places with the one to its left (`by` -1) or right (1). */
+      /** The column the cursor is in moves `by` columns: left (below zero) or right - its heading, its cells, its side and its width together. */
       moveColumn: (by) => ({ state, tr, dispatch }) => {
         const at = tableAt(state);
         const to = at?.column + by;
-        if (!at || to < 0 || to >= at.node.child(at.row).childCount) return false;
-        const rows = children(at.node).map((row) => row.type.create(row.attrs, swapped(children(row), at.column, to)));
-        if (dispatch) replaceTable(tr, at.pos, at.node.type.create(at.node.attrs, rows), at.row, to);
+        if (!at || !by || to < 0 || to >= at.node.child(at.row).childCount) return false;
+        const rows = children(at.node).map((row) => row.type.create(row.attrs, moved(children(row), at.column, to)));
+        const widths = at.node.attrs.widths && moved(at.node.attrs.widths, at.column, to);
+        if (dispatch) replaceTable(tr, at.pos, at.node.type.create({ ...at.node.attrs, widths }, rows), at.row, to);
+        return true;
+      },
+      /** Sets the widths of the columns of the table at `pos`: shares of the table's width, one for each column. */
+      setColumnWidths: (pos, widths) => ({ state, tr, dispatch }) => {
+        const table = state.doc.nodeAt(pos);
+        if (table?.type.name !== 'table') return false;
+        if (dispatch) tr.setNodeAttribute(pos, 'widths', settled(widths, table.firstChild.childCount));
+        return true;
+      },
+      /** The widths follow a column that is put in at `index` (it takes an average share) or, with `put` false, taken out there. Said in the same step, before the column goes or after it has come. */
+      columnChanged: (index, put) => ({ state, tr, dispatch }) => {
+        const at = tableAt(state);
+        const widths = at?.node.attrs.widths;
+        if (!widths || !dispatch) return true;
+        const mean = Math.round(widths.reduce((a, b) => a + b, 0) / widths.length);
+        tr.setNodeAttribute(at.pos, 'widths', put ? [...widths.slice(0, index), mean, ...widths.slice(index)] : widths.filter((_, i) => i !== index));
         return true;
       },
       /**
@@ -549,6 +616,9 @@ export const Grid = Table.extend({
         if (node.type.name !== 'table') return !node.isTextblock;
         const sides = [];
         node.forEach((row) => row.forEach((one, __, column) => (sides[column] ??= one.attrs.align ?? undefined)));
+        // Widths that are not one for each column say nothing any more.
+        const widths = settled(node.attrs.widths, node.firstChild.childCount);
+        if (String(widths) !== String(node.attrs.widths)) tr.setNodeAttribute(pos, 'widths', widths);
         node.forEach((row, offset, index) => {
           let at = pos + offset + 2;
           row.forEach((one, __, column) => {
@@ -638,9 +708,9 @@ export const Grid = Table.extend({
             state.out += ' |';
             if (index) return;
             const sides = [];
-            row.forEach((one) => sides.push(ALIGN[one.attrs.align] ?? '---'));
+            row.forEach((one) => sides.push(one.attrs.align));
             state.ensureNewLine();
-            state.write(`| ${sides.join(' | ')} |`);
+            state.write(`| ${delimiter(node.attrs.widths, sides).join(' | ')} |`);
           });
           state.inTable = false;
           state.closeBlock(node);

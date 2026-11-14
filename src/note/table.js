@@ -2,15 +2,20 @@
 // column, a "+" under its last row adds a row, and the row and the column of
 // the cell in hand (the one under the pointer, or else the one the cursor is
 // in) each have a handle with what can be done to them: put one in beside it,
-// move it, sort by it, set it to a side, delete it. They lie over the
+// move it, sort by it, set it to a side, delete it - and a handle is dragged
+// to move its row or column. The line between two columns is dragged to make
+// one wider and the other narrower. They lie over the
 // page, beside the text and not in it: nothing moves when they come, and
 // nothing of them is in the note.
 
 import { t } from '../i18n.js';
-import { el } from './blocks.js';
+import { NARROWEST, el } from './blocks.js';
+import { fromPercents } from './widths.js';
 
 const DOTS = '<svg viewBox="0 0 20 20" width="14" height="14"><path d="M4.5 8.6a1.4 1.4 0 1 1 0 2.8 1.4 1.4 0 0 1 0-2.8zm5.5 0a1.4 1.4 0 1 1 0 2.8 1.4 1.4 0 0 1 0-2.8zm5.500 0a1.4 1.4 0 1 1 0 2.8 1.4 1.4 0 0 1 0-2.8z" /></svg>';
 const PLUS = '<svg class="line" viewBox="0 0 20 20" width="14" height="14"><path d="M10 4.500v11M4.500 10h11" /></svg>';
+const NEAR = 5; // How close to the line between two columns the pointer takes hold of it, in px.
+const TRAVEL = 5; // How far a handle goes before it is being dragged and not pressed.
 const REACH = 24; // How far from the table the pointer may go and still be at it: the controls stand in that margin.
 
 /** Gives the tables of `editor` their controls; they lie in `main`, which holds the text. */
@@ -25,6 +30,9 @@ export function tableTools(editor, main) {
   const row = control('handle row', DOTS, `${t('noteRow')} (Alt+R)`);
   const addColumn = control('add column', PLUS, t('noteColumnAdd'));
   const addRow = control('add row', PLUS, t('noteRowAdd'));
+
+  const divider = el('div', { className: 'divider', hidden: true }, layer); // The line between two columns, in hand.
+  const drop = el('div', { className: 'drop', hidden: true }, layer); // Where what is dragged will land.
 
   let hover; // The cell under the pointer.
   let cell; // The cell in hand.
@@ -66,7 +74,7 @@ export function tableTools(editor, main) {
   const lastCell = (index) => [...cell.closest('table').rows].at(index).lastElementChild;
 
   addRow.addEventListener('click', () => into(lastCell(-1)).addRowAfter().goToNextCell().run());
-  addColumn.addEventListener('click', () => into(lastCell(0)).addColumnAfter().goToNextCell().run());
+  addColumn.addEventListener('click', () => into(lastCell(0)).addColumnAfter().columnChanged(cell.parentElement.cells.length, true).goToNextCell().run());
 
   // What a handle offers: [words, what it does, whether it cannot be done here]. What is put in - a row, a column - is
   // where the cursor goes: it is there to be written in. What is moved takes the cursor along.
@@ -92,8 +100,8 @@ export function tableTools(editor, main) {
         ['noteSortAsc', (chain) => chain.sortColumn(1), rows < 3],
         ['noteSortDesc', (chain) => chain.sortColumn(-1), rows < 3],
         '-',
-        ['noteColumnLeft', (chain) => chain.addColumnBefore().goToCell(r, c)],
-        ['noteColumnRight', (chain) => chain.addColumnAfter().goToCell(r, c + 1)],
+        ['noteColumnLeft', (chain) => chain.addColumnBefore().columnChanged(c, true).goToCell(r, c)],
+        ['noteColumnRight', (chain) => chain.addColumnAfter().columnChanged(c + 1, true).goToCell(r, c + 1)],
         '-',
         ['noteColumnMoveLeft', (chain) => chain.moveColumn(-1), !c],
         ['noteColumnMoveRight', (chain) => chain.moveColumn(1), c === columns - 1],
@@ -102,7 +110,7 @@ export function tableTools(editor, main) {
         ['noteAlignCenter', (chain) => chain.setColumnAlign('center')],
         ['noteAlignRight', (chain) => chain.setColumnAlign('right')],
         '-',
-        ['noteColumnRemove', (chain) => chain.deleteColumn()],
+        ['noteColumnRemove', (chain) => chain.columnChanged(c, false).deleteColumn()],
         ...whole,
       ],
     ],
@@ -150,7 +158,121 @@ export function tableTools(editor, main) {
     },
     true,
   );
-  for (const handle of menus.keys()) handle.addEventListener('click', () => shut === handle || open(handle));
+  let dragged; // The press that ended a drag is not a press on the handle.
+  for (const handle of menus.keys()) handle.addEventListener('click', () => shut === handle || dragged || open(handle));
+
+  /**
+   * A handle is dragged along its table to move its column (`across`) or its row: a line shows between which two it
+   * will land, and letting go moves it there in one step. The handle goes with the pointer. The heading row does not
+   * move, and nothing lands above it.
+   */
+  const drag = (handle, across) =>
+    handle.addEventListener('pointerdown', (event) => {
+      dragged = false;
+      if (event.button || menu || !cell) return;
+      const target = cell;
+      const table = target.closest('table');
+      const from = across ? target.cellIndex : target.parentElement.rowIndex;
+      if (!across && !from) return;
+      const where = (e) => (across ? e.clientX : e.clientY);
+      const start = where(event);
+      let to;
+      const move = (e) => {
+        if (to === undefined && Math.abs(where(e) - start) < TRAVEL) return;
+        const boxes = (across ? [...table.rows[0].cells] : [...table.rows]).map((one) => one.getBoundingClientRect());
+        const lines = across ? [boxes[0].left, ...boxes.map((box) => box.right)] : [boxes[0].top, ...boxes.map((box) => box.bottom)];
+        const first = across ? 0 : 1;
+        const line = lines.reduce((best, at, i) => (i >= first && Math.abs(at - where(e)) < Math.abs(lines[best] - where(e)) ? i : best), first);
+        to = line > from ? line - 1 : line;
+        const [origin, box] = [main, table].map((one) => one.getBoundingClientRect());
+        put(drop, across ? { left: lines[line] - origin.left - 1, top: box.top - origin.top, width: 2, height: box.height } : { left: box.left - origin.left, top: lines[line] - origin.top - 1, width: box.width, height: 2 });
+        drop.hidden = to === from;
+        handle.style.translate = across ? `${where(e) - start}px 0` : `0 ${where(e) - start}px`;
+      };
+      const up = () => {
+        handle.removeEventListener('pointermove', move);
+        handle.removeEventListener('pointerup', up);
+        handle.removeEventListener('pointercancel', up);
+        handle.style.translate = '';
+        drop.hidden = true;
+        dragged = to !== undefined;
+        if (dragged && to !== from) into(target)[across ? 'moveColumn' : 'moveRow'](to - from).run();
+      };
+      handle.setPointerCapture(event.pointerId);
+      handle.addEventListener('pointermove', move);
+      handle.addEventListener('pointerup', up);
+      handle.addEventListener('pointercancel', up);
+    });
+  drag(column, true);
+  drag(row, false);
+
+  // The line between two columns. Near it the pointer takes hold of it: dragged, it makes the column on its left wider
+  // and the one on its right narrower, or the other way - the two share what they had, and the table stays as wide as
+  // it was. Pressed twice, it fits the left column to what is written in it, as in a spreadsheet.
+  let resizing;
+  const columnsOf = (table) => [...table.querySelectorAll(':scope > colgroup > col')];
+  const partsOf = (table) => columnsOf(table).map((one) => parseFloat(one.style.width));
+  /** The least a column of `table` may take, in percent of the table. */
+  const least = (table, pair) => Math.min((NARROWEST / table.getBoundingClientRect().width) * 100, pair / 2);
+  /** The columns of `table` take `parts` percent of it each: seen at once, and kept in the note if `keep`. */
+  const widen = (table, parts, keep) => {
+    columnsOf(table).forEach((one, i) => (one.style.width = `${parts[i]}%`));
+    if (keep) editor.commands.setColumnWidths(editor.view.posAtDOM(table.tBodies[0], 0) - 1, fromPercents(parts.map((part) => (part * table.dataset.sum) / 100)));
+  };
+  function seek(event) {
+    if (resizing || menu) return;
+    const table = cell?.closest('table');
+    const frame = table?.parentElement.getBoundingClientRect();
+    const box = table?.getBoundingClientRect();
+    const lines = table ? [...table.rows[0].cells].slice(0, -1).map((one) => one.getBoundingClientRect().right) : [];
+    const index = lines.findIndex((x) => Math.abs(x - event.clientX) <= NEAR && x > frame.left && x < frame.right);
+    divider.hidden = index < 0 || event.clientY < box.top || event.clientY > box.bottom;
+    if (divider.hidden) return;
+    const origin = main.getBoundingClientRect();
+    Object.assign(divider, { table, index });
+    put(divider, { left: lines[index] - origin.left - NEAR, top: box.top - origin.top, height: box.height });
+  }
+  divider.addEventListener('pointerdown', (event) => {
+    if (event.button) return;
+    const { table, index } = divider;
+    const was = partsOf(table);
+    const pair = was[index] + was[index + 1];
+    const width = table.getBoundingClientRect().width;
+    const [start, left] = [event.clientX, parseFloat(divider.style.left)];
+    let now;
+    const move = (e) => {
+      const part = Math.min(Math.max(was[index] + ((e.clientX - start) / width) * 100, least(table, pair)), pair - least(table, pair));
+      now = was.map((one, i) => (i === index ? part : i === index + 1 ? pair - part : one));
+      widen(table, now);
+      divider.style.left = `${left + ((part - was[index]) / 100) * width}px`;
+    };
+    const up = () => {
+      divider.removeEventListener('pointermove', move);
+      divider.removeEventListener('pointerup', up);
+      divider.removeEventListener('pointercancel', up);
+      resizing = false;
+      if (now) widen(table, now, true);
+    };
+    resizing = true;
+    divider.setPointerCapture(event.pointerId);
+    divider.addEventListener('pointermove', move);
+    divider.addEventListener('pointerup', up);
+    divider.addEventListener('pointercancel', up);
+  });
+  divider.addEventListener('dblclick', () => {
+    const { table, index } = divider;
+    const was = partsOf(table);
+    const pair = was[index] + was[index + 1];
+    const cells = [...table.rows].map((one) => one.cells[index]);
+    // What the column's cells would take with nothing in them broken into lines.
+    columnsOf(table)[index].style.width = '1px';
+    cells.forEach((one) => (one.style.whiteSpace = 'nowrap'));
+    const needed = Math.max(...cells.map((one) => one.scrollWidth)) + 2;
+    cells.forEach((one) => (one.style.whiteSpace = ''));
+    const part = Math.min(Math.max((needed / table.getBoundingClientRect().width) * 100, least(table, pair)), pair - least(table, pair));
+    widen(table, was.map((one, i) => (i === index ? part : i === index + 1 ? pair - part : one)), true);
+    divider.hidden = true;
+  });
   // From the keyboard, with the cursor in a cell: Alt+R is the row's menu, Alt+C the column's. (By the key's place, whatever letters the keyboard writes.)
   editor.view.dom.addEventListener('keydown', (event) => {
     const handle = event.altKey && !event.ctrlKey && !event.metaKey && { KeyR: row, KeyC: column }[event.code];
@@ -178,6 +300,7 @@ export function tableTools(editor, main) {
   main.addEventListener('pointermove', (event) => {
     const over = event.target.closest('.tiptap td, .tiptap th');
     if (over || !(layer.contains(event.target) || near(event))) point(over ?? undefined);
+    seek(event);
   });
   main.addEventListener('pointerleave', () => point(undefined));
 
