@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { MAIN, ROOT, addNode, createLibrary, rowsOf, setCollapsed } from '../src/model.js';
-import { freeName, nameFor, narrowedTo, savedWith, stillPicked, topmost, withLeads, withSaved } from '../src/panel/filter.js';
+import { freeName, modeOf, nameFor, narrowedTo, savedWith, stillPicked, topmost, withLeads, withSaved } from '../src/panel/filter.js';
 
 /** A library from an outline: a dot per level, ids are the names. */
 function library(outline) {
@@ -17,6 +17,16 @@ function library(outline) {
 }
 const shown = (rows) => rows.map((row) => `${'.'.repeat(row.depth)}${row.id}${row.lead ? '~' : ''}${row.hidden ? `(${row.hidden})` : ''}`).join(' ');
 const through = (lib, picked, at = Infinity) => shown(rowsOf(narrowedTo(lib, MAIN, { picked, at }), MAIN));
+const hiding = (lib, picked) => shown(rowsOf(narrowedTo(lib, MAIN, { picked, mode: 'hide', at: Infinity }), MAIN));
+
+test('hidden nodes are absent, each with what is under it, and the tree keeps its shape', () => {
+  const lib = library('a .b ..c ..d .e f g .h');
+  assert.equal(hiding(lib, ['b', 'f']), 'a .e g .h');
+  assert.equal(hiding(lib, ['d', 'g']), 'a .b ..c .e f');
+  setCollapsed(lib, MAIN, 'a', true);
+  assert.equal(hiding(lib, ['b']), 'a(1) f g .h'); // A folded row counts what is left under it.
+  assert.equal(modeOf({ picked: ['b'], at: 0 }), 'only'); // A filter kept before there were two meanings.
+});
 
 test('ticked nodes are shown alone, each with what is under it, from depth nothing', () => {
   const lib = library('a .b ..c ..d .e f g .h');
@@ -70,21 +80,25 @@ test('a filter survives the removal and return of its node', () => {
 });
 
 test('saving a filter, and knowing a saved one', () => {
-  let saved = withSaved([], 'work', ['a', 'b']);
-  saved = withSaved(saved, 'read', ['c']);
+  let saved = withSaved([], 'work', { picked: ['a', 'b'] });
+  saved = withSaved(saved, 'read', { picked: ['c'], mode: 'hide' });
   assert.deepEqual(saved.map((each) => each.name), ['work', 'read']);
   const { trees } = library('a b c d');
-  assert.equal(savedWith(trees[MAIN], saved, ['b', 'a']).name, 'work'); // The same nodes, in whatever order.
-  assert.equal(savedWith(trees[MAIN], saved, ['a']), undefined);
-  assert.equal(savedWith(trees[MAIN], saved, ['a', 'b', 'c']), undefined);
-  assert.equal(savedWith(library('a c').trees[MAIN], saved, ['a']).name, 'work'); // By what it ticks now: b is gone.
+  const only = (picked) => ({ picked, mode: 'only' });
+  assert.equal(savedWith(trees[MAIN], saved, only(['b', 'a'])).name, 'work'); // The same nodes, in whatever order.
+  assert.equal(savedWith(trees[MAIN], saved, only(['a'])), undefined);
+  assert.equal(savedWith(trees[MAIN], saved, only(['a', 'b', 'c'])), undefined);
+  assert.equal(savedWith(library('a c').trees[MAIN], saved, only(['a'])).name, 'work'); // By what it ticks now: b is gone.
+  // The same nodes hidden are another filter than the same nodes shown alone.
+  assert.equal(savedWith(trees[MAIN], saved, only(['c'])), undefined);
+  assert.equal(savedWith(trees[MAIN], saved, { picked: ['c'], mode: 'hide' }).name, 'read');
   // The name offered for a new one is not a name taken.
   assert.equal(freeName(saved, 'play'), 'play');
   assert.equal(freeName(saved, 'work'), 'work 2');
   assert.equal(freeName([...saved, { name: 'work 2', picked: [] }], 'work'), 'work 3');
   // The same name again takes its place.
-  saved = withSaved(saved, 'work', ['d']);
-  assert.deepEqual(saved, [{ name: 'work', picked: ['d'] }, { name: 'read', picked: ['c'] }]);
+  saved = withSaved(saved, 'work', { picked: ['d'] });
+  assert.deepEqual(saved, [{ name: 'work', picked: ['d'], mode: 'only' }, { name: 'read', picked: ['c'], mode: 'hide' }]);
 });
 
 test('what ticked nodes are called together', () => {

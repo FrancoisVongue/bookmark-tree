@@ -2,7 +2,7 @@
 
 import { gridOf, isGroup, isNote, planOf } from '../model.js';
 import { t } from '../i18n.js';
-import { here, openBeside, openMenu, rowOf, showBranch, targets, ui, under } from './screen.js';
+import { here, hideBranch, openBeside, openMenu, rowOf, showBranch, targets, ui, under } from './screen.js';
 import * as cmd from './commands.js';
 import { keyOf } from './keymap.js';
 import { isAway, removeLabel } from './view.js';
@@ -43,6 +43,7 @@ export function rowMenu(pane, id) {
     item('indent', () => cmd.indent(pane, ids), keyOf('indent')),
     item('outdent', () => cmd.outdent(pane, ids), keyOf('outdent')),
     item('filterBranch', () => showBranch(pane.tree, id), keyOf('branch')),
+    item('filterHideBranch', () => hideBranch(pane.tree, id)),
     item('addFromTreeHere', () => cmd.openPicker(pane, id), '', !hasOtherTrees()),
     null,
     item(removeLabel(rowOf(pane, id)), () => cmd.remove(pane, id), keyOf('remove')),

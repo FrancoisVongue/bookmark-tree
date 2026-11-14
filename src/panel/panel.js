@@ -2,7 +2,7 @@
 // into commands for the worker (see screen.js for what the panel itself owns).
 // A side panel also gets out of the way of a window gone full screen (below).
 
-import { allOfJournal, app, applySaved, applyTicks, arrange, clearFilters, closeMenu, closeNotice, closeOverlay, closePane, deselect, dismiss, forgetSaved, here, idAt, log, menuUnder, openMenu, paneAt, pickFrom, picker, pointAt, redraw, refresh, revealActive, rowOf, search, searchJournal, select, setFocus, show, showActiveTree, split, targets, tick, tickRow, togglePicked, toggleStrip, ui, watch } from './screen.js';
+import { allOfJournal, app, applySaved, applyTicks, arrange, clearFilters, closeMenu, closeNotice, closeOverlay, closePane, deselect, dismiss, forgetSaved, here, idAt, log, menuUnder, openMenu, paneAt, pickFrom, picker, pointAt, redraw, refresh, revealActive, rowOf, search, searchJournal, select, setFocus, show, showActiveTree, split, targets, tick, tickMode, togglePicked, toggleStrip, ui, watch } from './screen.js';
 import { mainMenu, rowMenu, treeMenu } from './menus.js';
 import { endsDrag } from './drag.js';
 import { saveBackup } from '../page.js';
@@ -31,6 +31,7 @@ const actions = {
   'pane-close': ({ pane }) => closePane(pane),
   more: ({ el }) => menuUnder(el, mainMenu()),
   filter: tick,
+  'filter-mode': ({ el }) => tickMode(el.dataset.mode),
   'filter-saved': ({ el }) => applySaved(here().tree, el.dataset.name),
   'filter-forget': ({ el }) => forgetSaved(here().tree, el.dataset.name),
   'filter-save': () => cmd.startTyping({ what: 'filter', tree: here().tree }),
@@ -62,7 +63,7 @@ const LEAVING = ['tree-show', 'journal-go', 'plan-go', 'sound-go'];
 
 let chosen; // The row that was the one selected before the click now being handled, if it was that row.
 app.addEventListener('click', (event) => {
-  if (endsDrag() || event.target.closest('input, .menu')) return;
+  if (endsDrag() || event.target.closest('input, .menu')) return; // (A press that ticked a row for the filter is such a gesture too: see drag.js.)
   const el = event.target.closest('[data-action]');
   const pane = paneAt(event.target);
   const id = idAt(event.target);
@@ -73,7 +74,6 @@ app.addEventListener('click', (event) => {
     return actions[el.dataset.action]?.({ pane, id, el });
   }
   if (id && !pane) return togglePicked(id); // A row of the pane on top, to choose from: a click marks it.
-  if (id && ui.ticking?.tree === pane.tree) return tickRow(pane, id, event.shiftKey); // Ticking for the filter: a click ticks, and opens nothing.
   if (!id) {
     // A click on nothing lets go of the selection.
     return pane ? deselect(pane) : redraw();

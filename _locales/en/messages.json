@@ -87,10 +87,25 @@
     "message": "Link"
   },
   "filter": {
-    "message": "Filter: tick what to show"
+    "message": "Filter: tick what to show, or what to hide"
   },
   "filterBranch": {
     "message": "Show only this branch"
+  },
+  "filterHideBranch": {
+    "message": "Hide this branch"
+  },
+  "filterOnly": {
+    "message": "Show only"
+  },
+  "filterHide": {
+    "message": "Hide"
+  },
+  "filterHideNamed": {
+    "message": "Hide: $1"
+  },
+  "filterHidden": {
+    "message": "$1 hidden"
   },
   "filterCount": {
     "message": "$1 of $2"
@@ -118,6 +133,9 @@
   },
   "filterApplyHint": {
     "message": "Show only what is ticked (Enter)"
+  },
+  "filterApplyHide": {
+    "message": "Hide what is ticked (Enter)"
   },
   "extDescription": {
     "message": "Your pages as trees, in the side panel."

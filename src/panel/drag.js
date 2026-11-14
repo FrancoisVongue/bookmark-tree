@@ -7,6 +7,10 @@
 // (the strip at the top) are planned and stay where they are; the plan's
 // own entries are dragged within it, to change their order.
 //
+// While rows are ticked for the filter they are not dragged: a press on a
+// row ticks it (or unticks it), and the rows the pointer then passes over,
+// button held, take the same - ticks are swept on like paint.
+//
 // A tree is dragged the same way, by its name, to another cell of the table
 // of trees. A link dragged in from a page is the browser's own drag (ours
 // cannot leave the panel); it shares only the question "where would this land?".
@@ -14,23 +18,24 @@
 import { descendantsOf } from '../model.js';
 import { t } from '../i18n.js';
 import { titleOf } from './view.js';
-import { app, arrange, idAt, op, paneAt, redraw, rowOf, say, setDrag, setDrop, targets, ui, under } from './screen.js';
+import { app, arrange, idAt, op, paneAt, paneEl, redraw, rowOf, rowUnder, say, setDrag, setDrop, setFocus, targets, tickRow, tickRows, ui } from './screen.js';
 import { pagesIn } from './commands.js';
 
 // The gesture in progress, from the button going down to the click after it.
 const gesture = {
   // { x, y, id, pane } on a row, { x, y, tree } on a tree's name, { x, y, plan } on an entry of the plan, or { divider } on the line between panes.
+  // On a row while ticking for the filter: { x, y, sweep: { pane, on, at, going } } - the rows passed take the tick the first one got (`on`); `at` is the row painted last, by its number; `going` once the pointer has moved.
   press: undefined,
   pointer: { x: 0, y: 0 },
   unfold: undefined, // A timer: a folded row opens when something is held over it.
-  dragged: false, // The button came up after a drag: the click that follows is not a click.
+  dragged: false, // The button came up after a drag, or went down to tick a row: the click that follows is not a click.
 };
 
 /** Whether the click now arriving merely ends a drag. */
 export const endsDrag = () => gesture.dragged;
 
-function dropAt(pane, paneEl, y) {
-  for (const el of paneEl.querySelectorAll('.row')) {
+function dropAt(pane, within, y) {
+  for (const el of within.querySelectorAll('.row')) {
     const rect = el.getBoundingClientRect();
     if (y >= rect.bottom) continue;
     const row = rowOf(pane, el.dataset.id);
@@ -76,10 +81,10 @@ function planAtPointer() {
 
 /** The place in a pane to drop rows or a link at. */
 function placeAtPointer() {
-  const paneEl = paneElAtPointer();
-  const pane = paneEl && paneAt(paneEl);
+  const el = paneElAtPointer();
+  const pane = el && paneAt(el);
   if (!pane || !['rows', 'link'].includes(ui.drag.kind)) return;
-  const drop = dropAt(pane, paneEl, gesture.pointer.y);
+  const drop = dropAt(pane, el, gesture.pointer.y);
   return drop.targetId !== undefined && inDragged(pane, drop.targetId) ? undefined : drop;
 }
 
@@ -104,20 +109,43 @@ async function moveRows({ ids, from }, { pane, tree = pane.tree, targetId, posit
   if (tree !== from) say(t('movedTo', ui.library.trees[tree].name, moved.size), true);
 }
 
+/** Scrolls a pane while the pointer is near its top or bottom edge. */
+function scrollAtEdge(el) {
+  const rect = el.getBoundingClientRect();
+  if (gesture.pointer.y < rect.top + 36) el.scrollTop -= 8;
+  else if (gesture.pointer.y > rect.bottom - 36) el.scrollTop += 8;
+}
+
 /** While dragging: scroll the pane near its top and bottom edges, and follow the wheel. */
 function tick() {
   if (!ui.drag) return;
-  const paneEl = paneElAtPointer();
-  if (paneEl) {
-    const rect = paneEl.getBoundingClientRect();
-    if (gesture.pointer.y < rect.top + 36) paneEl.scrollTop -= 8;
-    else if (gesture.pointer.y > rect.bottom - 36) paneEl.scrollTop += 8;
-  }
+  const el = paneElAtPointer();
+  if (el) scrollAtEdge(el);
   updateDrop();
   const ghost = app.querySelector('.ghost');
   // (Kept inside the panel: near the right edge the label stays whole and the pointer runs along it.)
   if (ghost) ghost.style.transform = `translate(${Math.min(gesture.pointer.x + 12, innerWidth - ghost.offsetWidth - 4)}px, ${gesture.pointer.y + 8}px)`;
   requestAnimationFrame(tick);
+}
+
+/**
+ * While sweeping ticks on: every row between the one painted last and the
+ * one the pointer is at now takes the tick, so a fast pointer skips none;
+ * the pane scrolls at its edges as it does under dragged rows. The row is
+ * found by where it stands, not in the page: only rows in sight are there.
+ */
+function sweep() {
+  const { sweep: swept } = gesture.press ?? {};
+  const el = swept && ui.ticking && paneEl(swept.pane);
+  if (!el) return;
+  scrollAtEdge(el);
+  const at = rowUnder(swept.pane, gesture.pointer.y);
+  if (at >= 0 && at !== swept.at) {
+    const rows = swept.pane.rows.slice(Math.min(at, swept.at), Math.max(at, swept.at) + 1).map((row) => row.id);
+    swept.at = at;
+    tickRows(swept.pane, rows, swept.on, swept.pane.rows[at].id);
+  }
+  requestAnimationFrame(sweep);
 }
 
 function startDrag(drag) {
@@ -134,7 +162,7 @@ export function endDrag() {
 /** Dragging the line between two panes gives one more room and the other less. */
 function resize(divider) {
   const [before, after] = [ui.panes[divider - 1], ui.panes[divider]];
-  const [a, b] = [before, after].map((pane) => app.querySelector(`.pane[data-pane="${pane.id}"]`).getBoundingClientRect());
+  const [a, b] = [before, after].map((pane) => paneEl(pane).getBoundingClientRect());
   const { x, y } = gesture.pointer;
   const along = ui.split === 'row' ? (x - a.left) / (b.right - a.left) : (y - a.top) / (b.bottom - a.top);
   const share = Math.max(0.1, Math.min(0.9, along));
@@ -156,6 +184,15 @@ app.addEventListener('pointerdown', (event) => {
   if (divider) {
     gesture.press = { divider: Number(divider.dataset.divider) };
     app.setPointerCapture(event.pointerId);
+  } else if (id && pane && ui.ticking) {
+    // Ticking for the filter: the press itself ticks, and nothing is dragged - in the tree being ticked or beside it.
+    if (ui.ticking.tree !== pane.tree) return;
+    gesture.dragged = true;
+    setFocus(pane);
+    if (event.shiftKey) return tickRow(pane, id, true);
+    const on = !ui.ticking.ids.has(id);
+    tickRows(pane, [id], on);
+    gesture.press = { x: event.clientX, y: event.clientY, sweep: { pane, on, at: pane.rows.findIndex((row) => row.id === id), going: false } };
   } else if (id && pane) {
     gesture.press = { x: event.clientX, y: event.clientY, id, pane };
   }
@@ -166,8 +203,9 @@ addEventListener('pointermove', (event) => {
   if (!press) return;
   gesture.pointer = { x: event.clientX, y: event.clientY };
   if (press.divider) return resize(press.divider);
-  if (ui.drag || Math.hypot(event.clientX - press.x, event.clientY - press.y) < 5) return;
+  if (ui.drag || press.sweep?.going || Math.hypot(event.clientX - press.x, event.clientY - press.y) < 5) return;
   app.setPointerCapture(event.pointerId); // Keep hearing the pointer outside the panel.
+  if (press.sweep) return (press.sweep.going = true), sweep();
   if (press.tree) return startDrag({ kind: 'tree', tree: press.tree, label: ui.library.trees[press.tree].name });
   if (press.plan) return startDrag({ kind: 'plan', ids: [press.plan], label: titleOf(ui.library.nodes[press.plan]) });
   const ids = targets(press.pane, press.id);

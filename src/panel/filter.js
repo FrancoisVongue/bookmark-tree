@@ -1,8 +1,10 @@
-// A filter: { picked, at } - the nodes the user ticked, to be shown alone,
-// each with all that is under it, and when they said so. Here is what that
-// means. A saved filter is such a set of ticked nodes under a name,
-// { name, picked }: something to set the filter from, not a filter of another
-// kind. Both are kept as the user said them: a ticked node that is gone is
+// A filter: { picked, mode, at } - the nodes the user ticked, each with all
+// that is under it, what the ticks mean, and when they said so. The ticked
+// are either shown alone ('only') or left out ('hide'): one or the other,
+// never both. Here is what that means. A saved filter is such a set of
+// ticked nodes and their meaning under a name, { name, picked, mode }:
+// something to set the filter from, not a filter of another kind. Both are
+// kept as the user said them: a ticked node that is gone is
 // left out when the filter is read (stillPicked), never taken out of what is
 // kept - so a node that comes back (an undo) is ticked as before.
 // Pure: no screen here.
@@ -26,11 +28,14 @@ export function topmost(tree, ids) {
  */
 export const stillPicked = (tree, picked) => (tree && picked ? topmost(tree, picked) : []);
 
-/** The saved filter that ticks, in `tree` as it is now, exactly the nodes `picked`, if there is one. */
-export const savedWith = (tree, saved, picked) =>
+/** What the ticks of a filter, or of a saved one, mean: 'hide', or 'only' - which is also what one kept by an older version means, that had no word for it. */
+export const modeOf = (filter) => (filter?.mode === 'hide' ? 'hide' : 'only');
+
+/** The saved filter that is `filter`: it ticks, in `tree` as it is now, exactly the same nodes, and means the same by them - if there is one. */
+export const savedWith = (tree, saved, { picked, mode }) =>
   saved.find((each) => {
     const its = stillPicked(tree, each.picked);
-    return its.length === picked.length && its.every((id) => picked.includes(id));
+    return modeOf(each) === mode && its.length === picked.length && its.every((id) => picked.includes(id));
   });
 
 /** A name no saved filter has: `name` itself, or else with the first number that makes it one. */
@@ -41,10 +46,10 @@ export function freeName(saved, name) {
   return free;
 }
 
-/** The saved filters with `picked` kept as `name`: in the place of the one called so, or after them all. */
-export function withSaved(saved, name, picked) {
+/** The saved filters with `filter` kept as `name`: in the place of the one called so, or after them all. */
+export function withSaved(saved, name, filter) {
   const at = saved.findIndex((each) => each.name === name);
-  return saved.toSpliced(at < 0 ? saved.length : at, 1, { name, picked: [...picked] });
+  return saved.toSpliced(at < 0 ? saved.length : at, 1, { name, picked: [...filter.picked], mode: modeOf(filter) });
 }
 
 const short = (text, most = 18) => (text.length > most ? `${text.slice(0, most - 1).trimEnd()}…` : text);
@@ -52,7 +57,8 @@ const short = (text, most = 18) => (text.length > most ? `${text.slice(0, most -
 export const nameFor = (titles) => `${titles.slice(0, 2).map((title) => short(title)).join(' · ')}${titles.length > 2 ? ` +${titles.length - 2}` : ''}`;
 
 /**
- * What stands at the top of a tree seen through a filter { picked, at }: the
+ * What stands at the top of a tree seen through a filter that shows the
+ * ticked alone, { picked, at }: the
  * ticked nodes - and every node added after the filter was set (`at`) that
  * is not under one of those already. A filter takes away only what the user
  * saw and did not tick; what was not there then, it never took away.
@@ -71,14 +77,28 @@ export function rootsOf(library, treeId, { picked, at }) {
 }
 
 /**
- * The library as it is seen through a filter: in tree `treeId` the nodes of
- * rootsOf stand at the top, each with what is under it, and nothing else is
- * there - nothing of what was above them, so the room that took is given
- * back. The rows of this are made as for any tree (rowsOf in model.js).
+ * A tree's nodes, each under its parent, without the ticked ones - and so
+ * without all that is under them. That is the whole rule of a filter that
+ * hides: when it was set plays no part (a node added later is not ticked,
+ * so it is there), and the tree keeps its shape.
+ */
+const withoutPicked = (tree, picked) => {
+  const gone = new Set(picked);
+  return Object.fromEntries(Object.entries(tree.children).map(([id, kids]) => [id, kids.filter((kid) => !gone.has(kid))]));
+};
+
+/**
+ * The library as it is seen through a filter. One that shows the ticked
+ * alone: in tree `treeId` the nodes of rootsOf stand at the top, each with
+ * what is under it, and nothing else is there - nothing of what was above
+ * them, so the room that took is given back. One that hides them: the tree
+ * as it is, the ticked nodes absent. The rows of this are made as for any
+ * tree (rowsOf in model.js) - so a folded row counts only what is left.
  */
 export function narrowedTo(library, treeId, filter) {
   const tree = library.trees[treeId];
-  return { ...library, trees: { ...library.trees, [treeId]: { ...tree, children: { ...tree.children, [ROOT]: rootsOf(library, treeId, filter) } } } };
+  const children = modeOf(filter) === 'hide' ? withoutPicked(tree, filter.picked) : { ...tree.children, [ROOT]: rootsOf(library, treeId, filter) };
+  return { ...library, trees: { ...library.trees, [treeId]: { ...tree, children } } };
 }
 
 /**
