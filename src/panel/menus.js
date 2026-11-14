@@ -37,7 +37,6 @@ export function rowMenu(pane, id) {
     item('changeIcon', () => cmd.chooseIcon({ ids })),
     item('duplicate', () => cmd.duplicate(pane, ids), keyOf('duplicate')),
     !isGroup(node) && item(planned ? 'planRemove' : 'planAdd', () => cmd.plan(ids, !planned)),
-    item(node.keep ? 'keepNot' : 'keep', () => cmd.keep(ids, !node.keep)),
     page && item(node.pinned ? 'unpin' : 'pin', () => cmd.pin(ids, !node.pinned)),
     isAway(node) && item('goHome', () => cmd.goHome(id)),
     null,

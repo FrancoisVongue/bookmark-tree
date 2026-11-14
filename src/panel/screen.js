@@ -18,7 +18,7 @@ const kept = JSON.parse(localStorage.getItem('view') ?? '{}');
 // The saved filters are kept apart from the view, under a key of their own: every open panel has them, and writes them only when one is saved or taken off the list (see saveFilter, forgetSaved); the others read them again then. (Moved once from where an older version kept them, with the view.)
 if (kept.saved && !localStorage.getItem('saved')) localStorage.setItem('saved', JSON.stringify(kept.saved));
 const savedKept = () => JSON.parse(localStorage.getItem('saved') ?? '{}');
-// A pane: its own id (what it is known by in the page, whatever its place among the panes), the tree it shows, its rows with their places, what of its tree is in sight (`sight`) and which rows are drawn (`from`..`to`, between gaps `before` and `after`: see measure). (Also `count`, `first` and, while searching, `loose`: see rowsFor.)
+// A pane: its own id (what it is known by in the page, whatever its place among the panes), the tree it shows, its rows with their places, what of its tree is in sight (`sight`) and which rows are drawn (`from`..`to`, between gaps `before` and `after`: see measure). (Also `count`, `first` and, while searching, `loose`: see rowsFor; and `holder`, the folded row that hides the current tab: see holderOf.)
 let panes = 0;
 export const newPane = (tree, size = 1) => ({ id: `p${++panes}`, tree, size, rows: [], from: 0, to: 0, sel: new Set() });
 
@@ -639,7 +639,7 @@ function rowsFor(pane) {
   const library = filter ? narrowedTo(ui.library, pane.tree, filter) : ui.library;
   const all = rowsOf(library, pane.tree, true);
   const count = { shown: all.length, of: descendantsOf(ui.library.trees[pane.tree], ROOT).length };
-  let rows = query ? all : rowsOf(library, pane.tree, false, ui.live);
+  let rows = query ? all : rowsOf(library, pane.tree);
   let first, loose;
   if (query) {
     const { hits, how, as } = find(all, query, (row) => textOf(row.id));
@@ -707,7 +707,7 @@ function layOut() {
   for (const pane of [...ui.panes, picker()]) {
     if (!pane) continue;
     const { rows, first, loose, count } = rowsFor(pane);
-    Object.assign(pane, { rows, loose, count, first: first ?? rows[0]?.id });
+    Object.assign(pane, { rows, loose, count, first: first ?? rows[0]?.id, holder: holderOf(pane) });
     // While ticking: what is ticked in this pane, and what comes with it (all under a ticked node).
     const ticks = ui.ticking?.tree === pane.tree && pane !== picker() ? ui.ticking.ids : undefined;
     pane.ticks = ticks && { on: ticks, with: new Set([...ticks].flatMap((id) => descendantsOf(library.trees[pane.tree], id))) };
@@ -775,14 +775,23 @@ export function showActiveTree() {
   here().sel.clear();
 }
 
+/**
+ * The row that holds the current tab in a pane: where its own row is hidden
+ * in a folded branch, the nearest node above it that has a row. A branch
+ * never opens by itself: that row says the tab is in it. None when the tab's
+ * own row is there, or the tab is not in the pane's tree.
+ */
+function holderOf(pane) {
+  const tree = ui.library.trees[pane.tree];
+  if (rowOf(pane, ui.activeId)) return undefined;
+  let id = parentOf(tree, ui.activeId);
+  while (id !== undefined && !rowOf(pane, id)) id = parentOf(tree, id);
+  return id;
+}
+
 /** Brings the current tab's row into sight or, where a folded branch hides it, the row that holds it. */
 export function revealActive() {
-  for (const pane of ui.panes) {
-    const tree = ui.library.trees[pane.tree];
-    let id = ui.activeId;
-    while (id !== undefined && !rowOf(pane, id)) id = parentOf(tree, id);
-    reveal(pane, id);
-  }
+  for (const pane of ui.panes) reveal(pane, holderOf(pane) ?? ui.activeId);
 }
 
 // The current tab the panel last went to. The panel follows the user: when

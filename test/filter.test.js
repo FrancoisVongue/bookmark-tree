@@ -16,7 +16,7 @@ function library(outline) {
   return lib;
 }
 const shown = (rows) => rows.map((row) => `${'.'.repeat(row.depth)}${row.id}${row.lead ? '~' : ''}${row.hidden ? `(${row.hidden})` : ''}`).join(' ');
-const through = (lib, picked, live, at = Infinity) => shown(rowsOf(narrowedTo(lib, MAIN, { picked, at }), MAIN, false, new Set(live)));
+const through = (lib, picked, at = Infinity) => shown(rowsOf(narrowedTo(lib, MAIN, { picked, at }), MAIN));
 
 test('ticked nodes are shown alone, each with what is under it, from depth nothing', () => {
   const lib = library('a .b ..c ..d .e f g .h');
@@ -31,7 +31,6 @@ test('seen through a filter, a tree folds as it always does', () => {
   const lib = library('a .b ..c ..d .e f');
   setCollapsed(lib, MAIN, 'b', true);
   assert.equal(through(lib, ['a']), 'a .b(2) .e');
-  assert.equal(through(lib, ['a'], ['d']), 'a .b(1) ..d .e'); // An open tab stays in sight under a folded row.
   assert.equal(through(lib, ['b']), 'b(2)');
   // The library itself is not touched.
   assert.deepEqual(lib.trees[MAIN].children[ROOT], ['a', 'f']);
@@ -102,9 +101,9 @@ test('what came after the filter was set is always shown: the filter took away o
   addNode(lib, MAIN, { id: 'n2', url: 'https://n2/', title: 'n2', added: 300 }, 'd');
   addNode(lib, MAIN, { id: 'n3', url: 'https://n3/', title: 'n3', added: 300 });
   addNode(lib, MAIN, { id: 'n4', url: 'https://n4/', title: 'n4', added: 300 }, 'n3');
-  assert.equal(through(lib, ['b'], [], 200), 'b .c .n1 n2 n3 .n4'); // In the order of the tree, each new one a top of its own.
-  assert.equal(through(lib, ['b'], [], 300), 'b .c .n1'); // Ticked anew: what is there now was seen.
+  assert.equal(through(lib, ['b'], 200), 'b .c .n1 n2 n3 .n4'); // In the order of the tree, each new one a top of its own.
+  assert.equal(through(lib, ['b'], 300), 'b .c .n1'); // Ticked anew: what is there now was seen.
   // A page without the day it was added is an old one.
   delete lib.nodes.n2.added;
-  assert.equal(through(lib, ['b'], [], 200), 'b .c .n1 n3 .n4');
+  assert.equal(through(lib, ['b'], 200), 'b .c .n1 n3 .n4');
 });

@@ -70,8 +70,8 @@ console.log('  rows above it are marked:', await marks('leads'));
 await shot('1-leads');
 
 await row('Page /a').locator('.twisty').click();
-await say('its branch folded: the open tabs stay in sight under it, nothing opens by itself');
-console.log('  kept in sight:', await marks('kept'), '| folded:', await row('Page /a').evaluate((el) => el.classList.contains('collapsed')));
+await say('its branch folded: the row that holds it is marked, nothing opens by itself');
+console.log('  holder:', await marks('holds-active'), '| folded:', await row('Page /a').evaluate((el) => el.classList.contains('collapsed')));
 await shot('2-holder');
 await row('Page /a').locator('.twisty').click();
 

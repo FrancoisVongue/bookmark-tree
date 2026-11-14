@@ -16,7 +16,6 @@ const ICONS = {
   close: line('M5.5 5.5l9 9M14.5 5.5l-9 9'),
   sleep: line('M15 11.6A5.8 5.8 0 0 1 8.400 5a5.800 5.800 0 1 0 6.600 6.600z'),
   trash: line('M4.500 6h11M8 6V4.500h4V6M6 6l.6 9.500h6.800L14 6M8.700 9v3.700M11.300 9v3.700'),
-  keep: line('M2.500 10S5.500 5.500 10 5.500 17.500 10 17.500 10s-3 4.500-7.500 4.500S2.500 10 2.500 10zM10 8.200a1.800 1.800 0 1 0 0 3.600 1.800 1.800 0 0 0 0-3.600z'),
   filter: line('M3.500 5h13L11.500 11v4.500l-3 1.500V11z'),
   locate: line('M10 2.500V5M10 15v2.500M2.500 10H5M15 10h2.500M10 5.500a4.500 4.500 0 1 0 0 9 4.500 4.500 0 0 0 0-9zM10 9.700v.6'),
   add: line('M10 4.500v11M4.500 10h11'),
@@ -87,13 +86,13 @@ function rowView(row, pane, ui, { leads, ticks }, lit) {
     isGroup(node) && 'group',
     row.id === ui.activeId && 'active',
     leads.has(row.id) && 'leads',
+    row.id === pane.holder && 'holds-active',
     pane.sel.has(row.id) && 'selected',
     ticks?.on.has(row.id) && 'ticked',
     ticks?.with.has(row.id) && 'included',
     row.kids && 'parent',
     row.collapsed && 'collapsed',
     row.lead && 'lead',
-    row.kept && 'kept', // (No style of its own: the scenarios tell such rows by it.)
     node.pinned && 'pinned',
     ui.audible.has(row.id) && 'playing',
     lit && 'lit',
@@ -123,7 +122,6 @@ function rowView(row, pane, ui, { leads, ticks }, lit) {
       ${editing
         ? html`<input class="rename" .value=${editing.text} aria-label=${t('renameHint')} />`
         : html`<span class="title">${title}</span>`}
-      ${node.keep ? html`<span class="mark" title=${t('kept')}>${ICONS.keep}</span>` : ''}
       ${shared ? html`<span class="mark" title=${t('alsoIn', shared.join(', '))}>${ICONS.shared}</span>` : ''}
       ${row.hidden ? html`<span class="badge">${row.hidden}</span>` : ''}
       ${picking || editing
@@ -140,7 +138,7 @@ function rowView(row, pane, ui, { leads, ticks }, lit) {
   `;
 }
 
-/** The nodes above the current tab's node in a pane's tree. (The node itself always has a row: see rowsOf.) */
+/** The nodes above the current tab's node in a pane's tree. (Where a folded branch hides the node, one of them stands for it: `holder` of the pane, see holderOf in screen.js.) */
 function leadsToActive(pane, ui) {
   const tree = ui.library.trees[pane.tree];
   const leads = new Set();
@@ -149,7 +147,8 @@ function leadsToActive(pane, ui) {
 }
 
 /**
- * The guide to light up: the one the row of the current tab hangs on, along
+ * The guide to light up: the one the row of the current tab (or the folded
+ * row that holds it) hangs on, along
  * all the rows that hang on it. { level, from, to }; none for a top-level row.
  */
 function litGuide(rows, id) {
@@ -208,7 +207,7 @@ function filteredView({ ticking, saved, picked, by, save, shown, of }, naming) {
 /** One tree: the rows of it that are drawn (those in sight and a few beyond), each where screen.js put it (`pull`, `shift`), with gaps as tall as the rows not drawn. The same view serves the panes of the panel and the picker. */
 function paneView(pane, index, ui) {
   const way = { leads: leadsToActive(pane, ui) };
-  const guide = litGuide(pane.rows, ui.activeId);
+  const guide = litGuide(pane.rows, pane.holder ?? ui.activeId);
   const picking = pane === ui.overlay;
   const focused = pane === ui.focus;
   const tree = ui.library.trees[pane.tree];

@@ -1,10 +1,9 @@
 // The library: pages the user keeps, arranged in trees. Pure data, no Chrome.
 //
-//   library.nodes  { [nodeId]: { id, url, title, added?, touched?, name?, icon?, keep?, home?, pinned?, note? } }
+//   library.nodes  { [nodeId]: { id, url, title, added?, touched?, name?, icon?, home?, pinned?, note? } }
 //                  a page; `added` is when it came into the library,
 //                  `touched` the day its tab was last opened or closed, `name`
-//                  the user's own title, `icon` an emoji; `keep` says it stays
-//                  in sight when the branch it is in is folded. `home`
+//                  the user's own title, `icon` an emoji. `home`
 //                  { url, title } is the address the page first had, kept
 //                  once it leaves it: the way back. A `pinned` page goes back
 //                  there by itself when its tab closes. A node with `note`
@@ -148,6 +147,7 @@ export function migrate(library) {
   library.gone ??= Object.fromEntries(library.trash.map((entry) => [entry.node.id, Math.floor(entry.at / DAY)]));
   // Before every page had a home, having one meant being pinned to it.
   if (!library.version) for (const node of Object.values(library.nodes)) if (node.home) node.pinned = true;
+  for (const node of Object.values(library.nodes)) delete node.keep; // A mark an older version had ("keep in sight when folded").
   library.version = VERSION;
   return library;
 }
@@ -315,27 +315,19 @@ export function renameNode(library, id, name) {
 }
 
 /**
- * The rows a tree shows, top to bottom: { id, depth, kids, collapsed, hidden, kept }.
- *
- * A collapsed row hides the nodes under it - except those kept in sight:
- * the ones with an open tab (`live`, a Set of ids) and the ones the user
- * marked (`node.keep`). These stay as rows right under the collapsed one,
- * one step deeper, in the order of the tree, however deep they really are
- * (`kept` marks such a row). `hidden` is how many nodes the row really hides.
- * With `open`, nothing is treated as collapsed.
+ * The rows a tree shows, top to bottom: { id, depth, kids, collapsed, hidden }.
+ * A collapsed row hides all that is under it, open tabs too (what to see is
+ * chosen with the filter, not by folding); `hidden` is how many nodes that
+ * is. With `open`, nothing is treated as collapsed.
  */
-export function rowsOf(library, treeId, open = false, live = new Set()) {
+export function rowsOf(library, treeId, open = false) {
   const tree = library.trees[treeId];
   const rows = [];
   const walk = (id, depth) => {
     const kids = kidsOf(tree, id).length;
-    const row = { id, depth, kids, collapsed: !open && kids > 0 && !!tree.collapsed[id], hidden: 0 };
-    rows.push(row);
-    if (!row.collapsed) return kidsOf(tree, id).forEach((kid) => walk(kid, depth + 1));
-    for (const under of descendantsOf(tree, id)) {
-      if (live.has(under) || library.nodes[under]?.keep) rows.push({ id: under, depth: depth + 1, kids: 0, collapsed: false, hidden: 0, kept: true });
-      else row.hidden++;
-    }
+    const collapsed = !open && kids > 0 && !!tree.collapsed[id];
+    rows.push({ id, depth, kids, collapsed, hidden: collapsed ? descendantsOf(tree, id).length : 0 });
+    if (!collapsed) for (const kid of kidsOf(tree, id)) walk(kid, depth + 1);
   };
   for (const id of kidsOf(tree, ROOT)) walk(id, 0);
   return rows;

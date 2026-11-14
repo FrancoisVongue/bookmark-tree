@@ -604,6 +604,11 @@
 .row.leads .title {
   color: var(--accent);
 }
+/* The folded row that hides the current tab stands for it: a branch never opens by itself. */
+.row.holds-active .title {
+  color: var(--accent);
+  font-weight: 600;
+}
 /*
  * A page that plays: waves run along its row, behind the text - two of them,
  * of different lengths, towards each other. They are drawn in the accent

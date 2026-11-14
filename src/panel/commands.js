@@ -33,7 +33,6 @@ export const indent = (pane, ids) => op('indent', { tree: pane.tree, ids });
 export const outdent = (pane, ids) => op('outdent', { tree: pane.tree, ids });
 export const collapseAll = (pane, collapsed) => op('collapse-all', { tree: pane.tree, collapsed });
 export const plan = (ids, planned) => op(planned ? 'plan' : 'unplan', { ids });
-export const keep = (ids, kept) => op('keep', { ids, keep: kept });
 export const pin = (ids, pinned) => op('pin', { ids, pinned });
 export const copyLinks = (ids) => navigator.clipboard.writeText(ids.map((id) => ui.library.nodes[id].url).join('\n'));
 /** Opens the table of icons for nodes ({ ids }) or for a tree ({ tree }). */
