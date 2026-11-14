@@ -20,8 +20,8 @@ export function tableTools(editor, main) {
     button.setAttribute('aria-label', title);
     return button;
   };
-  const column = control('handle column', DOTS, t('noteColumn'));
-  const row = control('handle row', DOTS, t('noteRow'));
+  const column = control('handle column', DOTS, `${t('noteColumn')} (Alt+C)`);
+  const row = control('handle row', DOTS, `${t('noteRow')} (Alt+R)`);
   const addColumn = control('add column', PLUS, t('noteColumnAdd'));
   const addRow = control('add row', PLUS, t('noteRowAdd'));
 
@@ -68,15 +68,15 @@ export function tableTools(editor, main) {
   addRow.addEventListener('click', () => into(lastCell(-1)).addRowAfter().goToNextCell().run());
   addColumn.addEventListener('click', () => into(lastCell(0)).addColumnAfter().goToNextCell().run());
 
-  const isHead = () => cell.parentElement.rowIndex === 0; // The heading stays the first row: no row above it, and it is not deleted alone.
   const whole = ['-', ['noteTableRemove', (chain) => chain.deleteTable()]];
   const menus = new Map([
     [
       row,
+      // The first row is the heading, whichever row that is (see Grid in blocks.js): a row put above it becomes the heading, and so does the second row when the first goes. The only row goes with its table.
       () => [
-        !isHead() && ['noteRowAbove', (chain) => chain.addRowBefore()],
+        ['noteRowAbove', (chain) => chain.addRowBefore()],
         ['noteRowBelow', (chain) => chain.addRowAfter()],
-        !isHead() && ['noteRowRemove', (chain) => chain.deleteRow()],
+        ['noteRowRemove', (chain, target) => (target.closest('table').rows.length > 1 ? chain.deleteRow() : chain.deleteTable())],
         ...whole,
       ],
     ],
@@ -109,7 +109,7 @@ export function tableTools(editor, main) {
     const element = el('div', { className: 'menu', role: 'menu' }, document.body);
     for (const item of menus.get(handle)().filter(Boolean)) {
       if (item === '-') el('hr', {}, element);
-      else el('button', { type: 'button', role: 'menuitem', textContent: t(item[0]), onclick: () => (close(), item[1](into(target)).run()) }, element);
+      else el('button', { type: 'button', role: 'menuitem', textContent: t(item[0]), onclick: () => (close(), item[1](into(target), target).run()) }, element);
     }
     const box = handle.getBoundingClientRect();
     put(element, { left: Math.min(box.left, innerWidth - element.offsetWidth - 8), top: box.bottom + 4 });
@@ -138,6 +138,16 @@ export function tableTools(editor, main) {
     true,
   );
   for (const handle of menus.keys()) handle.addEventListener('click', () => shut === handle || open(handle));
+  // From the keyboard, with the cursor in a cell: Alt+R is the row's menu, Alt+C the column's. (By the key's place, whatever letters the keyboard writes.)
+  editor.view.dom.addEventListener('keydown', (event) => {
+    const handle = event.altKey && !event.ctrlKey && !event.metaKey && { KeyR: row, KeyC: column }[event.code];
+    if (!handle || !own()) return;
+    event.preventDefault();
+    close();
+    hover = undefined;
+    place();
+    open(handle);
+  });
   // A press on a control must not take the cursor out of the text.
   layer.addEventListener('mousedown', (event) => event.preventDefault());
   addEventListener('scroll', close);

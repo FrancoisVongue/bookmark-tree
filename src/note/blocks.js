@@ -4,7 +4,7 @@
 // editor, how it looks there, and how the note's markdown has it - and
 // `rules` teaches the markdown reader the two that are not markdown's own.
 
-import { CodeBlock, InputRule, Node as Part, Table, TableCell, TableHeader, Text } from '../vendor/tiptap/tiptap.js';
+import { CodeBlock, InputRule, Node as Part, Plugin, Table, TableCell, TableHeader, Text } from '../vendor/tiptap/tiptap.js';
 import { t } from '../i18n.js';
 import { block, literal, write } from './folds.js';
 
@@ -320,12 +320,18 @@ export const Footnote = Part.create({
   },
 });
 
-/** A press on a footnote's mark goes to its note. Says whether `target` was one. */
+/**
+ * A press on a footnote's mark goes to its note, and a press on the note's
+ * label - which is all of the note that is not its text - back to the first
+ * mark of that label: the cursor stands after it. Says whether `target` was either.
+ */
 export function followFootnote(editor, target) {
   const mark = target.closest('sup[data-footnote-ref]');
-  const note = mark && [...editor.view.dom.querySelectorAll('[data-footnote]')].find((one) => one.dataset.footnote === mark.dataset.footnoteRef);
-  if (note) editor.chain().focus().setTextSelection(editor.view.posAtDOM(note, 0) + 1).scrollIntoView().run();
-  return Boolean(mark);
+  const note = !mark && target.matches('[data-footnote]') && target;
+  const first = (attribute, label) => editor.view.dom.querySelector(`[${attribute}="${CSS.escape(label)}"]`);
+  const to = mark ? first('data-footnote', mark.dataset.footnoteRef) : note && first('data-footnote-ref', note.dataset.footnote);
+  if (to) editor.chain().focus().setTextSelection(editor.view.posAtDOM(to, 0) + 1).scrollIntoView().run();
+  return Boolean(mark || note);
 }
 
 const LABEL = /^\[\^([^\]\s]+)\]/;
@@ -427,10 +433,37 @@ export const Grid = Table.extend({
     };
   },
 
+  // Whatever was done to a table - a row put above its heading, the heading deleted, a row added, a table pasted - it is set right
+  // in the same step: its first row is the heading and no other row is, and every cell of a column is set to the column's side.
+  addProseMirrorPlugins() {
+    const settle = (transactions, _, state) => {
+      if (!transactions.some((one) => one.docChanged)) return null;
+      const { tableHeader, tableCell } = state.schema.nodes;
+      const { tr } = state;
+      state.doc.descendants((node, pos) => {
+        if (node.type.name !== 'table') return !node.isTextblock;
+        const sides = [];
+        node.forEach((row) => row.forEach((one, __, column) => (sides[column] ??= one.attrs.align ?? undefined)));
+        node.forEach((row, offset, index) => {
+          let at = pos + offset + 2;
+          row.forEach((one, __, column) => {
+            const type = index ? tableCell : tableHeader;
+            const align = sides[column] ?? null;
+            if (one.type !== type || one.attrs.align !== align) tr.setNodeMarkup(at, type, { ...one.attrs, align });
+            at += one.nodeSize;
+          });
+        });
+        return false;
+      });
+      return tr.steps.length ? tr : null;
+    };
+    return [...(this.parent?.() ?? []), new Plugin({ appendTransaction: settle })];
+  },
+
   addStorage() {
     return {
       markdown: {
-        // The first row is the heading, whatever its cells are. In a cell a "|" is escaped, and a new line is a <br>.
+        // The first row is the heading. In a cell a "|" is escaped, and a new line is a <br>.
         serialize(state, node) {
           state.inTable = true;
           node.forEach((row, _, index) => {
@@ -462,17 +495,27 @@ export const Grid = Table.extend({
 
 // --- Code ------------------------------------------------------------------------
 
-/** A block of code says its language in its corner, and there, under the pointer, offers to copy it. */
+/** A block of code says its language in its corner - a field, so the language can be set there - and beside it, under the pointer, offers to copy the code. */
 export const Code = CodeBlock.extend({
   addNodeView() {
-    return ({ node }) => {
+    return ({ node, getPos, editor }) => {
       const dom = el('div', { className: 'code' });
       const pre = el('pre', {}, dom);
       const content = el('code', {}, pre);
       const corner = el('div', { className: 'corner', contentEditable: 'false' }, dom);
-      const language = el('span', {}, corner);
       const copy = el('button', { type: 'button', tabIndex: -1, textContent: t('noteCopy') }, corner);
-      const show = () => (language.textContent = node.attrs.language ?? '');
+      const language = el('input', { placeholder: t('noteLanguage'), spellcheck: false, autocapitalize: 'off' }, corner);
+      language.setAttribute('aria-label', t('noteLanguage'));
+      const show = () => (language.value = node.attrs.language ?? '');
+      // Enter, or leaving the field, sets the language (none, if the field is empty); Esc leaves it as it was. Both give the keyboard back to the text.
+      language.addEventListener('change', () => editor.commands.command(step((tr) => tr.setNodeAttribute(getPos(), 'language', language.value.trim() || null))));
+      language.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== 'Escape') return;
+        if (event.key === 'Escape') show();
+        event.preventDefault();
+        language.blur();
+        editor.commands.focus();
+      });
       let timer;
       copy.addEventListener('mousedown', (event) => event.preventDefault());
       copy.addEventListener('click', async () => {

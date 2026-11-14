@@ -491,6 +491,9 @@
   "noteFootnote": {
     "message": "Footnote"
   },
+  "noteLanguage": {
+    "message": "Language"
+  },
   "noteCopy": {
     "message": "Copy"
   },
