@@ -4,25 +4,41 @@
   color-scheme: light dark;
   --danger: #d93025; /* What cannot be taken lightly: an error, a removal. */
   --control: 28px; /* The height of a field, a button with words, a strip's heading. */
-  --bg: #fff;
   --text: #1f1f1f;
   --dim: #6b6f6d;
   --hover: rgb(31 31 31 / 0.07);
   --active-bg: #d3e3fd;
   --active-text: #041e49;
   --accent: #0b57d0;
-  --badge: #e9eef6;
+  /*
+   * The surfaces: what a region lies on, from far to near. Every region takes
+   * one step, and that tone - no line - is what sets it apart from its
+   * neighbours. The step is small on purpose. (What speaks over a page for a
+   * moment, `.bubble`, turns the ladder over: the text's colour is its ground.)
+   */
+  --surface-frame: #e9ebf0; /* What holds the tools: the panel's bar. */
+  --surface-side: #eff1f5; /* A place beside the content: a strip. */
+  --surface-back: #f4f5f8; /* Content that has stepped back: a tree out of focus. */
+  --bg: #fff; /* The content in hand: the tree in focus, a page. */
+  --surface-over: #fff; /* What floats over it all: a menu, a dialog. */
+  /* A contained thing - a field, a pressed button, a chip, what belongs to one control - on whatever surface it lies: one step away from it. */
+  --badge: rgb(20 60 130 / 0.1);
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #282a2c;
     --text: #e3e3e3;
     --dim: #9aa0a6;
     --hover: rgb(227 227 227 / 0.08);
     --active-bg: #004a77;
     --active-text: #c2e7ff;
     --accent: #a8c7fa;
-    --badge: #3c4043;
+    /* In the dark, lighter is nearer; what floats is lighter still, where a shadow hardly shows. */
+    --surface-frame: #17181a;
+    --surface-side: #1b1d1f;
+    --surface-back: #202224;
+    --bg: #282a2c;
+    --surface-over: #323437;
+    --badge: rgb(227 232 240 / 0.11);
   }
 }
 
@@ -121,7 +137,7 @@ svg.line {
   box-sizing: border-box;
   padding: 12px;
   border-radius: 12px;
-  background: var(--bg);
+  background: var(--surface-over);
   box-shadow: 0 8px 32px rgb(0 0 0 / 0.35);
 }
 .dialog footer {

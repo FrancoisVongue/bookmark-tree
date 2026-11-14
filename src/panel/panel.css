@@ -30,11 +30,13 @@
 /* --- The bar at the top: the search, the tools --------------------------------- */
 
 .bar {
+  --gap: 6px;
   flex: none;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 6px 6px 2px;
+  gap: var(--gap);
+  padding: 6px;
+  background: var(--surface-frame);
 }
 .tools {
   display: flex;
@@ -74,19 +76,34 @@
 }
 
 /*
- * The filter, under the tools: plain words in one quiet line. No frames, no
- * fills: that a filter is on is said by the pressed funnel and by this line
- * being there. What the filter is called stands at the left, in the text's
- * full colour; while nodes are ticked, the saved filters stand there - what
- * one of them would become. What can be done to it is quieter, at the right.
+ * The filter, under the tools: one line on a fill of its own - the fill of
+ * the pressed funnel, which reaches down to it, so that the two are one thing
+ * (as a tab and its page are). What the filter is called stands at the left,
+ * in the text's full colour; while nodes are ticked, the saved filters stand
+ * there - what one of them would become. At the end of the line, what leads
+ * out of it: buttons with a shape of their own, a step off the line's tone -
+ * quiet, and where the eye arrives when it looks for the way out.
  */
+.tools .act[data-action='filter'][aria-pressed='true'] {
+  position: relative;
+  border-radius: 8px 8px 0 0;
+}
+.tools .act[data-action='filter'][aria-pressed='true']::after {
+  content: '';
+  position: absolute;
+  inset: 100% 0 auto;
+  height: var(--gap);
+  background: var(--badge);
+}
 .filtered {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
-  padding: 0 4px 2px 6px;
+  gap: 4px;
+  padding: 3px 3px 3px 10px;
+  border-radius: 8px;
+  background: var(--badge);
   font-size: 12px;
-  line-height: 20px;
+  line-height: 22px;
   color: var(--dim);
   white-space: nowrap;
 }
@@ -97,12 +114,34 @@
   text-overflow: ellipsis;
   color: var(--text);
 }
-.filtered > button:hover {
-  color: var(--accent);
-}
 .filtered .count {
   margin-left: auto;
+  padding: 0 7px;
   font-variant-numeric: tabular-nums;
+}
+.filtered > button,
+.saved .one {
+  border-radius: 5px; /* Within the line's own corners. */
+  background: var(--badge);
+  color: var(--text);
+}
+.filtered > button {
+  position: relative;
+  flex: none;
+  padding: 0 10px;
+}
+/* A button here answers the pointer over all the height of the line, and up to its neighbour. */
+.filtered > button::before {
+  content: '';
+  position: absolute;
+  inset: -3px -2px;
+}
+.filtered > button:hover,
+.saved .one:hover {
+  background-image: linear-gradient(var(--hover), var(--hover));
+}
+.filtered > button:active {
+  background-image: linear-gradient(var(--badge), var(--badge));
 }
 /*
  * The saved filters: as many as fit in two lines; the rest are a turn of the
@@ -125,7 +164,8 @@
   min-width: 0;
   display: flex;
   flex-wrap: wrap;
-  max-height: 40px;
+  gap: 4px;
+  max-height: 48px;
   overflow-y: auto;
   scrollbar-width: none;
   -webkit-mask: linear-gradient(#000 calc(100% - var(--more)), transparent calc(100% + 4px));
@@ -138,30 +178,22 @@
 }
 .saved .name {
   max-width: 14ch;
+  padding-left: 8px;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: var(--text);
 }
-.saved .name:hover {
-  color: var(--accent);
-}
-/* The button that takes a saved filter off the list has its room after the name always - that is the space between two names - and is seen under the pointer, or when the keyboard is on it. */
+/* The button that takes a saved filter off the list closes its shape: quiet until pointed at. */
 .saved .forget {
   flex: none;
   display: grid;
   place-items: center;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  opacity: 0;
+  width: 22px;
+  border-radius: inherit;
+  color: var(--dim);
 }
 .saved .forget svg {
   width: 12px;
   height: 12px;
-}
-.saved .one:hover .forget,
-.saved .forget:focus-visible {
-  opacity: 1;
 }
 .saved .forget:hover {
   color: var(--danger);
@@ -202,8 +234,8 @@
 /*
  * A row's buttons lie over the end of its name, at the right edge, and only
  * under the pointer: nothing in the row moves when they come. Behind them is
- * the row's own colour, fading in from the left, so the name does not show
- * through.
+ * the row's own colour - its fill over the surface its tree lies on - fading
+ * in from the left, so the name does not show through.
  */
 .acts {
   position: absolute;
@@ -212,7 +244,7 @@
   align-items: center;
   padding-left: 22px;
   border-radius: inherit;
-  background: linear-gradient(var(--fill), var(--fill)), linear-gradient(var(--bg), var(--bg));
+  background: linear-gradient(var(--fill), var(--fill)), linear-gradient(var(--ground), var(--ground));
   -webkit-mask: linear-gradient(90deg, transparent, #000 20px);
 }
 .row:hover .acts {
@@ -300,11 +332,20 @@
 
 /* --- A pane: one tree ---------------------------------------------------------- */
 
+/*
+ * Each tree lies on a surface. The one the user works in is the nearest, and
+ * keeps all its contrast; the others step back a tone, and what is written
+ * in them gives up a little of its colour - no more: where the current tab
+ * is, and what the pointer is on, read as they do anywhere. That is all that
+ * says where the focus is, and all that parts two trees: there is no line
+ * between them. (With one tree shown there is nothing to step back from.)
+ */
 .panes {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
+  background: var(--surface-back);
 }
 .panes.split-row {
   flex-direction: row;
@@ -316,21 +357,29 @@
   overflow-y: auto;
   padding: 6px;
   box-sizing: border-box;
+  --ground: var(--bg);
+  background: var(--ground);
 }
+.panes > .pane:not(.focused) {
+  --ground: var(--surface-back);
+  color: color-mix(in srgb, var(--text) 80%, var(--ground));
+}
+:where(.panes > .pane:not(.focused)) .favicon {
+  opacity: 0.8;
+}
+/* Where two trees meet, to drag: it is seen under the pointer. */
 .divider {
   flex: none;
   height: 5px;
-  background: linear-gradient(var(--badge), var(--badge)) center / 100% 1px no-repeat;
   cursor: row-resize;
 }
 .panes.split-row .divider {
   width: 5px;
   height: auto;
-  background-size: 1px 100%;
   cursor: col-resize;
 }
 .divider:hover {
-  background-color: var(--hover);
+  background: var(--hover);
 }
 .hint {
   margin: 12px 8px;
@@ -347,7 +396,7 @@
   letter-spacing: 0.04em;
 }
 .pane.focused .pane-head {
-  color: var(--accent);
+  color: var(--text);
 }
 .pane.drop-end .tree {
   box-shadow: 0 2px 0 var(--accent);
@@ -355,13 +404,6 @@
 /* Where dragged rows would land between rows: a line that starts at the level they would be on (see dropLine in screen.js). */
 .tree {
   position: relative;
-}
-.pane-head .here {
-  flex: 1;
-  margin-left: 8px;
-  color: var(--dim);
-  text-transform: none;
-  letter-spacing: 0;
 }
 
 /* --- A row --------------------------------------------------------------------- */
@@ -574,15 +616,14 @@
   border-radius: 4px;
 }
 .row.selected .check,
-.row.ticked .check {
-  border-color: var(--accent);
-  background: var(--accent);
-  box-shadow: inset 0 0 0 2px var(--bg);
-}
+.row.ticked .check,
 .row.included .check {
   border-color: var(--accent);
+  background: var(--accent);
+  box-shadow: inset 0 0 0 2px var(--ground);
+}
+.row.included .check {
   background: color-mix(in srgb, var(--accent) 45%, transparent);
-  box-shadow: inset 0 0 0 2px var(--bg);
 }
 .favicon.glyph {
   display: grid;
@@ -594,7 +635,7 @@
   opacity: 1;
 }
 .row.group .title {
-  color: var(--text);
+  color: inherit; /* Not an asleep page's grey: a group is never one. */
   font-weight: 600;
 }
 .mark {
@@ -677,7 +718,7 @@
   min-width: 180px;
   padding: 4px;
   border-radius: 10px;
-  background: var(--bg);
+  background: var(--surface-over);
   box-shadow: 0 0 0 1px var(--badge), 0 6px 24px rgb(0 0 0 / 0.3);
 }
 .menu button {
@@ -772,6 +813,7 @@
 .dialog .pane {
   flex: 0 1 auto;
   padding: 0;
+  --ground: var(--surface-over);
 }
 
 /* --- Notices at the bottom ----------------------------------------------------- */
