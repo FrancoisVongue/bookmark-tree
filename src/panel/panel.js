@@ -1,5 +1,6 @@
 // The panel's entry: the mouse, and the start. It turns what the user does
 // into commands for the worker (see screen.js for what the panel itself owns).
+// A side panel also gets out of the way of a window gone full screen (below).
 
 import { allOfJournal, app, applySaved, applyTicks, arrange, clearFilters, closeMenu, closeNotice, closeOverlay, closePane, deselect, forgetSaved, here, hush, idAt, log, menuUnder, openMenu, paneAt, pickFrom, picker, pointAt, redraw, refresh, revealActive, rowOf, search, searchJournal, select, setFocus, show, showActiveTree, split, targets, tick, tickRow, togglePicked, toggleStrip, ui, watch } from './screen.js';
 import { mainMenu, rowMenu, treeMenu } from './menus.js';
@@ -134,6 +135,36 @@ app.addEventListener('input', (event) => {
   else if (event.target.closest('.search')) search(event.target.value);
 });
 
+// --- Full screen ---------------------------------------------------------------
+// The rule: the tree leaves full screen only where it would be seen there. A
+// window gone full screen is all for its page; the side panel, if it is
+// still on screen then, closes itself. Nothing brings it back but the user's
+// key or button: Chrome opens a panel only at the user's own press.
+
+const SETTLE = 300; // Milliseconds for the window, and for what Chrome does to the panel by itself, to settle.
+/**
+ * Whether the panel gives way to a window in this state. The one place for
+ * it. (Where Chrome itself takes the panel out of sight - for a page's own
+ * full screen, a video's, if it does so - the panel's document is not
+ * visible: it stays, and is there again when that ends.)
+ */
+const givesWay = (state) => state === 'fullscreen' && document.visibilityState === 'visible';
+
+/** Has the side panel follow the rule. The panel's page opened as a tab (the scenarios do that) is not a side panel, and stays. */
+async function leaveFullScreen() {
+  if (await chrome.tabs.getCurrent()) return;
+  let settling;
+  const look = async () => {
+    const now = await chrome.windows.get(ui.windowId).catch(() => undefined);
+    if (now && givesWay(now.state)) window.close();
+  };
+  chrome.windows.onBoundsChanged.addListener(({ id }) => {
+    if (id !== ui.windowId) return;
+    clearTimeout(settling);
+    settling = setTimeout(look, SETTLE);
+  });
+}
+
 async function main() {
   // (A scenario may open the panel as a page of one window and point it at another.)
   watch(Number(new URLSearchParams(location.search).get('window')) || (await chrome.windows.getCurrent()).id);
@@ -142,6 +173,7 @@ async function main() {
   });
   chrome.tabs.onActivated.addListener((info) => info.windowId === ui.windowId && refresh());
   setInterval(() => ui.journal.length && redraw(), 30_000); // "5 min ago" grows old by itself.
+  leaveFullScreen();
   await refresh();
   log('ready, window', ui.windowId, '|', ui.panes.map((pane) => `${pane.tree}: ${pane.rows.length} rows`).join(', '));
 }
