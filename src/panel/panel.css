@@ -104,6 +104,10 @@
   color: var(--dim);
   white-space: nowrap;
 }
+/* No filter: the line keeps its place and says so, without the fill that means one is on. */
+.filtered.none {
+  background: none;
+}
 .filtered .by {
   flex: 1;
   min-width: 0;

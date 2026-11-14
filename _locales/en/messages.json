@@ -95,6 +95,9 @@
   "filterCount": {
     "message": "$1 of $2"
   },
+  "filterNone": {
+    "message": "No filter"
+  },
   "filterClear": {
     "message": "Clear"
   },

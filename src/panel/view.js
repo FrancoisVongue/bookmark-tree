@@ -176,6 +176,7 @@ const emptyView = (ui) => html`<p class="hint">${t(ui.query ? 'nothingFound' : '
  * for its name (`naming`: what is typed there, see `ui.typing`) - how much of
  * the tree that is, "save" and "clear".
  */
+/** The line under the tools that says what the tree's filter is. It is always there, so nothing moves when one tree has a filter and the next has none. */
 function filteredView({ ticking, saved, picked, by, save, shown, of }, naming) {
   if (ticking) {
     return html`
@@ -458,7 +459,9 @@ export function draw(container, ui) {
           ${tool('filter', 'filter', t(ui.ticking ? 'filterApplyHint' : 'filter'), { pressed: !!ui.filtered })}
           ${split('row', 'splitRow')} ${split('column', 'splitColumn')} ${tool('more', 'more', t('more'), { place: 'end' })}
         </div>
-        ${ui.filtered ? filteredView(ui.filtered, ui.typing?.what === 'filter' && ui.typing.tree === ui.focus.tree && ui.typing) : nothing}
+        ${ui.filtered
+          ? filteredView(ui.filtered, ui.typing?.what === 'filter' && ui.typing.tree === ui.focus.tree && ui.typing)
+          : html`<div class="filtered none">${t('filterNone')}</div>`}
       </header>
       ${planView(ui)}
       <main class="panes split-${ui.split}">${repeat(ui.panes, (pane) => pane.id, (pane, index) => paneView(pane, index, ui))}</main>
