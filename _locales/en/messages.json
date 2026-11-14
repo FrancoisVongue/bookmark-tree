@@ -11,6 +11,21 @@
   "planRemove": {
     "message": "Take out of the plan"
   },
+  "quick": {
+    "message": "Kept at hand in this tree"
+  },
+  "quickAdd": {
+    "message": "Keep at hand"
+  },
+  "quickRemove": {
+    "message": "Take off the quick row"
+  },
+  "quickAddHere": {
+    "message": "Keep the current page at hand"
+  },
+  "quickHint": {
+    "message": "Drag rows of this tree here to keep them at hand"
+  },
   "planDrop": {
     "message": "Drop here what to open next"
   },

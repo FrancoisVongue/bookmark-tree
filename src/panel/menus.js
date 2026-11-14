@@ -1,6 +1,6 @@
 // What the menus hold: what can be done with a row, a tree, the panel. (Showing a menu is the screen's: see openMenu in screen.js.)
 
-import { gridOf, isGroup, isNote, planOf } from '../model.js';
+import { gridOf, isNote, planOf, quickOf } from '../model.js';
 import { t } from '../i18n.js';
 import { here, hideBranch, openBeside, openMenu, rowOf, showBranch, targets, ui, under } from './screen.js';
 import * as cmd from './commands.js';
@@ -18,7 +18,10 @@ export function rowMenu(pane, id) {
   const ids = targets(pane, id);
   const node = ui.library.nodes[id];
   const page = !isNote(node);
+  // The lists kept at hand say what is in them (see model.js); the row's menu offers the other way.
   const planned = planOf(ui.library).includes(id);
+  const toPlan = cmd.plannable(ids);
+  const kept = quickOf(ui.library.trees[pane.tree]).includes(id);
   return [
     !page && item('openNote', () => cmd.activate(pane, id)),
     page && !ui.live.has(id) && item('openBackground', () => cmd.activate(pane, id, 'background')),
@@ -37,7 +40,8 @@ export function rowMenu(pane, id) {
     page && item('copyLink', () => cmd.copyLinks(ids)),
     item('changeIcon', () => cmd.chooseIcon({ ids })),
     item('duplicate', () => cmd.duplicate(pane, ids), keyOf('duplicate')),
-    !isGroup(node) && item(planned ? 'planRemove' : 'planAdd', () => cmd.plan(ids, !planned)),
+    planned ? item('planRemove', () => cmd.plan(ids, false)) : toPlan.includes(id) && item('planAdd', () => cmd.plan(toPlan, true)),
+    item(kept ? 'quickRemove' : 'quickAdd', () => cmd.keep(pane, ids, !kept)),
     page && item(node.pinned ? 'unpin' : 'pin', () => cmd.pin(ids, !node.pinned)),
     isAway(node) && item('goHome', () => cmd.goHome(id)),
     null,
@@ -51,6 +55,9 @@ export function rowMenu(pane, id) {
     item('deleteEverywhere', () => cmd.remove(pane, id, true), keyOf('deleteEverywhere')),
   ];
 }
+
+/** What can be done with an icon of a tree's quick row. */
+export const quickMenu = (pane, id) => [item('quickRemove', () => cmd.keep(pane, [id], false))];
 
 export function treeMenu(treeId) {
   const ids = Object.keys(ui.library.trees);

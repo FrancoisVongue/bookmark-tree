@@ -8,7 +8,7 @@ import { ask } from '../parts.js';
 import { askForBookmarks, saveFile } from '../page.js';
 import { titleOf } from './view.js';
 import { freeName } from './filter.js';
-import { branches, closeOverlay, endTyping, here, op, openOverlay, pick, picker, refresh, rowOf, saveFilter, say, send, show, typeIn, ui, under, unsay } from './screen.js';
+import { branches, closeOverlay, endTyping, here, op, openOverlay, pick, picker, refresh, rowOf, saveFilter, say, send, show, showRow, typeIn, ui, under, unsay } from './screen.js';
 
 export const activate = (pane, id, where) =>
   send({ type: 'activate', nodeId: id, treeId: pane.tree, windowId: ui.windowId, where });
@@ -34,7 +34,17 @@ export const goHome = (id) => send({ type: 'go-home', nodeId: id });
 export const indent = (pane, ids) => op('indent', { tree: pane.tree, ids });
 export const outdent = (pane, ids) => op('outdent', { tree: pane.tree, ids });
 export const collapseAll = (pane, collapsed) => op('collapse-all', { tree: pane.tree, collapsed });
+// The lists kept at hand: the plan, and each tree's quick row.
+/** Those of `ids` that can be planned: pages, and not the one the user is on - being there, it would leave the plan at once (see journal.js). */
+export const plannable = (ids) => ids.filter((id) => id !== ui.activeId && !isGroup(ui.library.nodes[id]));
 export const plan = (ids, planned) => op(planned ? 'plan' : 'unplan', { ids });
+/** Keeps nodes of a pane's tree at hand, in its quick row, or takes them off it. */
+export const keep = (pane, ids, kept) => op(kept ? 'quick' : 'unquick', { tree: pane.tree, ids });
+/** To a node kept at hand: its row is shown and chosen, as a press on the row itself would; a page or a note opens (`where`: see activate), a group is only shown. */
+export function jump(pane, id, where) {
+  if (!where) showRow(pane, id);
+  if (!isGroup(ui.library.nodes[id])) activate(pane, id, where);
+}
 export const pin = (ids, pinned) => op('pin', { ids, pinned });
 export const copyLinks = (ids) => navigator.clipboard.writeText(ids.map((id) => ui.library.nodes[id].url).join('\n'));
 /** Opens the table of icons for nodes ({ ids }) or for a tree ({ tree }). */

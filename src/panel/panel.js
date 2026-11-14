@@ -3,7 +3,7 @@
 // A side panel also gets out of the way of a window gone full screen (below).
 
 import { allOfJournal, app, applySaved, applyTicks, arrange, clearFilters, closeMenu, closeNotice, closeOverlay, closePane, deselect, dismiss, forgetSaved, here, idAt, log, menuUnder, openMenu, paneAt, pickFrom, picker, pointAt, redraw, refresh, revealActive, rowOf, search, searchJournal, select, setFocus, show, showActiveTree, split, targets, tick, tickMode, togglePicked, toggleStrip, ui, watch } from './screen.js';
-import { mainMenu, rowMenu, treeMenu } from './menus.js';
+import { mainMenu, quickMenu, rowMenu, treeMenu } from './menus.js';
 import { endsDrag } from './drag.js';
 import { saveBackup } from '../page.js';
 import * as cmd from './commands.js';
@@ -51,7 +51,9 @@ const actions = {
   'journal-more': allOfJournal,
   'journal-toggle': () => toggleStrip('journal'),
   'plan-go': ({ el }) => cmd.revisit(el.dataset.node),
-  unplan: ({ el }) => cmd.plan([el.closest('.place').dataset.node], false),
+  unplan: ({ el }) => cmd.plan([el.closest('.place').dataset.entry], false),
+  'quick-go': ({ pane, el }) => cmd.jump(pane, el.dataset.entry),
+  'quick-add': ({ pane }) => cmd.keep(pane, [ui.activeId], true),
   'plan-toggle': () => toggleStrip('plan'),
   // A page that plays out of sight: to its tab - in the tree the user works in, if it is there.
   mute: ({ el }) => cmd.mute(el.dataset.node),
@@ -100,6 +102,8 @@ app.addEventListener('dblclick', (event) => {
 app.addEventListener('auxclick', (event) => {
   const id = idAt(event.target);
   const pane = paneAt(event.target);
+  const kept = event.target.closest('.quick [data-entry]')?.dataset.entry;
+  if (pane && kept && event.button === 1) return cmd.jump(pane, kept, 'background'); // In the quick row, as on a link: opens it without going there.
   if (!pane || !id || event.button !== 1 || ui.ticking) return;
   if (ui.live.has(id)) cmd.sleepOne(id);
   else cmd.remove(pane, id);
@@ -114,6 +118,8 @@ app.addEventListener('contextmenu', (event) => {
   if (treeId) return openMenu(event.clientX, event.clientY, treeMenu(treeId));
   if (!pane) return;
   setFocus(pane);
+  const kept = event.target.closest('.quick [data-entry]')?.dataset.entry;
+  if (kept) return openMenu(event.clientX, event.clientY, quickMenu(pane, kept));
   if (!id) return openMenu(event.clientX, event.clientY, mainMenu());
   if (pane.sel.has(id)) pointAt(id);
   else select(pane, id);

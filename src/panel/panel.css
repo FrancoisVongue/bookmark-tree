@@ -425,6 +425,61 @@
 .pane.focused .pane-head {
   color: var(--text);
 }
+/*
+ * A tree's quick row: its nodes kept at hand, by their icons, in the column
+ * the rows' own icons stand in. It lies on the pane's ground and stays at
+ * its top while the rows go under it; a hairline parts the two. It is as
+ * tall filled as empty; what does not fit is reached by scrolling sideways.
+ */
+.quick {
+  position: sticky;
+  top: 0;
+  z-index: 2; /* Over the rows, the pointed-at one too. */
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: var(--row);
+  margin: 0 -6px 4px;
+  padding: 0 6px 0 24px;
+  overflow: auto hidden;
+  scrollbar-width: none;
+  background: var(--ground);
+  border-bottom: 1px solid var(--line);
+}
+.quick .entry {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 26px;
+  border-radius: 8px;
+}
+.quick .entry:hover {
+  background: var(--hover);
+}
+.quick .entry:active {
+  background: var(--badge);
+}
+/* The current tab's: the fill its row has. */
+.quick .entry.active {
+  background: var(--active-bg);
+  color: var(--active-text);
+}
+.quick .entry.dragging {
+  opacity: 0.4;
+}
+.quick .add {
+  color: var(--dim);
+}
+.quick .add:disabled {
+  opacity: 0.45;
+  cursor: default;
+  background: none;
+}
+/* Where something dragged would land in it: before an entry or, at its end, before the button. */
+.quick .drop-before {
+  box-shadow: -2px 0 0 var(--accent);
+}
 .pane.drop-end .tree {
   box-shadow: 0 2px 0 var(--accent);
 }

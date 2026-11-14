@@ -60,9 +60,9 @@ export const ui = {
   cursor: undefined, // The row the keyboard is on, in the focused pane.
   // What is being typed in a field in the place of a name: { what, text, ... } - `what` it is, and the `text` the field starts with: 'name' or 'address' of row { id, pane }, the name of a 'tree' { tree }, or the name to save the 'filter' of { tree } under. (What is done with what was typed: see TYPED in commands.js.)
   typing: undefined,
-  // What is dragged: { kind: 'rows', ids, from, label }, { kind: 'tree', tree, label }, { kind: 'plan', ids, label } (an entry of the plan) or { kind: 'link' }.
+  // What is dragged: { kind: 'rows', ids, from, label }, { kind: 'tree', tree, label }, { kind: 'entry', list, ids, from?, label } (an entry of a list kept at hand: 'plan', or 'quick' of tree `from`) or { kind: 'link' }.
   drag: undefined,
-  // Where it would land: { pane, targetId, position } in a pane, { cell, tree } in the table of trees, { plan, before } in the plan.
+  // Where it would land: { pane, targetId, position } in a pane, { cell, tree } in the table of trees, { list, pane?, before } in a list kept at hand (the plan; the quick row of a pane).
   drop: undefined,
   menu: undefined, // { x, y, items, opener }: `opener` is the button it hangs from, if any.
   // The one thing open on top of the panel, if any:
@@ -139,8 +139,12 @@ function place(pane) {
 }
 
 export const paneEl = (pane) => app.querySelector(`.pane[data-pane="${pane.id}"]`);
-/** How far the top of a pane's tree is above the top of what the pane shows, in pixels (below it: negative). */
-const scrolled = (el) => el.getBoundingClientRect().top - el.querySelector('.tree').getBoundingClientRect().top;
+/** What a pane shows of its tree, from..to in pixels down the tree: from under the quick row, which stays at the pane's top over the rows, to the pane's bottom. */
+function sightOf(el) {
+  const tree = el.querySelector('.tree').getBoundingClientRect().top;
+  const top = el.getBoundingClientRect().top;
+  return [Math.max(top, el.querySelector('.quick')?.getBoundingClientRect().bottom ?? top) - tree, top + el.clientHeight - tree];
+}
 /** The first row of a pane whose bottom is below `y` (the number of rows, if none is). */
 function rowAt(pane, y) {
   let [low, high] = [0, pane.rows.length];
@@ -166,7 +170,7 @@ export function rowUnder(pane, y) {
  */
 function measure(pane) {
   const el = paneEl(pane);
-  const [seenFrom, seenTo] = (pane.sight = el ? [scrolled(el), scrolled(el) + el.clientHeight] : [0, innerHeight]);
+  const [seenFrom, seenTo] = (pane.sight = el ? sightOf(el) : [0, innerHeight]);
   const from = Math.max(0, Math.floor(rowAt(pane, seenFrom) / STEP) * STEP - SPARE);
   const to = Math.min(pane.rows.length, Math.ceil(rowAt(pane, seenTo - ROW) / STEP) * STEP + STEP + SPARE);
   const changed = from !== pane.from || to !== pane.to;
@@ -812,12 +816,20 @@ export function showActiveTree() {
  * never opens by itself: that row says the tab is in it. None when the tab's
  * own row is there, or the tab is not in the pane's tree.
  */
-function holderOf(pane) {
+function holderOf(pane, node = ui.activeId) {
   const tree = ui.library.trees[pane.tree];
-  if (rowOf(pane, ui.activeId)) return undefined;
-  let id = parentOf(tree, ui.activeId);
+  if (rowOf(pane, node)) return undefined;
+  let id = parentOf(tree, node);
   while (id !== undefined && !rowOf(pane, id)) id = parentOf(tree, id);
   return id;
+}
+
+/** Shows the row of node `id` in a pane and chooses it - or, where a folded branch hides it, the row that holds it (nothing unfolds by itself). */
+export function showRow(pane, id) {
+  const at = holderOf(pane, id) ?? id;
+  if (!rowOf(pane, at)) return; // Left out by the filter or the search.
+  select(pane, at);
+  reveal(pane, at);
 }
 
 /** Brings the current tab's row into sight or, where a folded branch hides it, the row that holds it. */

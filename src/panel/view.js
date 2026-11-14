@@ -2,7 +2,7 @@
 
 import { html, render, nothing } from '../vendor/lit-html/lit-html.js';
 import { repeat } from '../vendor/lit-html/directives/repeat.js';
-import { descendantsOf, gridOf, isGroup, isNote, parentOf, planOf } from '../model.js';
+import { descendantsOf, gridOf, inTree, isGroup, isNote, parentOf, planOf, quickOf } from '../model.js';
 import { t } from '../i18n.js';
 import { toastView } from '../parts.js';
 import { keyOf } from './keymap.js';
@@ -244,6 +244,38 @@ function filteredView({ ticking, mode, saved, picked, by, save, shown, of }, nam
   `;
 }
 
+/**
+ * A tree's quick row: its own nodes kept at hand (see quickOf in model.js),
+ * each by its icon alone - its name is a hover away. A press goes there. It
+ * has its place in every tree, filled or not: at its end stands the button
+ * that keeps the current page at hand, which is also where dragged rows land.
+ */
+function quickView(pane, tree, ui) {
+  const ids = quickOf(tree);
+  const drop = ui.drop?.list === 'quick' && ui.drop.pane === pane && ui.drop;
+  const dragged = ui.drag?.list === 'quick' && ui.drag.from === pane.tree ? ui.drag.ids : [];
+  const entry = (id) => {
+    const node = ui.library.nodes[id];
+    const state = `${id === ui.activeId ? 'active' : ''} ${drop && drop.before === id ? 'drop-before' : ''} ${dragged.includes(id) ? 'dragging' : ''}`;
+    return html`<button class="entry ${state}" data-action="quick-go" data-entry=${id} tabindex="-1" title=${titleOf(node)}>${iconView(node)}</button>`;
+  };
+  const here = inTree(tree, ui.activeId) && !ids.includes(ui.activeId);
+  return html`
+    <div class="quick" data-list="quick" role="toolbar" aria-label=${t('quick')}>
+      ${repeat(ids, (id) => id, entry)}
+      <button
+        class="entry add ${drop && !drop.before ? 'drop-before' : ''}"
+        data-action="quick-add"
+        tabindex="-1"
+        ?disabled=${!here}
+        title=${t(here ? 'quickAddHere' : 'quickHint')}
+      >
+        ${ICONS.add}
+      </button>
+    </div>
+  `;
+}
+
 /** One tree: the rows of it that are drawn (those in sight and a few beyond), each where screen.js put it (`pull`, `shift`), with gaps as tall as the rows not drawn. The same view serves the panes of the panel and the picker. */
 function paneView(pane, index, ui) {
   const way = { leads: leadsToActive(pane, ui) };
@@ -266,7 +298,7 @@ function paneView(pane, index, ui) {
             ${act('pane-close', 'close', t('closePane'))}
           </header>`
         : ''}
-      ${looseView(pane.loose)}
+      ${picking ? nothing : quickView(pane, tree, ui)} ${looseView(pane.loose)}
       <div class="tree ${ui.pointer?.pane === pane ? '' : 'calm'}" role="tree" aria-label=${tree.name} style="--tight:${ui.tight}px">
         <div class="gap" style="height:${pane.before}px"></div>
         ${repeat(
@@ -374,14 +406,15 @@ function ago(at) {
  * is behind, under the trees) and the plan (what is ahead, above them) are
  * the same thing with different places in it.
  *   name      'journal' | 'plan': its class, and the action of its fold button, `<name>-toggle`
+ *   more      other classes; `list`: the name of the list kept at hand it shows (what dragging looks for, see drag.js)
  *   open      whether the list is unfolded (`whole`: the heading is shown even while folded)
  *   first     the place shown in the heading's stead while folded; `count`: how many more there are
  *   body      what is under the heading while unfolded
  */
-function strip({ name, icon, heading, open, whole = open, first, count, body, foldable = true, more = '' }) {
+function strip({ name, icon, heading, open, whole = open, first, count, body, foldable = true, more = '', list }) {
   const fold = foldable ? act(`${name}-toggle`, 'chevron', t(`${name}${open ? 'Fold' : 'Unfold'}`), 'shown fold') : nothing;
   return html`
-    <section class="strip ${name} ${open ? 'open' : ''} ${more}">
+    <section class="strip ${name} ${open ? 'open' : ''} ${more}" data-list=${list ?? nothing}>
       <div class="strip-head">
         <span class="favicon glyph">${ICONS[icon]}</span>
         ${whole ? html`<span class="title">${heading}</span>` : first}
@@ -421,16 +454,17 @@ function journalView(ui) {
 
 /**
  * The plan, at the top: what to open next, a click away; unfolded, all that
- * is planned, in order (dragging changes it). Like the journal, it never
- * holds the page the user is at.
+ * is planned, in order (dragging changes it). It is `planOf` of the library,
+ * whole - what is in the plan is asked there and nowhere else.
  */
 function planView(ui) {
-  const ids = planOf(ui.library).filter((id) => id !== ui.activeId);
-  // Nothing planned takes no room - until something is dragged that could be.
-  if (!ids.length && !['rows', 'plan'].includes(ui.drag?.kind)) return nothing;
+  const ids = planOf(ui.library);
+  const drop = ui.drop?.list === 'plan' && ui.drop;
+  // Nothing planned takes no room - until something is dragged that can be.
+  if (!ids.length && !ui.drag?.plan?.length) return nothing;
   // An entry is a button to go there, and beside it a button to take it off the plan.
   const entry = (id) => html`
-    <div class="place ${ui.drop?.plan && ui.drop.before === id ? 'drop-before' : ''}" data-node=${id}>
+    <div class="place ${drop && drop.before === id ? 'drop-before' : ''}" data-entry=${id}>
       <button class="go" data-action="plan-go" data-node=${id} title=${t('planGo')}>
         ${iconView(ui.library.nodes[id])}<span class="title">${titleOf(ui.library.nodes[id])}</span>
       </button>
@@ -439,6 +473,7 @@ function planView(ui) {
   `;
   return strip({
     name: 'plan',
+    list: 'plan',
     icon: 'next',
     heading: t(ids.length ? 'plan' : 'planDrop'),
     open: ui.open.plan,
@@ -447,7 +482,7 @@ function planView(ui) {
     count: ids.length - 1,
     body: ids.length ? html`<div class="places">${ids.map(entry)}</div>` : nothing,
     foldable: ids.length > 0,
-    more: `ahead ${ui.drop?.plan && !ui.drop.before ? 'drop-end' : ''}`,
+    more: `ahead ${ids.length ? 'pending' : ''} ${drop && !drop.before ? 'drop-end' : ''}`,
   });
 }
 
