@@ -2,7 +2,7 @@
 
 import { html, render, nothing } from '../vendor/lit-html/lit-html.js';
 import { repeat } from '../vendor/lit-html/directives/repeat.js';
-import { descendantsOf, gridOf, inTree, isGroup, isNote, parentOf, planOf } from '../model.js';
+import { descendantsOf, gridOf, isGroup, isNote, parentOf, planOf } from '../model.js';
 import { t } from '../i18n.js';
 import { toastView } from '../parts.js';
 import { keyOf } from './keymap.js';
@@ -103,7 +103,7 @@ function rowView(row, pane, ui, { leads, ticks }, lit) {
   const title = titleOf(node);
   // The way home: always in sight on a pinned page that has left, among the row's other buttons on any other.
   const home = (more) => act('home', 'home', t('backHome', node.home.title || node.home.url), more);
-  const editing = ui.renaming?.id === row.id && ui.renaming.pane === pane && ui.renaming;
+  const editing = ui.typing?.id === row.id && ui.typing.pane === pane && ui.typing; // Its name, or its address, is being typed.
   return html`
     <div
       class=${classes.filter(Boolean).join(' ')}
@@ -121,7 +121,7 @@ function rowView(row, pane, ui, { leads, ticks }, lit) {
       </button>
       ${picking ? html`<span class="check"></span>` : ''} ${iconView(node)}
       ${editing
-        ? html`<input class="rename" .value=${editing.field === 'url' ? node.url : title} aria-label=${t('renameHint')} />`
+        ? html`<input class="rename" .value=${editing.text} aria-label=${t('renameHint')} />`
         : html`<span class="title">${title}</span>`}
       ${node.keep ? html`<span class="mark" title=${t('kept')}>${ICONS.keep}</span>` : ''}
       ${shared ? html`<span class="mark" title=${t('alsoIn', shared.join(', '))}>${ICONS.shared}</span>` : ''}
@@ -140,7 +140,7 @@ function rowView(row, pane, ui, { leads, ticks }, lit) {
   `;
 }
 
-/** The nodes above the current tab's node in a pane's tree. (The node itself is always in sight: see rowsOf.) */
+/** The nodes above the current tab's node in a pane's tree. (The node itself always has a row: see rowsOf.) */
 function leadsToActive(pane, ui) {
   const tree = ui.library.trees[pane.tree];
   const leads = new Set();
@@ -174,7 +174,8 @@ const emptyView = (ui) => html`<p class="hint">${t(ui.query ? 'nothingFound' : '
  * tools. While nodes are being ticked: the saved filters to choose from (each
  * with a button to take it off the list), and how many are ticked. With the
  * filter on: what is shown alone - or, while that is being saved, a field
- * for its name - how much of the tree that is, "save" and "clear".
+ * for its name (`naming`: what is typed there, see `ui.typing`) - how much of
+ * the tree that is, "save" and "clear".
  */
 function filteredView({ ticking, saved, picked, by, save, shown, of }, naming) {
   if (ticking) {
@@ -196,7 +197,7 @@ function filteredView({ ticking, saved, picked, by, save, shown, of }, naming) {
   }
   return html`
     <div class="filtered">
-      ${naming ? html`<input class="rename" .value=${by} aria-label=${t('filterName')} />` : html`<span class="by" title=${by}>${by}</span>`}
+      ${naming ? html`<input class="rename" .value=${naming.text} aria-label=${t('filterName')} />` : html`<span class="by" title=${by}>${by}</span>`}
       <span class="count">${t('filterCount', shown, of)}</span>
       ${save ? html`<button data-action="filter-save" title=${t('filterSaveHint')}>${t('filterSave')}</button>` : nothing}
       <button data-action="filter-clear">${t('filterClear')}</button>
@@ -204,14 +205,13 @@ function filteredView({ ticking, saved, picked, by, save, shown, of }, naming) {
   `;
 }
 
-/** One tree: its rows in sight, each where screen.js put it (`pull`, `shift`), with gaps as tall as the rows not drawn. The same view serves the panes of the panel and the picker. */
+/** One tree: the rows of it that are drawn (those in sight and a few beyond), each where screen.js put it (`pull`, `shift`), with gaps as tall as the rows not drawn. The same view serves the panes of the panel and the picker. */
 function paneView(pane, index, ui) {
   const way = { leads: leadsToActive(pane, ui) };
   const guide = litGuide(pane.rows, ui.activeId);
   const picking = pane === ui.overlay;
   const focused = pane === ui.focus;
   const tree = ui.library.trees[pane.tree];
-  // In the picker a chosen node brings its subtree along: show that.
   // In the picker what is chosen is ticked, and a chosen node brings what is under it along.
   way.ticks = picking ? { on: pane.sel, with: new Set([...pane.sel].flatMap((id) => descendantsOf(tree, id))) } : pane.ticks;
   return html`
@@ -263,9 +263,9 @@ function treeGrid(ui) {
     const drop = ui.drop?.cell === cell ? 'drop' : '';
     if (!id) return html`<button class="cell ${drop}" data-action="tree-add" data-cell=${cell} title=${t('newTree')}>${ICONS.add}</button>`;
     const tree = ui.library.trees[id];
-    if (ui.renaming?.tree === id) return html`<input class="rename tree-name" .value=${tree.name} aria-label=${t('renameHint')} />`;
+    if (ui.typing?.what === 'tree' && ui.typing.tree === id) return html`<input class="rename tree-name" .value=${ui.typing.text} aria-label=${t('renameHint')} />`;
     // The tree of the current tab is marked wherever the panel is looking. So is a tree with a page that plays, by the sign its row has.
-    const playing = [...ui.audible].some((node) => inTree(tree, node));
+    const playing = ui.playingTrees.has(id);
     const state = `${id === current ? 'current' : ''} ${id === ui.activeTree ? 'has-active' : ''} ${playing ? 'playing' : ''} ${ui.drag?.tree === id ? 'dragging' : ''} ${drop}`;
     return html`<button class="tab ${state}" data-action="tree-show" data-tree=${id} data-cell=${cell} title=${playing ? t('playing') : nothing}>
       ${playing ? html`<span class="sound"></span>` : nothing}<span>${treeLabel(tree)}</span>
@@ -414,7 +414,7 @@ function planView(ui) {
 }
 
 /**
- * The pages that play out of sight (see outOfSight in sound.js), in a stack
+ * The pages that play out of sight (see stackOf in sound.js), in a stack
  * of the same dark shape as the notice of what was done: each a place to go
  * to, with the waves its row would have, and a button to send it away.
  */
@@ -427,7 +427,7 @@ function soundsView(ui) {
       <button class="go" data-action="sound-go" data-node=${id} title=${`${titleOf(ui.library.nodes[id])}\n${t('soundGo')}`}>
         ${iconView(ui.library.nodes[id])}<span class="title">${titleOf(ui.library.nodes[id])}</span>
       </button>
-      ${act('sound-hush', 'close', t('soundHush'))}
+      ${act('sound-dismiss', 'close', t('soundDismiss'))}
     </div>
   `;
   return html`<div class="bubble sounds">${repeat(ids, (id) => id, entry)}${more ? html`<p class="more">${t('soundMore', more)}</p>` : nothing}</div>`;
@@ -460,7 +460,7 @@ export function draw(container, ui) {
           ${tool('filter', 'filter', t(ui.ticking ? 'filterApplyHint' : 'filter'), { pressed: !!ui.filtered })}
           ${split('row', 'splitRow')} ${split('column', 'splitColumn')} ${tool('more', 'more', t('more'), { place: 'end' })}
         </div>
-        ${ui.filtered ? filteredView(ui.filtered, ui.renaming?.filter === ui.focus.tree) : nothing}
+        ${ui.filtered ? filteredView(ui.filtered, ui.typing?.what === 'filter' && ui.typing.tree === ui.focus.tree && ui.typing) : nothing}
       </header>
       ${planView(ui)}
       <main class="panes split-${ui.split}">${repeat(ui.panes, (pane) => pane.id, (pane, index) => paneView(pane, index, ui))}</main>

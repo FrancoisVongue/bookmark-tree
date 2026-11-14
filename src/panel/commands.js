@@ -7,14 +7,15 @@ import { t } from '../i18n.js';
 import { ask } from '../parts.js';
 import { askForBookmarks, saveFile } from '../page.js';
 import { titleOf } from './view.js';
-import { branches, closeOverlay, endRenaming, here, op, openOverlay, pick, picker, refresh, rename, rowOf, saveFilter, say, send, show, ui, under, unsay } from './screen.js';
+import { freeName } from './filter.js';
+import { branches, closeOverlay, endTyping, here, op, openOverlay, pick, picker, refresh, rowOf, saveFilter, say, send, show, typeIn, ui, under, unsay } from './screen.js';
 
 export const activate = (pane, id, where) =>
   send({ type: 'activate', nodeId: id, treeId: pane.tree, windowId: ui.windowId, where });
 export const newTab = (pane, id, as) => send({ type: 'new-tab', windowId: ui.windowId, treeId: pane.tree, nodeId: id, as });
 export const toggle = (pane, id) => op('collapse', { tree: pane.tree, id, collapsed: !rowOf(pane, id).collapsed });
 
-/** Back to a place from the journal: its tree is shown, its page opened (again, if it sleeps). */
+/** To a place the user is shown apart from its row - in the journal, the plan, the stack of pages that play: its tree is shown (`tree`, if the node is there; else the first that has it), its page opened (again, if it sleeps). */
 export function revisit(id, tree) {
   show(here(), treeFor(ui.library, id, tree));
   activate(here(), id);
@@ -64,7 +65,7 @@ export async function newGroup(pane, target) {
   const id = crypto.randomUUID();
   await op('note-add', { tree: pane.tree, id, name: t('newGroup'), target, position: 'after' });
   await refresh();
-  startRename({ id, pane });
+  startTyping({ what: 'name', id, pane });
 }
 
 /** A new tree, in cell `cell` of the table of trees (or the first free one). */
@@ -73,7 +74,7 @@ export async function newTree(cell) {
   await op('tree-add', { id, name: t('newTree'), cell });
   show(here(), id);
   await refresh();
-  startRename({ tree: id });
+  startTyping({ what: 'tree', tree: id });
 }
 
 /**
@@ -140,23 +141,55 @@ export function undo(again = false) {
   send({ type: again ? 'redo' : 'undo' });
 }
 
-// --- Renaming (typing an address, naming a filter to save) ----------------------
+// --- Typing in a field: a name, an address, the name to save a filter under ------
 
-export const startRename = rename;
+/**
+ * What can be typed in a field on the screen, by what it is (`what` of
+ * `ui.typing`, see screen.js). For each:
+ *   from   the text the field starts with
+ *   keep   what is done with the text typed (Enter)
+ *   left   what leaving the field means: true - the same as Enter; false - giving up, as Esc
+ * A name or an address was there before, and leaving the field unchanged
+ * changes nothing; a filter is saved only when the user says so.
+ */
+const TYPED = {
+  name: {
+    from: ({ id }) => titleOf(ui.library.nodes[id]),
+    keep({ id }, text) {
+      const node = ui.library.nodes[id];
+      // Typing the page's own title back means "no name of my own".
+      if (text !== titleOf(node)) op('rename', { id, name: text === node.title ? '' : text });
+    },
+    left: true,
+  },
+  address: {
+    from: ({ id }) => ui.library.nodes[id].url,
+    keep: ({ id }, text) => text !== ui.library.nodes[id].url && op('address', { id, url: text }),
+    left: true,
+  },
+  tree: {
+    from: ({ tree }) => ui.library.trees[tree].name,
+    keep: ({ tree }, text) => op('tree-rename', { tree, name: text }),
+    left: true,
+  },
+  filter: {
+    // What the bar calls the filter - made a name no saved filter of the tree has: one of them gives way only to its own name typed by hand.
+    from: ({ tree }) => freeName(ui.saved[tree] ?? [], ui.filtered.by),
+    keep: ({ tree }, text) => saveFilter(tree, text),
+    left: false,
+  },
+};
 
-export function endRename(save) {
-  const { renaming, text } = endRenaming();
-  if (!renaming || !save) return;
-  if (renaming.tree) return op('tree-rename', { tree: renaming.tree, name: text });
-  if (renaming.filter) return saveFilter(renaming.filter, text);
-  const node = ui.library.nodes[renaming.id];
-  if (renaming.field === 'url') {
-    if (text !== node.url) op('address', { id: renaming.id, url: text });
-  } else if (text !== titleOf(node)) {
-    // Typing the page's own title back means "no name of my own".
-    op('rename', { id: renaming.id, name: text === node.title ? '' : text });
-  }
+/** Starts typing: `what` is { what: 'name' | 'address', id, pane }, { what: 'tree', tree } or { what: 'filter', tree }. */
+export const startTyping = (what) => typeIn({ ...what, text: TYPED[what.what].from(what) });
+
+/** Ends it; with `keep`, what was typed is taken. */
+export function finishTyping(keep) {
+  const { typing, text } = endTyping();
+  if (typing && keep) TYPED[typing.what].keep(typing, text);
 }
+/** The field lost the keyboard. */
+export const leaveTyping = () => ui.typing && finishTyping(TYPED[ui.typing.what].left);
 
 // --- A tree as a file, as bookmarks; the rest is on the settings page ----------
 

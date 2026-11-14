@@ -147,7 +147,7 @@ const stack = () => panel.locator('.sounds .place .title').allTextContents();
 console.log('\n== an empty tree is shown while three pages play: in the stack:', await stack(), '| trees with waves:', (await panel.locator('.grid .tab.playing').allTextContents()).map((name) => name.trim()));
 await shot('7-sound-elsewhere');
 await panel.locator('.sounds .place', { hasText: 'Page /sound-2' }).hover();
-await panel.locator('.sounds .place', { hasText: 'Page /sound-2' }).locator('[data-action="sound-hush"]').click();
+await panel.locator('.sounds .place', { hasText: 'Page /sound-2' }).locator('[data-action="sound-dismiss"]').click();
 console.log('  one sent away: in the stack:', await stack());
 await panel.locator('.sounds .go').first().click();
 await say('a click on the first: its tab, its tree, its row');

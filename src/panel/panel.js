@@ -2,7 +2,7 @@
 // into commands for the worker (see screen.js for what the panel itself owns).
 // A side panel also gets out of the way of a window gone full screen (below).
 
-import { allOfJournal, app, applySaved, applyTicks, arrange, clearFilters, closeMenu, closeNotice, closeOverlay, closePane, deselect, forgetSaved, here, hush, idAt, log, menuUnder, openMenu, paneAt, pickFrom, picker, pointAt, redraw, refresh, revealActive, rowOf, search, searchJournal, select, setFocus, show, showActiveTree, split, targets, tick, tickRow, togglePicked, toggleStrip, ui, watch } from './screen.js';
+import { allOfJournal, app, applySaved, applyTicks, arrange, clearFilters, closeMenu, closeNotice, closeOverlay, closePane, deselect, dismiss, forgetSaved, here, idAt, log, menuUnder, openMenu, paneAt, pickFrom, picker, pointAt, redraw, refresh, revealActive, rowOf, search, searchJournal, select, setFocus, show, showActiveTree, split, targets, tick, tickRow, togglePicked, toggleStrip, ui, watch } from './screen.js';
 import { mainMenu, rowMenu, treeMenu } from './menus.js';
 import { endsDrag } from './drag.js';
 import { saveBackup } from '../page.js';
@@ -33,7 +33,7 @@ const actions = {
   filter: tick,
   'filter-saved': ({ el }) => applySaved(here().tree, el.dataset.name),
   'filter-forget': ({ el }) => forgetSaved(here().tree, el.dataset.name),
-  'filter-save': () => cmd.startRename({ filter: here().tree }),
+  'filter-save': () => cmd.startTyping({ what: 'filter', tree: here().tree }),
   'filter-clear': () => clearFilters(here().tree),
   'split-row': () => split('row'),
   'split-column': () => split('column'),
@@ -54,9 +54,11 @@ const actions = {
   'plan-toggle': () => toggleStrip('plan'),
   // A page that plays out of sight: to its tab - in the tree the user works in, if it is there.
   'sound-go': ({ el }) => cmd.revisit(el.dataset.node, here().tree),
-  'sound-hush': ({ el }) => hush(el.closest('.place').dataset.node),
+  'sound-dismiss': ({ el }) => dismiss(el.closest('.place').dataset.node),
   'overlay-close': closeOverlay,
 };
+// Those of them that leave the tree. While rows are ticked for the filter, what is ticked is applied first, then they go: nothing ticked is lost without a word.
+const LEAVING = ['tree-show', 'journal-go', 'plan-go', 'sound-go'];
 
 let chosen; // The row that was the one selected before the click now being handled, if it was that row.
 app.addEventListener('click', (event) => {
@@ -67,6 +69,7 @@ app.addEventListener('click', (event) => {
   if (pane) setFocus(pane);
   // A click inside a dialog lands on the overlay behind it too: that is not "close".
   if (el && !(el.dataset.action === 'overlay-close' && event.target !== el)) {
+    if (ui.ticking && LEAVING.includes(el.dataset.action)) applyTicks();
     return actions[el.dataset.action]?.({ pane, id, el });
   }
   if (id && !pane) return togglePicked(id); // A row of the pane on top, to choose from: a click marks it.
@@ -87,8 +90,8 @@ app.addEventListener('dblclick', (event) => {
   const id = idAt(event.target);
   const pane = paneAt(event.target);
   const treeId = event.target.closest('.bar .tab[data-tree]')?.dataset.tree;
-  if (treeId) cmd.startRename({ tree: treeId });
-  else if (pane && id && id === chosen && !ui.ticking && event.target.closest('.title')) cmd.startRename({ id, pane });
+  if (treeId) cmd.startTyping({ what: 'tree', tree: treeId });
+  else if (pane && id && id === chosen && !ui.ticking && event.target.closest('.title')) cmd.startTyping({ what: 'name', id, pane });
 });
 
 // Middle click, as on a tab: closes a live node's tab (the node stays,
@@ -127,7 +130,7 @@ addEventListener(
 );
 
 app.addEventListener('focusout', (event) => {
-  if (event.target.closest?.('.rename')) cmd.endRename(true);
+  if (event.target.closest?.('.rename')) cmd.leaveTyping();
 });
 
 app.addEventListener('input', (event) => {

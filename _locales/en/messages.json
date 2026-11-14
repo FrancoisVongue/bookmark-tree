@@ -347,7 +347,7 @@
   "soundGo": {
     "message": "Go to this tab"
   },
-  "soundHush": {
+  "soundDismiss": {
     "message": "Hide until it plays again"
   },
   "soundMore": {

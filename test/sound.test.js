@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { outOfSight } from '../src/panel/sound.js';
+import { stackOf } from '../src/panel/sound.js';
 
-const stack = (playing, seen = '', hushed = '') => outOfSight([...playing], (id) => seen.includes(id), new Set(hushed));
+const stack = (playing, seen = '', dismissed = '') => stackOf([...playing], (id) => seen.includes(id), new Set(dismissed));
 
 test('a playing page is in the stack while its row is not in sight', () => {
   assert.deepEqual(stack('abc', 'b'), { ids: ['a', 'c'], more: 0 });

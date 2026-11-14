@@ -9,8 +9,8 @@ addEventListener('keydown', (event) => {
   const ctrl = event.ctrlKey || event.metaKey;
   const letter = event.key.toLowerCase();
   if (event.target.closest?.('.rename')) {
-    if (event.key === 'Enter') cmd.endRename(true);
-    else if (event.key === 'Escape') cmd.endRename(false);
+    if (event.key === 'Enter') cmd.finishTyping(true);
+    else if (event.key === 'Escape') cmd.finishTyping(false);
     return;
   }
   // What is open on top has the keys; none of them reaches the rows under it.
@@ -46,9 +46,8 @@ addEventListener('keydown', (event) => {
   const pane = paneAt(event.target) ?? here();
   if (!id || !pane || onTop()) return;
   if (ui.ticking) {
-    // Ticking for the filter: Enter leaves what is ticked, Esc gives up, Space ticks the row; the arrows walk as ever, and nothing else is done to the tree meanwhile.
+    // Ticking for the filter: Enter leaves what is ticked, Space ticks the row (Esc gave up, above); the arrows walk as ever, and nothing else is done to the tree meanwhile.
     if (event.key === 'Enter') return applyTicks();
-    if (event.key === 'Escape') return stopTicking();
     if (event.key === ' ') return event.preventDefault(), tickRow(pane, id, event.shiftKey);
     if (!['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
   }
@@ -81,7 +80,7 @@ addEventListener('keydown', (event) => {
     },
     ' ': () => cmd.open(pane, id),
     Delete: () => cmd.remove(pane, id, event.shiftKey),
-    F2: () => cmd.startRename({ id, pane }),
+    F2: () => cmd.startTyping({ what: 'name', id, pane }),
     Tab: () => (event.shiftKey ? cmd.outdent : cmd.indent)(pane, ids),
     d: () => cmd.duplicate(pane, ids), // (With Ctrl: a letter alone is not a key of the tree, see below.)
     a: () => selectAlso(pane),

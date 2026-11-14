@@ -2,7 +2,10 @@
 // each with all that is under it, and when they said so. Here is what that
 // means. A saved filter is such a set of ticked nodes under a name,
 // { name, picked }: something to set the filter from, not a filter of another
-// kind. Pure: no screen here.
+// kind. Both are kept as the user said them: a ticked node that is gone is
+// left out when the filter is read (stillPicked), never taken out of what is
+// kept - so a node that comes back (an undo) is ticked as before.
+// Pure: no screen here.
 
 import { ROOT, descendantsOf, inTree } from '../model.js';
 
@@ -17,16 +20,26 @@ export function topmost(tree, ids) {
 }
 
 /**
- * Of filters (each with `picked`: a tree's own, or saved ones), those that
- * still have something to show in `tree`, each with the ticked nodes that
- * count. A tree that is gone has none.
+ * Of the nodes a filter keeps as ticked (`picked`: a tree's own filter, or a
+ * saved one), those that count in `tree` as it is now. A tree that is gone
+ * has none; nor has a filter of a shape an older version kept.
  */
-export const alive = (tree, filters) =>
-  filters.map((filter) => ({ ...filter, picked: tree ? topmost(tree, filter.picked ?? []) : [] })).filter((filter) => filter.picked.length);
+export const stillPicked = (tree, picked) => (tree && picked ? topmost(tree, picked) : []);
 
-/** The saved filter that ticks exactly the nodes `picked`, if there is one. */
-export const savedAs = (saved, picked) =>
-  saved.find((each) => each.picked.length === picked.length && each.picked.every((id) => picked.includes(id)));
+/** The saved filter that ticks, in `tree` as it is now, exactly the nodes `picked`, if there is one. */
+export const savedWith = (tree, saved, picked) =>
+  saved.find((each) => {
+    const its = stillPicked(tree, each.picked);
+    return its.length === picked.length && its.every((id) => picked.includes(id));
+  });
+
+/** A name no saved filter has: `name` itself, or else with the first number that makes it one. */
+export function freeName(saved, name) {
+  const taken = new Set(saved.map((each) => each.name));
+  let [free, n] = [name, 1];
+  while (taken.has(free)) free = `${name} ${++n}`;
+  return free;
+}
 
 /** The saved filters with `picked` kept as `name`: in the place of the one called so, or after them all. */
 export function withSaved(saved, name, picked) {

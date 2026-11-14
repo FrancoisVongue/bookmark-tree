@@ -2,7 +2,7 @@
 
 import { gridOf, isGroup, isNote, planOf } from '../model.js';
 import { t } from '../i18n.js';
-import { here, openBeside, openMenu, rename, rowOf, showBranch, targets, ui, under } from './screen.js';
+import { here, openBeside, openMenu, rowOf, showBranch, targets, ui, under } from './screen.js';
 import * as cmd from './commands.js';
 import { keyOf } from './keymap.js';
 import { isAway, removeLabel } from './view.js';
@@ -31,8 +31,8 @@ export function rowMenu(pane, id) {
     item('newGroup', () => cmd.newGroup(pane, id), keyOf('newGroup')),
     item('newNote', () => cmd.newNote(pane, id), keyOf('newNote')),
     null,
-    item('rename', () => cmd.startRename({ id, pane }), keyOf('rename')),
-    page && item('editAddress', () => cmd.startRename({ id, pane, field: 'url' })),
+    item('rename', () => cmd.startTyping({ what: 'name', id, pane }), keyOf('rename')),
+    page && item('editAddress', () => cmd.startTyping({ what: 'address', id, pane })),
     page && item('copyLink', () => cmd.copyLinks(ids)),
     item('changeIcon', () => cmd.chooseIcon({ ids })),
     item('duplicate', () => cmd.duplicate(pane, ids), keyOf('duplicate')),
@@ -54,7 +54,7 @@ export function rowMenu(pane, id) {
 export function treeMenu(treeId) {
   const ids = Object.keys(ui.library.trees);
   return [
-    item('rename', () => cmd.startRename({ tree: treeId })),
+    item('rename', () => cmd.startTyping({ what: 'tree', tree: treeId })),
     item('changeIcon', () => cmd.chooseIcon({ tree: treeId })),
     item('openBeside', () => openBeside(treeId)),
     null,

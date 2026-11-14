@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { MAIN, ROOT, addNode, createLibrary, rowsOf, setCollapsed } from '../src/model.js';
-import { alive, nameFor, narrowedTo, savedAs, topmost, withLeads, withSaved } from '../src/panel/filter.js';
+import { freeName, nameFor, narrowedTo, savedWith, stillPicked, topmost, withLeads, withSaved } from '../src/panel/filter.js';
 
 /** A library from an outline: a dot per level, ids are the names. */
 function library(outline) {
@@ -49,21 +49,40 @@ test('what is wanted comes with the rows that lead to it, and those are marked',
   assert.equal(shown(withLeads(rows, new Set())), '');
 });
 
-test('a saved filter lives while something it ticked is in the tree', () => {
+test('what a filter ticked counts while it is in the tree', () => {
   const { trees } = library('a .b ..c .d e');
-  const saved = [{ name: 'one', picked: ['c', 'gone', 'b'] }, { name: 'none', picked: ['gone'] }, { name: 'two', picked: ['e'] }];
-  assert.deepEqual(alive(trees[MAIN], saved), [{ name: 'one', picked: ['b'] }, { name: 'two', picked: ['e'] }]);
-  assert.deepEqual(alive(undefined, saved), []); // The tree itself is gone.
-  assert.deepEqual(alive(trees[MAIN], [{ picked: ['e', 'a'], at: 5 }]), [{ picked: ['a', 'e'], at: 5 }]); // A tree's own filter, the same way.
+  assert.deepEqual(stillPicked(trees[MAIN], ['c', 'gone', 'b']), ['b']);
+  assert.deepEqual(stillPicked(trees[MAIN], ['gone']), []);
+  assert.deepEqual(stillPicked(trees[MAIN], ['e', 'a']), ['a', 'e']);
+  assert.deepEqual(stillPicked(undefined, ['e']), []); // The tree itself is gone.
+  assert.deepEqual(stillPicked(trees[MAIN], undefined), []); // A filter of an older shape.
+});
+
+test('a filter survives the removal and return of its node', () => {
+  const picked = ['b', 'e']; // As the user said it: kept so, whatever happens to the tree.
+  const whole = library('a .b ..c e');
+  const without = library('a e'); // b is removed, with what is under it,
+  assert.deepEqual(stillPicked(without.trees[MAIN], picked), ['e']);
+  assert.equal(shown(rowsOf(narrowedTo(without, MAIN, { picked, at: 0 }), MAIN)), 'e');
+  // and brought back (an undo): it is ticked as before, for nothing was taken out of the filter.
+  assert.deepEqual(stillPicked(whole.trees[MAIN], picked), ['b', 'e']);
+  assert.equal(shown(rowsOf(narrowedTo(whole, MAIN, { picked, at: 0 }), MAIN)), 'b .c e');
+  assert.deepEqual(picked, ['b', 'e']);
 });
 
 test('saving a filter, and knowing a saved one', () => {
   let saved = withSaved([], 'work', ['a', 'b']);
   saved = withSaved(saved, 'read', ['c']);
   assert.deepEqual(saved.map((each) => each.name), ['work', 'read']);
-  assert.equal(savedAs(saved, ['b', 'a']).name, 'work'); // The same nodes, in whatever order.
-  assert.equal(savedAs(saved, ['a']), undefined);
-  assert.equal(savedAs(saved, ['a', 'b', 'c']), undefined);
+  const { trees } = library('a b c d');
+  assert.equal(savedWith(trees[MAIN], saved, ['b', 'a']).name, 'work'); // The same nodes, in whatever order.
+  assert.equal(savedWith(trees[MAIN], saved, ['a']), undefined);
+  assert.equal(savedWith(trees[MAIN], saved, ['a', 'b', 'c']), undefined);
+  assert.equal(savedWith(library('a c').trees[MAIN], saved, ['a']).name, 'work'); // By what it ticks now: b is gone.
+  // The name offered for a new one is not a name taken.
+  assert.equal(freeName(saved, 'play'), 'play');
+  assert.equal(freeName(saved, 'work'), 'work 2');
+  assert.equal(freeName([...saved, { name: 'work 2', picked: [] }], 'work'), 'work 3');
   // The same name again takes its place.
   saved = withSaved(saved, 'work', ['d']);
   assert.deepEqual(saved, [{ name: 'work', picked: ['d'] }, { name: 'read', picked: ['c'] }]);

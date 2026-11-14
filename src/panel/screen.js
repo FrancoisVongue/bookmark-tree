@@ -1,11 +1,13 @@
 // What is on the screen, and the way to the worker. The panel never changes
-// the library itself; it owns only this: which trees are shown, what is
-// selected, searched for, dragged, or open on top.
+// the library itself; it owns only this: which trees are shown and through
+// which filter (and the filters saved to choose from), what is selected,
+// searched for, typed, dragged, or open on top, and which playing pages the
+// user sent away from the stack at the bottom.
 
 import { ROOT, descendantsOf, inTree, parentOf, rowsOf } from '../model.js';
 import { find } from '../find.js';
-import { alive, nameFor, narrowedTo, savedAs, topmost, withLeads, withSaved } from './filter.js';
-import { outOfSight } from './sound.js';
+import { nameFor, narrowedTo, savedWith, stillPicked, topmost, withLeads, withSaved } from './filter.js';
+import { stackOf } from './sound.js';
 import { t } from '../i18n.js';
 import { draw, titleOf } from './view.js';
 
@@ -13,7 +15,10 @@ export const log = (...args) => console.log('[tree panel]', ...args);
 export const app = document.getElementById('app');
 
 const kept = JSON.parse(localStorage.getItem('view') ?? '{}');
-// A pane: its own id (what it is known by in the page, whatever its place among the panes), the tree it shows, its rows with their places, what of its tree is in sight (`sight`) and which rows are drawn (`from`..`to`, between gaps `before` and `after`: see inSight). (Also `count`, `first` and, while searching, `loose`: see rowsFor.)
+// The saved filters are kept apart from the view, under a key of their own: every open panel has them, and writes them only when one is saved or taken off the list (see saveFilter, forgetSaved); the others read them again then. (Moved once from where an older version kept them, with the view.)
+if (kept.saved && !localStorage.getItem('saved')) localStorage.setItem('saved', JSON.stringify(kept.saved));
+const savedKept = () => JSON.parse(localStorage.getItem('saved') ?? '{}');
+// A pane: its own id (what it is known by in the page, whatever its place among the panes), the tree it shows, its rows with their places, what of its tree is in sight (`sight`) and which rows are drawn (`from`..`to`, between gaps `before` and `after`: see measure). (Also `count`, `first` and, while searching, `loose`: see rowsFor.)
 let panes = 0;
 export const newPane = (tree, size = 1) => ({ id: `p${++panes}`, tree, size, rows: [], from: 0, to: 0, sel: new Set() });
 
@@ -22,8 +27,9 @@ export const ui = {
   library: undefined,
   live: new Set(), // Ids of nodes that have a tab.
   audible: new Set(), // Ids of nodes whose tab is making sound.
-  hushed: new Set(), // Those of them the user sent away from the stack at the bottom: each stays away until it stops playing.
-  sounds: { ids: [], more: 0 }, // What that stack holds: the playing pages whose row is not in sight (see outOfSight in sound.js). Worked out with every drawing.
+  playingTrees: new Set(), // Ids of the trees that hold such a node.
+  dismissed: new Set(), // Those of them the user sent away from the stack at the bottom: each stays away until it stops playing.
+  sounds: { ids: [], more: 0 }, // What that stack holds: the playing pages whose row is not in sight (see stackOf in sound.js). Worked out with every drawing, in redraw alone.
   shared: new Map(), // Node id -> names of the other trees it is in.
   activeId: undefined, // The node of this window's current tab,
   activeTree: undefined, // and the tree that tab is in.
@@ -35,10 +41,10 @@ export const ui = {
   journalQuery: '', // What is searched for in the unfolded journal.
   journalAll: false, // Whether the unfolded journal shows all its places, or only the latest.
   places: { shown: [], more: 0, loose: undefined }, // What the unfolded journal shows (see layJournal).
-  // The filter of each tree, on this screen: { [treeId]: { picked: [nodeId], at } } - what is ticked to be shown alone, and when that was said (see filter.js). Kept with the view, never with the library.
+  // The filter of each tree, on this screen: { [treeId]: { picked: [nodeId], at } } - what is ticked to be shown alone, and when that was said (see filter.js). Kept with the view, never with the library - and as it was said: what of it counts now is asked when it is read (see filterNow).
   filters: kept.filters ?? {},
-  // The filters the user saved, of each tree, to set its filter from: { [treeId]: [{ name, picked }] }, a name once in a tree. Kept with the view too.
-  saved: kept.saved ?? {},
+  // The filters the user saved, of each tree, to set its filter from: { [treeId]: [{ name, picked }] }, a name once in a tree. Kept as they were said too; only the user takes one off the list.
+  saved: savedKept(),
   // While the user ticks them: { tree, ids: Set, anchor } - the whole tree is shown, every row with a tick to set; nothing is narrowed until they say so.
   ticking: undefined,
   filtered: undefined, // What the bar says of the focused pane's filter (see filterLine), if it has one or is being ticked.
@@ -50,7 +56,8 @@ export const ui = {
   split: kept.split ?? 'column', // Panes one under another, or 'row': side by side.
   query: '', // What is searched for.
   cursor: undefined, // The row the keyboard is on, in the focused pane.
-  renaming: undefined, // { id, pane, field? }, { tree } or - a filter being saved under a name - { filter: treeId }.
+  // What is being typed in a field in the place of a name: { what, text, ... } - `what` it is, and the `text` the field starts with: 'name' or 'address' of row { id, pane }, the name of a 'tree' { tree }, or the name to save the 'filter' of { tree } under. (What is done with what was typed: see TYPED in commands.js.)
+  typing: undefined,
   // What is dragged: { kind: 'rows', ids, from, label }, { kind: 'tree', tree, label }, { kind: 'plan', ids, label } (an entry of the plan) or { kind: 'link' }.
   drag: undefined,
   // Where it would land: { pane, targetId, position } in a pane, { cell, tree } in the table of trees, { plan, before } in the plan.
@@ -106,7 +113,11 @@ const STEP = 6; // and how many rows the view scrolls before the set of drawn ro
 
 /** The step between two rows of one level: the row's height at the least, half of it at the most density. */
 const tightStep = () => ROW * (1 - Math.min(1, Math.max(0, Number(localStorage.getItem('density')) || 0)) / 2);
-addEventListener('storage', (event) => event.key === 'density' && arrange()); // The settings page moved the slider.
+// What another page changed: the settings page moved the slider, another panel saved a filter or took one off the list.
+addEventListener('storage', (event) => {
+  if (event.key === 'saved') ui.saved = savedKept();
+  if (['density', 'saved'].includes(event.key) && ui.library) arrange();
+});
 
 /** Gives each row of a pane its place: `top`, and `pull` - how much closer than a full step it stands to the row above. */
 function place(pane) {
@@ -140,7 +151,7 @@ function rowAt(pane, y) {
  * (`from`..`to`), and how tall the gaps standing for the rest are (`before`,
  * `after`). Says whether the set of rows changed.
  */
-function inSight(pane) {
+function measure(pane) {
   const el = paneEl(pane);
   const [seenFrom, seenTo] = (pane.sight = el ? [scrolled(el), scrolled(el) + el.clientHeight] : [0, innerHeight]);
   const from = Math.max(0, Math.floor(rowAt(pane, seenFrom) / STEP) * STEP - SPARE);
@@ -152,14 +163,15 @@ function inSight(pane) {
   return changed;
 }
 
-/** Whether node `id` has a row in sight: one of a pane's rows (not folded away, nor left out by its filter or the search), its middle within what the pane shows. */
-const isSeen = (id) =>
-  ui.panes.some((pane) => {
-    const middle = rowOf(pane, id)?.top + ROW / 2;
-    return middle > pane.sight[0] && middle < pane.sight[1];
-  });
+// What "in sight" means is said here, once: within `sight`, what the pane shows of its tree (see measure).
+/** How far the stretch `from`..`to` of a pane's tree (pixels down the tree) is beyond what the pane shows: less than nothing above it, more below, nothing when all of it is in sight. */
+const beyond = (pane, from, to) => Math.min(0, from - pane.sight[0]) || Math.max(0, to - pane.sight[1]);
+/** Whether a row of a pane is in sight: its middle is. */
+const isSeen = (pane, row) => beyond(pane, row.top + ROW / 2, row.top + ROW / 2) === 0;
+/** Whether node `id` has a row in sight in some pane (it has none when folded away, or left out by the pane's filter or the search). */
+const seenSomewhere = (id) => ui.panes.some((pane) => rowOf(pane, id) && isSeen(pane, rowOf(pane, id)));
 /** The playing pages to put in the stack at the bottom, as things stand. */
-const soundsNow = () => outOfSight([...ui.audible], isSeen, ui.hushed);
+const soundsNow = () => stackOf([...ui.audible], seenSomewhere, ui.dismissed);
 
 /**
  * In a dense tree the rows around the pointer move apart, so that what is
@@ -206,7 +218,7 @@ function dropLine(pane) {
 export function redraw() {
   for (const pane of [...ui.panes, picker()]) {
     if (!pane) continue;
-    inSight(pane);
+    measure(pane);
     for (let n = pane.from; n < pane.to; n++) Object.assign(pane.rows[n], { shift: 0, gap: 0 });
   }
   spread();
@@ -222,7 +234,10 @@ app.addEventListener(
   'scroll',
   (event) => {
     const pane = event.target.classList?.contains('pane') && (paneAt(event.target) ?? picker());
-    if (pane && (inSight(pane) || JSON.stringify(soundsNow()) !== JSON.stringify(ui.sounds))) redraw();
+    if (!pane) return;
+    const rows = measure(pane);
+    const { ids, more } = soundsNow();
+    if (rows || more !== ui.sounds.more || ids.join() !== ui.sounds.ids.join()) redraw();
   },
   true,
 );
@@ -252,9 +267,8 @@ export function reveal(pane, id) {
   const row = rowOf(pane, id);
   const el = paneEl(pane);
   if (!row || !el) return;
-  const top = row.top - scrolled(el); // Where the row is, from the top of what the pane shows.
-  if (top < 0) el.scrollTop += top;
-  else if (top + ROW > el.clientHeight) el.scrollTop += top + ROW - el.clientHeight;
+  measure(pane);
+  el.scrollTop += beyond(pane, row.top, row.top + ROW); // All of the row, not its middle only.
   redraw();
 }
 
@@ -266,7 +280,7 @@ export const paneAt = (el) => {
   const id = el.closest?.('.panes .pane')?.dataset.pane;
   return ui.panes.find((pane) => pane.id === id);
 };
-/** The row of node `id` in the page, if it is drawn (see inSight). */
+/** The row of node `id` in the page, if it is drawn (see measure). */
 export const rowEl = (pane, id) => paneEl(pane)?.querySelector(`.row[data-id="${id}"]`);
 export const rowOf = (pane, id) => pane.rows.find((row) => row.id === id);
 export const under = (pane, id) => descendantsOf(ui.library.trees[pane.tree], id);
@@ -278,7 +292,7 @@ export const branches = (pane, id) =>
   targets(pane, id).flatMap((each) => (rowOf(pane, each)?.collapsed ? [each, ...under(pane, each)] : [each]));
 
 /** What is open on top of the trees, if anything: a menu, a dialog, a name being typed. The keys are its, not the rows'. */
-export const onTop = () => ui.menu ?? ui.overlay ?? ui.renaming;
+export const onTop = () => ui.menu ?? ui.overlay ?? ui.typing;
 
 /**
  * Puts the keyboard where the screen says it belongs. The one place that
@@ -289,8 +303,8 @@ export const onTop = () => ui.menu ?? ui.overlay ?? ui.renaming;
 function settleFocus() {
   if (document.querySelector('dialog[open]')) return; // A question is asked (see ask in parts.js): the browser keeps the keyboard in it.
   const within = (selector) => app.querySelector(selector)?.contains(document.activeElement);
-  if (ui.renaming) {
-    // The field of the name being typed has it, with all of the name selected and its beginning in sight.
+  if (ui.typing) {
+    // The field of what is being typed has it, with all of the name selected and its beginning in sight.
     const field = app.querySelector('.rename');
     if (field && document.activeElement !== field) (field.focus(), field.select(), (field.scrollLeft = 0));
     return;
@@ -385,7 +399,7 @@ export const pick = (treeId, into) => openOverlay({ kind: 'picker', ...newPane(t
 /** Starts ticking in the focused pane's tree, from what its filter has ticked now; or, when ticking already, applies it. */
 export function tick() {
   if (ui.ticking) return applyTicks();
-  ui.ticking = { tree: here().tree, ids: new Set(ui.filters[here().tree]?.picked ?? []), anchor: undefined };
+  ui.ticking = { tree: here().tree, ids: new Set(filterNow(here().tree)?.picked ?? []), anchor: undefined };
   arrange();
 }
 /** Ticks or unticks row `id` - or, with `range`, ticks every row from the one ticked last to it. */
@@ -419,7 +433,7 @@ function setFilter(treeId, ids) {
 }
 /** The short way: shows only node `id` and what is under it. The same node again shows the whole tree. */
 export function showBranch(treeId, id) {
-  const now = ui.filters[treeId]?.picked ?? [];
+  const now = filterNow(treeId)?.picked ?? [];
   ui.ticking = undefined;
   setFilter(treeId, now.length === 1 && now[0] === id ? [] : [id]);
 }
@@ -432,6 +446,11 @@ export function saveFilter(treeId, name) {
   const filter = ui.filters[treeId];
   if (!filter || !name.trim()) return;
   ui.saved[treeId] = withSaved(ui.saved[treeId] ?? [], name.trim(), filter.picked);
+  keepSaved();
+}
+/** Writes the saved filters down - the other panels hear of it (see the `storage` listener above) - and shows them. */
+function keepSaved() {
+  localStorage.setItem('saved', JSON.stringify(ui.saved));
   arrange();
 }
 /** Sets a tree's filter from the saved one called `name`: ticked now, so what was added since it was saved is shown. */
@@ -441,7 +460,8 @@ export function applySaved(treeId, name) {
 }
 export function forgetSaved(treeId, name) {
   ui.saved[treeId] = ui.saved[treeId].filter((each) => each.name !== name);
-  arrange();
+  if (!ui.saved[treeId].length) delete ui.saved[treeId];
+  keepSaved();
 }
 
 /** In the picker: shows another tree to choose from, and marks or unmarks a row of it. */
@@ -541,26 +561,26 @@ export async function closeNotice() {
   refresh();
 }
 
-/** Sends a playing page away from the stack at the bottom, until it stops playing (see take). */
-export function hush(id) {
-  ui.hushed.add(id);
+/** Sends a playing page away from the stack at the bottom, until it stops playing (see take). The page plays on. */
+export function dismiss(id) {
+  ui.dismissed.add(id);
   redraw();
 }
 
-/** Starts typing a name: of row { id, pane } (its address, with `field: 'url'`), of { tree }, or of the filter of a tree to save, { filter }. The field takes the keyboard (see settleFocus). */
-export function rename(what) {
-  ui.renaming = what;
+/** Shows a field to type in (see `ui.typing` for what it may be). The field takes the keyboard (see settleFocus). */
+export function typeIn(typing) {
+  ui.typing = typing;
   redraw();
 }
-/** Ends it: gives what was being named and what was typed, { renaming, text } (nothing, if no name was being typed). */
-export function endRenaming() {
-  const renaming = ui.renaming;
-  if (!renaming) return {};
+/** Takes the field away: gives what was being typed and what the field held, { typing, text } (nothing, if there was no field). */
+export function endTyping() {
+  const typing = ui.typing;
+  if (!typing) return {};
   const text = app.querySelector('.rename')?.value ?? '';
-  ui.renaming = undefined;
-  if (renaming.id) ui.cursor = renaming.id; // The keyboard goes back to the row that was named.
+  ui.typing = undefined;
+  if (typing.id) ui.cursor = typing.id; // The keyboard goes back to the row whose name or address it was.
   redraw();
-  return { renaming, text };
+  return { typing, text };
 }
 
 /** Takes the notice of what was done away. */
@@ -594,8 +614,13 @@ const textOf = (id) => {
   return `${titleOf(node)} ${node.url ?? ''} ${node.note ?? ''}`;
 };
 
-/** The filter of a pane's tree; none while it is being ticked (then all of the tree is there to tick), nor in the picker. */
-const filterOf = (pane) => (pane === picker() || ui.ticking?.tree === pane.tree ? undefined : ui.filters[pane.tree]);
+/** The filter of a tree as it counts now: { picked, at } with the ticked nodes that are still in the tree; none when not one of them is. (What is kept stays as it was said: a node that comes back is ticked again.) */
+function filterNow(treeId) {
+  const picked = stillPicked(ui.library.trees[treeId], ui.filters[treeId]?.picked);
+  return picked.length ? { picked, at: ui.filters[treeId].at } : undefined;
+}
+/** The filter a pane's tree is seen through; none while it is being ticked (then all of the tree is there to tick), nor in the picker. */
+const filterOf = (pane) => (pane === picker() || ui.ticking?.tree === pane.tree ? undefined : filterNow(pane.tree));
 
 /**
  * The rows a pane shows of its tree: as the tree has them - all of it, or,
@@ -664,7 +689,8 @@ function take(state, active) {
   ui.canRedo = state.canRedo;
   ui.live = new Set(Object.values(state.binding).map((bound) => bound.node));
   ui.audible = new Set(state.audible);
-  ui.hushed = new Set(state.audible.filter((id) => ui.hushed.has(id))); // What has stopped playing is no longer sent away: it may play again.
+  ui.dismissed = new Set(state.audible.filter((id) => ui.dismissed.has(id))); // What has stopped playing is no longer sent away: it may play again.
+  ui.playingTrees = new Set(Object.values(state.library.trees).filter((tree) => state.audible.some((id) => inTree(tree, id))).map((tree) => tree.id));
   ui.activeId = state.binding[active?.id]?.node;
   ui.activeTree = state.binding[active?.id]?.tree;
 }
@@ -677,15 +703,6 @@ function layOut() {
   if (!ui.panes.length) ui.panes = [newPane(Object.keys(library.trees)[0])];
   ui.focus = here();
   if (picker() && !library.trees[picker().tree]) ui.overlay = undefined;
-  // A ticked node that is gone falls out of its tree's filter and of the saved ones; one with nothing left is no more (see alive in filter.js).
-  for (const treeId of Object.keys({ ...ui.filters, ...ui.saved })) {
-    const [filter] = alive(library.trees[treeId], [ui.filters[treeId] ?? {}]);
-    const saved = alive(library.trees[treeId], ui.saved[treeId] ?? []);
-    if (filter) ui.filters[treeId] = filter;
-    else delete ui.filters[treeId];
-    if (saved.length) ui.saved[treeId] = saved;
-    else delete ui.saved[treeId];
-  }
   if (ui.ticking && !ui.panes.some((pane) => pane.tree === ui.ticking.tree)) ui.ticking = undefined;
   for (const pane of [...ui.panes, picker()]) {
     if (!pane) continue;
@@ -700,24 +717,28 @@ function layOut() {
   // The cursor's row is gone (removed, folded away): the cursor stays where it was, on the row now there. In another tree it starts from the current tab.
   const same = cursorWas.tree === here().tree && cursorWas.at >= 0;
   if (!rowOf(here(), ui.cursor)) ui.cursor = same ? here().rows[Math.min(cursorWas.at, here().rows.length - 1)]?.id : (rowOf(here(), ui.activeId)?.id ?? here().rows[0]?.id);
-  if (ui.renaming?.id && !rowOf(ui.renaming.pane, ui.renaming.id)) ui.renaming = undefined;
+  if (ui.typing?.id && !rowOf(ui.typing.pane, ui.typing.id)) ui.typing = undefined;
   ui.filtered = filterLine(here());
-  if (ui.renaming?.filter && !(ui.renaming.filter === here().tree && ui.filtered?.save)) ui.renaming = undefined; // Nothing to save there any more.
+  if (ui.typing?.what === 'filter' && !(ui.typing.tree === here().tree && ui.filtered?.save)) ui.typing = undefined; // Nothing to save there any more.
 }
 
 /**
  * What the bar says of a pane's filter. While nodes are being ticked:
  * { ticking: true, picked, saved } - how many are ticked, and the names of
- * the tree's saved filters, to choose from. With a filter on:
+ * the tree's saved filters to choose from: those that still tick something
+ * in it. With a filter on:
  * { by, save, shown, of } - what it is called (as it was saved, or else by
  * the ticked nodes), and whether it is there to be saved: not saved yet.
  */
 function filterLine(pane) {
+  const tree = ui.library.trees[pane.tree];
   const saved = ui.saved[pane.tree] ?? [];
-  if (ui.ticking?.tree === pane.tree) return { ticking: true, picked: ui.ticking.ids.size, saved: saved.map((each) => each.name) };
-  const { picked } = ui.filters[pane.tree] ?? {};
+  if (ui.ticking?.tree === pane.tree) {
+    return { ticking: true, picked: ui.ticking.ids.size, saved: saved.filter((each) => stillPicked(tree, each.picked).length).map((each) => each.name) };
+  }
+  const { picked } = filterNow(pane.tree) ?? {};
   if (!picked) return undefined;
-  const name = savedAs(saved, picked)?.name;
+  const name = savedWith(tree, saved, picked)?.name;
   return { by: name ?? nameFor(picked.map((id) => titleOf(ui.library.nodes[id]))), save: !name, ...pane.count };
 }
 
@@ -739,7 +760,7 @@ function findShared() {
 let shownTree;
 /** Remembers the layout for next time, and tells the worker which tree new tabs of this window go to. */
 function remember() {
-  const view = { panes: ui.panes.map(({ tree, size }) => ({ tree, size })), split: ui.split, open: ui.open, unsyncedClosed: ui.unsyncedClosed, filters: ui.filters, saved: ui.saved };
+  const view = { panes: ui.panes.map(({ tree, size }) => ({ tree, size })), split: ui.split, open: ui.open, unsyncedClosed: ui.unsyncedClosed, filters: ui.filters };
   localStorage.setItem('view', JSON.stringify(view));
   if (shownTree === here().tree) return;
   shownTree = here().tree;
