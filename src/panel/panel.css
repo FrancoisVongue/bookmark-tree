@@ -77,9 +77,11 @@
  * the pressed funnel, which reaches down to it, so that the two are one thing
  * (as a tab and its page are). What the filter is called stands at the left,
  * in the text's full colour; while nodes are ticked, the saved filters stand
- * there - what one of them would become. At the end of the line, what leads
- * out of it: buttons with a shape of their own, a step off the line's tone -
- * quiet, and where the eye arrives when it looks for the way out.
+ * there - what one of them would become - after the choice of what the
+ * ticks mean: two words in one shape, the chosen one on a veil a step
+ * deeper. At the end of the line, what leads out of it: buttons with a
+ * shape of their own, a step off the line's tone - quiet, and where the eye
+ * arrives when it looks for the way out.
  */
 .tools .act[data-action='filter'][aria-pressed='true'] {
   position: relative;
@@ -143,6 +145,28 @@
 }
 .filtered > button:active {
   background-image: linear-gradient(var(--badge), var(--badge));
+}
+/* While ticking the line begins with a shape, not with text: it stands as far from the left edge as from the top. */
+.filtered.ticking {
+  padding-left: 3px;
+}
+.mode {
+  flex: none;
+  display: flex;
+  border-radius: 5px;
+  background: var(--badge);
+}
+.mode button {
+  padding: 0 9px;
+  border-radius: inherit;
+  color: var(--dim);
+}
+.mode button:hover {
+  color: var(--text);
+}
+.mode button[aria-pressed='true'] {
+  background: var(--badge);
+  color: var(--text);
 }
 /*
  * The saved filters: as many as fit in two lines; the rest are a turn of the
@@ -626,6 +650,10 @@
 }
 .row.included .check {
   background: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+/* Ticked to be hidden: the row is on its way out already - all of it but the tick that sends it. */
+.row.going > :not(.check) {
+  opacity: 0.35;
 }
 .favicon.glyph {
   display: grid;
