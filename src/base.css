@@ -108,6 +108,21 @@
   --badge: rgb(31 31 31 / 0.06); /* A contained thing: a field, a pressed button, a chip, what belongs to one control. */
   --inset: rgb(31 31 31 / 0.035); /* A block set into a page of text: code, a quote, a table's heading. */
   --line: rgb(31 31 31 / 0.08); /* Where two regions of one tone meet, and the tone alone cannot part them. */
+  --rule: rgb(31 31 31 / 0.14); /* A line that is read, not felt: between the columns and the rows of a table. */
+  /*
+   * Code is another material than text, and says so: it lies on a dark ground
+   * whatever the page's, and is read by colour. Few colours, each with a role.
+   */
+  --code-bg: #1d1e20;
+  --code-text: #e3e4e6;
+  --code-dim: #8f96a0; /* What is beside the code: a comment, a prompt, the block's own label. */
+  --code-keyword: #f58a80; /* The language's own words. */
+  --code-string: #a5d3f7;
+  --code-value: #7cbcf8; /* A number, a constant, an attribute. */
+  --code-name: #d3aef7; /* What the code names: a function, a section. */
+  --code-type: #f3ad6b; /* A type, a class, what is built in. */
+  --code-tag: #86dc8c; /* A tag, a selector, a line added. */
+  --code-veil: rgb(255 255 255 / 0.1); /* A contained thing on the dark ground. */
   /* The current tab's row: the one fill that has a colour. */
   --active-bg: #e4edfb;
   --active-text: #0a2f6e;
@@ -132,6 +147,8 @@
     --badge: rgb(237 237 237 / 0.08);
     --inset: rgb(237 237 237 / 0.05);
     --line: rgb(237 237 237 / 0.1);
+    --rule: rgb(237 237 237 / 0.16);
+    --code-bg: #111112; /* Set into the page: darker than the ground. */
     --active-bg: #283a54;
     --active-text: #d6e4fb;
     --notice-bg: #3a3317;
@@ -263,6 +280,10 @@ svg.line {
   border: 0;
   border-top: 1px solid var(--line);
   margin: 4px 0;
+}
+/* The one in hand, where the keyboard walks a list while it stays in a field: as under the pointer. */
+.menu button[aria-selected='true'] {
+  background: var(--hover);
 }
 .menu:focus {
   outline: none;

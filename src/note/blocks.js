@@ -1,10 +1,10 @@
 // What a note is made of beyond plain text, where the editor's own parts are
-// not enough: a block that folds, footnotes, a table that markdown can hold,
-// code with its language and a "copy". Each part says what it is in the
+// not enough: a block that folds, footnotes, a table that markdown can hold
+// and that can be sorted. (Code is in code.js.) Each part says what it is in the
 // editor, how it looks there, and how the note's markdown has it - and
 // `rules` teaches the markdown reader the two that are not markdown's own.
 
-import { CodeBlock, InputRule, Node as Part, Plugin, Table, TableCell, TableHeader, Text } from '../vendor/tiptap/tiptap.js';
+import { Decoration, DecorationSet, InputRule, Node as Part, Plugin, PluginKey, Table, TableCell, TableHeader, Text, TextSelection } from '../vendor/tiptap/tiptap.js';
 import { t } from '../i18n.js';
 import { block, literal, write } from './folds.js';
 
@@ -24,7 +24,7 @@ function depthOf($pos, name) {
   return 0;
 }
 /** One step that changes the text through `change(tr)`, for a chain. (Asked only whether it can be done, it changes nothing.) */
-const step = (change) => ({ tr, dispatch }) => (dispatch && change(tr), true);
+export const step = (change) => ({ tr, dispatch }) => (dispatch && change(tr), true);
 
 // --- Text ------------------------------------------------------------------------
 
@@ -384,9 +384,67 @@ export function rules(md) {
 // --- Tables ----------------------------------------------------------------------
 // A table is what markdown's table can hold, and no more: lines of text in a
 // cell, a column that is set left, right or in the middle, no cell that
-// spans others. So what is seen is what is kept.
+// spans others. So what is seen is what is kept - and what is done to it
+// (rows sorted, a row or a column moved) is done to the note itself.
 
 const ALIGN = { left: ':---', center: ':---:', right: '---:' };
+const SORT = {
+  0: '<svg class="line" viewBox="0 0 10 16" width="9" height="14.4"><path d="M2.500 6.500 5 4l2.500 2.500M2.500 9.500 5 12l2.500-2.500" /></svg>',
+  1: '<svg class="line" viewBox="0 0 10 16" width="9" height="14.4"><path d="M5 12.500v-9M2 6.500l3-3 3 3" /></svg>',
+  [-1]: '<svg class="line" viewBox="0 0 10 16" width="9" height="14.4"><path d="M5 3.500v9M2 9.500l3 3 3-3" /></svg>',
+};
+
+/** The table the cursor is in: { node, pos, row, column } - the last two say which cell. */
+function tableAt(state) {
+  const { $from } = state.selection;
+  const depth = depthOf($from, 'table');
+  return depth ? { node: $from.node(depth), pos: $from.before(depth), row: $from.index(depth), column: $from.index(depth + 1) } : undefined;
+}
+/** Where the cell in `row` and `column` of the `table` at `pos` starts. */
+function cellAt(table, pos, row, column) {
+  let at = pos + 1;
+  for (let i = 0; i < row; i++) at += table.child(i).nodeSize;
+  at += 1;
+  for (let i = 0; i < column; i++) at += table.child(row).child(i).nodeSize;
+  return at;
+}
+/** Puts `table` in place of the one at `pos`, and the cursor into its cell in `row` and `column`. */
+function replaceTable(tr, pos, table, row, column) {
+  tr.replaceWith(pos, pos + tr.doc.nodeAt(pos).nodeSize, table);
+  tr.setSelection(TextSelection.near(tr.doc.resolve(cellAt(table, pos, row, column) + 1)));
+}
+/** `list` with the things at `a` and `b` in each other's places. */
+const swapped = (list, a, b) => list.map((one, i) => (i === a ? list[b] : i === b ? list[a] : one));
+const children = (node) => Array.from({ length: node.childCount }, (_, i) => node.child(i));
+
+// Sorting. A column of numbers is sorted as numbers - "1 204", "1,204.50", "$15", "7%" are numbers - and any other the way
+// the person's language orders words, with "item 9" before "item 10". Empty cells go last, whichever way the column is sorted.
+const words = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+function number(text) {
+  const bare = text.replace(/[\s$€£¥₽%]/g, '').replace('−', '-');
+  if (/^[-+]?\d{1,3}(,\d{3})+(\.\d+)?$/.test(bare)) return Number(bare.replace(/,/g, ''));
+  return /^[-+]?(\d+[.,]?\d*|[.,]\d+)$/.test(bare) ? Number(bare.replace(',', '.')) : undefined;
+}
+/** The rows under the heading of `table`, with how they compare by `column` in direction `dir` (1 up, -1 down). */
+function sorting(table, column, dir) {
+  const rows = children(table).slice(1);
+  const texts = new Map(rows.map((row) => [row, column < row.childCount ? row.child(column).textContent.trim() : '']));
+  const numbers = new Map(rows.map((row) => [row, number(texts.get(row))]));
+  const numeric = rows.every((row) => !texts.get(row) || numbers.get(row) !== undefined);
+  const compare = (a, b) => {
+    const [x, y] = [texts.get(a), texts.get(b)];
+    if (!x || !y) return (x ? 0 : 1) - (y ? 0 : 1);
+    return dir * (numeric ? numbers.get(a) - numbers.get(b) : words.compare(x, y));
+  };
+  return { rows, compare };
+}
+/** Whether the rows of `table` stand in the order of `column`, in direction `dir`. */
+function sorted(table, column, dir) {
+  const { rows, compare } = sorting(table, column, dir);
+  return rows.every((row, i) => !i || compare(rows[i - 1], row) <= 0);
+}
+// What each table was last sorted by: [{ pos, column, dir }], kept only while its rows still stand in that order.
+const sortKey = new PluginKey('sort');
 
 const cell = (Cell) =>
   Cell.extend({
@@ -412,6 +470,53 @@ export const Grid = Table.extend({
   addCommands() {
     return {
       ...this.parent?.(),
+      /** The cursor goes into the cell in `row` and `column` of the table it is in. */
+      goToCell: (row, column) => ({ state, tr, dispatch }) => {
+        const at = tableAt(state);
+        if (!at || row >= at.node.childCount || column >= at.node.child(row).childCount) return false;
+        if (dispatch) tr.setSelection(TextSelection.near(tr.doc.resolve(cellAt(at.node, at.pos, row, column) + 1)));
+        return true;
+      },
+      /** The row the cursor is in changes places with the one above it (`by` -1) or below it (1). The heading stays the heading. */
+      moveRow: (by) => ({ state, tr, dispatch }) => {
+        const at = tableAt(state);
+        const to = at?.row + by;
+        if (!at || at.row < 1 || to < 1 || to >= at.node.childCount) return false;
+        if (dispatch) replaceTable(tr, at.pos, at.node.type.create(at.node.attrs, swapped(children(at.node), at.row, to)), to, at.column);
+        return true;
+      },
+      /** The column the cursor is in changes places with the one to its left (`by` -1) or right (1). */
+      moveColumn: (by) => ({ state, tr, dispatch }) => {
+        const at = tableAt(state);
+        const to = at?.column + by;
+        if (!at || to < 0 || to >= at.node.child(at.row).childCount) return false;
+        const rows = children(at.node).map((row) => row.type.create(row.attrs, swapped(children(row), at.column, to)));
+        if (dispatch) replaceTable(tr, at.pos, at.node.type.create(at.node.attrs, rows), at.row, to);
+        return true;
+      },
+      /**
+       * Sorts the rows under the heading by a column: the one the cursor is in, or `where` ({ pos, column }) says. `dir` is 1
+       * for up, -1 for down; with none given it is up, and down if the table stands sorted up by that column already. The
+       * rows change places in the note itself, in one step - and the cursor stays in its row.
+       */
+      sortColumn: (dir, where) => ({ state, tr, dispatch }) => {
+        const { pos, column } = where ?? tableAt(state) ?? {};
+        const table = pos === undefined ? null : state.doc.nodeAt(pos);
+        if (table?.type.name !== 'table' || table.childCount < 3) return false;
+        if (!dispatch) return true;
+        dir ??= sortKey.getState(state).some((one) => one.pos === pos && one.column === column && one.dir === 1) ? -1 : 1;
+        const { rows, compare } = sorting(table, column, dir);
+        const order = [...rows].sort(compare);
+        const from = pos + 1 + table.firstChild.nodeSize;
+        const starts = (list) => new Map(list.map((row, i) => [row, list.slice(0, i).reduce((at, one) => at + one.nodeSize, from)]));
+        const [old, now] = [starts(rows), starts(order)];
+        const { from: cursor } = state.selection;
+        const mine = rows.find((row) => cursor > old.get(row) && cursor < old.get(row) + row.nodeSize);
+        tr.replaceWith(from, pos + table.nodeSize - 1, order);
+        if (mine) tr.setSelection(TextSelection.near(tr.doc.resolve(cursor - old.get(mine) + now.get(mine))));
+        tr.setMeta(sortKey, { pos, column, dir });
+        return true;
+      },
       /** Sets the column the cursor is in to a side: 'left', 'center', 'right', or to none. */
       setColumnAlign: (align) => ({ state, tr, dispatch }) => {
         const { $from } = state.selection;
@@ -457,7 +562,59 @@ export const Grid = Table.extend({
       });
       return tr.steps.length ? tr : null;
     };
-    return [...(this.parent?.() ?? []), new Plugin({ appendTransaction: settle })];
+    // The heading's cells each have a small control in their right margin: a press sorts by the column. It shows the way the
+    // table is sorted - on that column only, and only while that is still true.
+    const { editor } = this;
+    const control = (dir) => (view, getPos) => {
+      const title = t(dir === 1 ? 'noteSortDesc' : 'noteSortAsc');
+      const button = el('button', { type: 'button', className: 'sort', contentEditable: 'false', tabIndex: -1, title, innerHTML: SORT[dir] });
+      button.setAttribute('aria-label', title);
+      if (dir) button.dataset.sorted = '';
+      button.addEventListener('mousedown', (event) => event.preventDefault()); // The cursor stays where it is.
+      button.addEventListener('click', () => {
+        const $pos = view.state.doc.resolve(getPos());
+        const depth = depthOf($pos, 'table');
+        editor.commands.sortColumn(undefined, { pos: $pos.before(depth), column: $pos.index(depth + 1) });
+      });
+      return button;
+    };
+    const controls = Object.fromEntries([0, 1, -1].map((dir) => [dir, control(dir)]));
+    const sort = new Plugin({
+      key: sortKey,
+      state: {
+        init: () => [],
+        apply(tr, was, _, state) {
+          const set = tr.getMeta(sortKey);
+          const all = was.map((one) => ({ ...one, pos: tr.mapping.map(one.pos) })).filter((one) => one.pos !== set?.pos);
+          if (set) all.push(set);
+          return all.filter(({ pos, column, dir }) => {
+            const table = state.doc.nodeAt(pos);
+            return table?.type.name === 'table' && column < table.firstChild.childCount && sorted(table, column, dir);
+          });
+        },
+      },
+      props: {
+        decorations(state) {
+          const by = sortKey.getState(state);
+          const all = [];
+          state.doc.descendants((node, pos) => {
+            if (node.type.name !== 'table') return !node.isTextblock;
+            // With fewer than two rows under the heading there is nothing to sort.
+            if (node.childCount > 2) {
+              node.firstChild.forEach((_, offset, column) => {
+                const dir = by.find((one) => one.pos === pos && one.column === column)?.dir ?? 0;
+                all.push(Decoration.widget(pos + offset + 3, controls[dir], { side: -1, key: `sort${dir}`, ignoreSelection: true }));
+              });
+            }
+            return false;
+          });
+          return DecorationSet.create(state.doc, all);
+        },
+        // A press on the control is not a press in the text.
+        handleDOMEvents: { mousedown: (_, event) => Boolean(event.target.closest?.('.sort')) },
+      },
+    });
+    return [...(this.parent?.() ?? []), new Plugin({ appendTransaction: settle }), sort];
   },
 
   addStorage() {
@@ -486,70 +643,6 @@ export const Grid = Table.extend({
             state.write(`| ${sides.join(' | ')} |`);
           });
           state.inTable = false;
-          state.closeBlock(node);
-        },
-      },
-    };
-  },
-});
-
-// --- Code ------------------------------------------------------------------------
-
-/** A block of code says its language in its corner - a field, so the language can be set there - and beside it, under the pointer, offers to copy the code. */
-export const Code = CodeBlock.extend({
-  addNodeView() {
-    return ({ node, getPos, editor }) => {
-      const dom = el('div', { className: 'code' });
-      const pre = el('pre', {}, dom);
-      const content = el('code', {}, pre);
-      const corner = el('div', { className: 'corner', contentEditable: 'false' }, dom);
-      const copy = el('button', { type: 'button', tabIndex: -1, textContent: t('noteCopy') }, corner);
-      const language = el('input', { placeholder: t('noteLanguage'), spellcheck: false, autocapitalize: 'off' }, corner);
-      language.setAttribute('aria-label', t('noteLanguage'));
-      const show = () => (language.value = node.attrs.language ?? '');
-      // Enter, or leaving the field, sets the language (none, if the field is empty); Esc leaves it as it was. Both give the keyboard back to the text.
-      language.addEventListener('change', () => editor.commands.command(step((tr) => tr.setNodeAttribute(getPos(), 'language', language.value.trim() || null))));
-      language.addEventListener('keydown', (event) => {
-        if (event.key !== 'Enter' && event.key !== 'Escape') return;
-        if (event.key === 'Escape') show();
-        event.preventDefault();
-        language.blur();
-        editor.commands.focus();
-      });
-      let timer;
-      copy.addEventListener('mousedown', (event) => event.preventDefault());
-      copy.addEventListener('click', async () => {
-        await navigator.clipboard.writeText(node.textContent);
-        copy.textContent = t('noteCopied');
-        clearTimeout(timer);
-        timer = setTimeout(() => (copy.textContent = t('noteCopy')), 1500);
-      });
-      show();
-      return {
-        dom,
-        contentDOM: content,
-        update(next) {
-          if (next.type !== node.type) return false;
-          node = next;
-          show();
-          return true;
-        },
-        stopEvent: (event) => corner.contains(event.target),
-        ignoreMutation: (mutation) => !pre.contains(mutation.target),
-      };
-    };
-  },
-
-  addStorage() {
-    return {
-      markdown: {
-        // The fence is longer than any run of backticks in the code, so the code cannot end it.
-        serialize(state, node) {
-          const fence = '`'.repeat(Math.max(2, ...(node.textContent.match(/`{3,}/g) ?? []).map((run) => run.length)) + 1);
-          state.write(`${fence}${node.attrs.language ?? ''}\n`);
-          state.text(node.textContent, false);
-          state.ensureNewLine();
-          state.write(fence);
           state.closeBlock(node);
         },
       },

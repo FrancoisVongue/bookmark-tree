@@ -51,7 +51,7 @@ const groups = [
     { title: t('noteTaskList'), keys: 'Mod+Shift+9', icon: svg('M3.5 3.5h13v13h-13zM6.5 10l2.5 2.5 4.5-5'), run: (chain) => chain.toggleTaskList(), on: ['taskList'] },
   ],
   [
-    { title: t('noteLink'), icon: svg('M8.5 11.5a3 3 0 0 0 4.2 0l2.5-2.5A3 3 0 0 0 11 4.8l-1 1M11.5 8.5a3 3 0 0 0-4.2 0L4.8 11A3 3 0 0 0 9 15.2l1-1'), ask: (editor) => ask(t('noteLinkAddress'), t('noteLinkYes'), editor.getAttributes('link').href ?? 'https://').then((href) => href?.trim()), run: link, on: ['link'] },
+    { title: t('noteLink'), keys: 'Mod+K', icon: svg('M8.5 11.5a3 3 0 0 0 4.2 0l2.5-2.5A3 3 0 0 0 11 4.8l-1 1M11.5 8.5a3 3 0 0 0-4.2 0L4.8 11A3 3 0 0 0 9 15.2l1-1'), ask: (editor) => ask(t('noteLinkAddress'), t('noteLinkYes'), editor.getAttributes('link').href ?? 'https://').then((href) => href?.trim()), run: link, on: ['link'] },
     { title: t('noteTable'), icon: svg('M3 4h14v12H3zM3 8h14M3 12h14M7.7 4v12M12.3 4v12'), run: (chain) => chain.insertTable({ rows: 3, cols: 3, withHeaderRow: true }) },
     { title: t('noteFootnote'), keys: '[^1]', icon: '<span>a<sup>1</sup></span>', run: (chain) => chain.addFootnote() },
   ],
@@ -74,6 +74,14 @@ export function toolbar(editor, bar) {
         tool.run(editor.chain().focus(), editor, answer).run();
       });
       buttons.set(button, tool);
+      // A tool that asks has no key in the editor itself: its key presses the tool. (By the key's place, whatever letters the keyboard writes.)
+      if (!tool.ask || !tool.keys) continue;
+      const code = `Key${tool.keys.at(-1)}`;
+      editor.view.dom.addEventListener('keydown', (event) => {
+        if (event.code !== code || !(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey || button.disabled) return;
+        event.preventDefault();
+        button.click();
+      });
     }
   };
   groups.forEach(group);

@@ -4,7 +4,8 @@
 
 import { Editor, Link, Markdown, Placeholder, StarterKit, TableRow, TaskItem, TaskList } from '../vendor/tiptap/tiptap.js';
 import { t } from '../i18n.js';
-import { Cell, Code, Fold, FoldBody, FoldTitle, Footnote, FootnoteRef, Grid, HeaderCell, Words, followFootnote, rules } from './blocks.js';
+import { Cell, Fold, FoldBody, FoldTitle, Footnote, FootnoteRef, Grid, HeaderCell, Words, followFootnote, rules } from './blocks.js';
+import { Code } from './code.js';
 import { tableTools } from './table.js';
 import { toolbar } from './tools.js';
 
@@ -80,7 +81,8 @@ async function load() {
   if (!node) return log('no such note', id);
   if (node.note === saved || node.note === text()) return;
   saved = node.note;
-  editor.commands.setContent(node.note, false);
+  // What the library holds is not something the person did here: "Undo" must not take the note back to an empty page.
+  editor.chain().setMeta('addToHistory', false).setContent(node.note, false).run();
   name();
 }
 
@@ -92,6 +94,21 @@ document.getElementById('note').addEventListener('click', (event) => {
   event.preventDefault();
   send({ type: 'open-link', url: link.href });
 });
+
+// Under a block that ends the note - code, a table, a list, a quote - there must still be somewhere to write: a press
+// below the last block starts a line there. (Footnotes are the note's end by custom, and stay it.)
+editor.view.dom.addEventListener(
+  'mousedown',
+  (event) => {
+    const last = editor.view.dom.lastElementChild;
+    const kind = editor.state.doc.lastChild.type.name;
+    if (event.target !== editor.view.dom || event.clientY <= last.getBoundingClientRect().bottom || kind === 'paragraph' || kind === 'footnote') return;
+    event.preventDefault();
+    event.stopImmediatePropagation(); // The editor would put the cursor into the block above.
+    editor.chain().insertContentAt(editor.state.doc.content.size, { type: 'paragraph' }).focus('end').run();
+  },
+  true,
+);
 
 // Leaving the page must not lose the last words typed.
 addEventListener('pagehide', save);

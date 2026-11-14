@@ -1,7 +1,8 @@
 // A table's controls, at the table itself: a "+" along its right edge adds a
 // column, a "+" under its last row adds a row, and the row and the column of
 // the cell in hand (the one under the pointer, or else the one the cursor is
-// in) each have a handle with what can be done to them. They lie over the
+// in) each have a handle with what can be done to them: put one in beside it,
+// move it, sort by it, set it to a side, delete it. They lie over the
 // page, beside the text and not in it: nothing moves when they come, and
 // nothing of them is in the note.
 
@@ -64,27 +65,38 @@ export function tableTools(editor, main) {
   /** The last cell of row `index` of the table in hand (of its last row, for -1). */
   const lastCell = (index) => [...cell.closest('table').rows].at(index).lastElementChild;
 
-  // The new row, or column, is where the cursor goes: it is there to be written in.
   addRow.addEventListener('click', () => into(lastCell(-1)).addRowAfter().goToNextCell().run());
   addColumn.addEventListener('click', () => into(lastCell(0)).addColumnAfter().goToNextCell().run());
 
+  // What a handle offers: [words, what it does, whether it cannot be done here]. What is put in - a row, a column - is
+  // where the cursor goes: it is there to be written in. What is moved takes the cursor along.
   const whole = ['-', ['noteTableRemove', (chain) => chain.deleteTable()]];
   const menus = new Map([
     [
       row,
-      // The first row is the heading, whichever row that is (see Grid in blocks.js): a row put above it becomes the heading, and so does the second row when the first goes. The only row goes with its table.
-      () => [
-        ['noteRowAbove', (chain) => chain.addRowBefore()],
-        ['noteRowBelow', (chain) => chain.addRowAfter()],
-        ['noteRowRemove', (chain, target) => (target.closest('table').rows.length > 1 ? chain.deleteRow() : chain.deleteTable())],
+      // The first row is the heading, whichever row that is (see Grid in blocks.js): a row put above it becomes the heading, and so does the second row when the first goes. The only row goes with its table. The heading itself does not move.
+      ({ r, c, rows }) => [
+        ['noteRowAbove', (chain) => chain.addRowBefore().goToCell(r, c)],
+        ['noteRowBelow', (chain) => chain.addRowAfter().goToCell(r + 1, c)],
+        '-',
+        ['noteRowUp', (chain) => chain.moveRow(-1), r < 2],
+        ['noteRowDown', (chain) => chain.moveRow(1), !r || r === rows - 1],
+        '-',
+        ['noteRowRemove', (chain) => (rows > 1 ? chain.deleteRow() : chain.deleteTable())],
         ...whole,
       ],
     ],
     [
       column,
-      () => [
-        ['noteColumnLeft', (chain) => chain.addColumnBefore()],
-        ['noteColumnRight', (chain) => chain.addColumnAfter()],
+      ({ r, c, rows, columns }) => [
+        ['noteSortAsc', (chain) => chain.sortColumn(1), rows < 3],
+        ['noteSortDesc', (chain) => chain.sortColumn(-1), rows < 3],
+        '-',
+        ['noteColumnLeft', (chain) => chain.addColumnBefore().goToCell(r, c)],
+        ['noteColumnRight', (chain) => chain.addColumnAfter().goToCell(r, c + 1)],
+        '-',
+        ['noteColumnMoveLeft', (chain) => chain.moveColumn(-1), !c],
+        ['noteColumnMoveRight', (chain) => chain.moveColumn(1), c === columns - 1],
         '-',
         ['noteAlignLeft', (chain) => chain.setColumnAlign('left')],
         ['noteAlignCenter', (chain) => chain.setColumnAlign('center')],
@@ -107,9 +119,10 @@ export function tableTools(editor, main) {
   function open(handle) {
     const target = cell;
     const element = el('div', { className: 'menu', role: 'menu' }, document.body);
-    for (const item of menus.get(handle)().filter(Boolean)) {
+    const where = { r: target.parentElement.rowIndex, c: target.cellIndex, rows: target.closest('table').rows.length, columns: target.parentElement.cells.length };
+    for (const item of menus.get(handle)(where)) {
       if (item === '-') el('hr', {}, element);
-      else el('button', { type: 'button', role: 'menuitem', textContent: t(item[0]), onclick: () => (close(), item[1](into(target), target).run()) }, element);
+      else el('button', { type: 'button', role: 'menuitem', textContent: t(item[0]), disabled: Boolean(item[2]), onclick: () => (close(), item[1](into(target)).run()) }, element);
     }
     const box = handle.getBoundingClientRect();
     put(element, { left: Math.min(box.left, innerWidth - element.offsetWidth - 8), top: box.bottom + 4 });
@@ -118,13 +131,13 @@ export function tableTools(editor, main) {
     // The keyboard is in the menu while it is open: arrows walk it, Esc leaves it for the text.
     element.addEventListener('keydown', (event) => {
       const step = { ArrowDown: 1, ArrowUp: -1 }[event.key];
-      const items = [...element.querySelectorAll('button')];
+      const items = [...element.querySelectorAll('button:enabled')];
       if (step) items.at((items.indexOf(document.activeElement) + step) % items.length).focus();
       else if (event.key === 'Escape') (close(), editor.commands.focus());
       else return;
       event.preventDefault();
     });
-    element.querySelector('button').focus();
+    element.querySelector('button:enabled').focus();
   }
 
   // A press beside the open menu closes it - and a press on its own handle does only that: the click that follows must not open it again.

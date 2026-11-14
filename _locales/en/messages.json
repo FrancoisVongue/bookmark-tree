@@ -491,6 +491,30 @@
   "noteFootnote": {
     "message": "Footnote"
   },
+  "noteRowUp": {
+    "message": "Move row up"
+  },
+  "noteRowDown": {
+    "message": "Move row down"
+  },
+  "noteColumnMoveLeft": {
+    "message": "Move column left"
+  },
+  "noteColumnMoveRight": {
+    "message": "Move column right"
+  },
+  "noteSortAsc": {
+    "message": "Sort ascending"
+  },
+  "noteSortDesc": {
+    "message": "Sort descending"
+  },
+  "noteAuto": {
+    "message": "Auto"
+  },
+  "noteLanguageAsIs": {
+    "message": "no highlighting"
+  },
   "noteLanguage": {
     "message": "Language"
   },

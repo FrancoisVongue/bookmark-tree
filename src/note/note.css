@@ -96,9 +96,18 @@ main {
 .tiptap h1 {
   font-size: 1.6em;
 }
+/* A heading within a section is told from the section's own: smaller, and not as far from what is above it. */
+.tiptap h3 {
+  margin-top: 40px;
+  font-size: 1.12em;
+}
 .tiptap :is(h4, h5, h6) {
   margin-top: 2em;
   font-size: 1em;
+}
+/* A heading right under a heading opens the same section: it stands close. */
+.tiptap :is(h1, h2, h3, h4, h5, h6) + :is(h2, h3, h4, h5, h6) {
+  margin-top: 0.9em;
 }
 /* What opens the note - its title, as a rule - starts at the top. */
 .tiptap > :first-child {
@@ -180,85 +189,185 @@ main {
   font-size: 1em;
   font-size-adjust: 0.51;
 }
+/* A word of code in a line is a thing with an edge: seen as code at a glance, in a heading or a table too. */
 .tiptap code {
-  padding: 0.1em 0.3em;
-  border-radius: 4px;
+  padding: 0.12em 0.36em;
+  border-radius: 5px;
   background: var(--badge);
+  box-shadow: inset 0 0 0 1px var(--line);
+  font-weight: 400;
 }
-/* A block of code lies on a surface of its own. Its lines are not broken: a long one scrolls. They are read line under line: closer than prose. */
+/*
+ * A block of code lies on the dark ground of code, in the light and in the
+ * dark (see base.css). Its lines are not broken: a long one scrolls. They
+ * are read line under line: closer than prose.
+ */
 .tiptap .code {
   position: relative;
-  border-radius: 8px;
-  background: var(--inset);
+  border-radius: 10px;
+  overflow: hidden; /* The corners are the scrollbar's too. */
+  background: var(--code-bg);
+  color: var(--code-text);
+  color-scheme: dark;
 }
 .tiptap pre {
   margin: 0;
-  padding: 12px 16px;
-  line-height: 1.55;
+  padding: 14px 18px;
+  line-height: 1.6;
   tab-size: 2;
   overflow-x: auto;
 }
 .tiptap pre code {
   padding: 0;
   background: none;
+  box-shadow: none;
   white-space: pre; /* The editor would break a long line, as it does in prose. */
 }
+.tiptap .code ::selection {
+  background: rgb(124 188 248 / 0.3);
+}
+/* The colours of code: what the highlighter calls a thing, and the role it is given. */
+.hljs-comment,
+.hljs-quote,
+.hljs-meta,
+.hljs-doctag {
+  color: var(--code-dim);
+}
+.hljs-comment,
+.hljs-quote,
+.hljs-emphasis {
+  font-style: italic;
+}
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-template-tag,
+.hljs-deletion,
+.hljs-meta .hljs-keyword {
+  color: var(--code-keyword);
+}
+.hljs-string,
+.hljs-regexp,
+.hljs-link,
+.hljs-meta .hljs-string {
+  color: var(--code-string);
+}
+.hljs-number,
+.hljs-literal,
+.hljs-symbol,
+.hljs-attr,
+.hljs-attribute,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-operator,
+.hljs-bullet {
+  color: var(--code-value);
+}
+.hljs-title,
+.hljs-section,
+.hljs-selector-id {
+  color: var(--code-name);
+}
+.hljs-type,
+.hljs-built_in,
+.hljs-title.class_,
+.hljs-selector-class,
+.hljs-selector-pseudo {
+  color: var(--code-type);
+}
+.hljs-tag,
+.hljs-name,
+.hljs-addition {
+  color: var(--code-tag);
+}
+.hljs-subst,
+.hljs-params,
+.hljs-property,
+.hljs-punctuation {
+  color: var(--code-text);
+}
+.hljs-strong,
+.hljs-section {
+  font-weight: var(--bold);
+}
 /*
- * The block's corner. Its language stands there as a word, and is a field:
- * under the pointer or the keyboard it takes a shape, and an empty one says
- * what it is for. Beside it, under the pointer, "Copy". Both lie over the
- * code that may run under them.
+ * The block's corner: its language - a button, which opens the list a
+ * language is chosen from - and beside it, under the pointer, "Copy". Both
+ * lie over the code that may run under them, on the block's own ground.
  */
 .tiptap .corner {
   position: absolute;
-  top: 4px;
-  right: 4px;
+  top: 6px;
+  right: 6px;
   display: flex;
   gap: 2px;
-  font: 11.5px / 1 var(--font);
+  border-radius: 6px;
+  background: var(--code-bg);
+  font: 12px / 1 var(--font);
   user-select: none;
 }
-.tiptap .corner > * {
+.tiptap .corner button {
+  display: flex;
+  align-items: center;
+  gap: 2px;
   height: 24px;
   padding: 0 8px;
-  border: 0;
-  border-radius: 4px;
-  font: inherit;
+  border-radius: 6px;
+  color: var(--code-dim);
+  white-space: nowrap;
 }
-.tiptap .corner input {
-  field-sizing: content;
-  min-width: 1ch;
-  background: none;
-  color: var(--dim);
-  text-align: right;
+.tiptap .corner .language {
+  padding-right: 4px;
 }
-.tiptap .corner input::placeholder {
-  color: transparent;
-}
-.tiptap .corner button {
-  background: linear-gradient(var(--badge), var(--badge)), var(--bg);
-  color: var(--text);
+.tiptap .corner .copy {
   opacity: 0;
 }
-.tiptap .code:hover .corner button {
+.tiptap .code:hover .copy,
+.tiptap .code:focus-within .copy {
   opacity: 1;
 }
-.tiptap .code:hover .corner input,
-.tiptap .corner input:focus {
-  background: linear-gradient(var(--badge), var(--badge)), var(--bg);
-  color: var(--text);
-}
-.tiptap .code:hover .corner input::placeholder,
-.tiptap .corner input:focus::placeholder {
-  color: var(--dim);
-}
-.tiptap .corner input:focus {
-  outline: 0;
-  background: linear-gradient(var(--badge), var(--badge)), linear-gradient(var(--badge), var(--badge)), var(--bg);
-  text-align: left;
+.tiptap .corner button:hover,
+.tiptap .corner button[aria-expanded] {
+  background: var(--code-veil);
+  color: var(--code-text);
 }
 .tiptap .corner button:active {
-  background: linear-gradient(var(--badge), var(--badge)), linear-gradient(var(--badge), var(--badge)), var(--bg);
+  background: linear-gradient(var(--code-veil), var(--code-veil)), var(--code-veil);
+}
+/* The list a language is chosen from (see pick in code.js): a menu with a field at its top, and the list scrolling under it. */
+.menu.picker {
+  display: flex;
+  flex-direction: column;
+  width: 220px;
+  max-height: min(320px, 100vh - 16px);
+  box-sizing: border-box;
+}
+.picker input {
+  flex: none;
+  height: var(--control);
+  margin-bottom: 4px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  outline: 0;
+  background: var(--badge);
+  color: var(--text);
+  font: inherit;
+}
+.picker [role='listbox'] {
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.picker button:hover:not([aria-selected='true']) {
+  background: none; /* One thing is in hand: where the pointer last moved or the keyboard went. */
+}
+.picker .tick {
+  margin-left: auto;
+  color: var(--dim);
+}
+.picker kbd {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* A quote is set into the page as code is: on the same quiet surface, in from its edges. A quote within a quote lies deeper by itself. */
@@ -272,9 +381,9 @@ main {
 }
 
 /*
- * A table. Rows are parted by a hairline and nothing else; the heading is
- * told by its weight and by the surface it lies on, which needs no line
- * under it. A table too wide for the page scrolls in its own frame.
+ * A table is read down its columns and along its rows: a line between every
+ * two of each, one frame around them all, the heading on a ground of its
+ * own. A table too wide for the page scrolls in its own frame.
  */
 .tiptap .tableWrapper {
   overflow-x: auto;
@@ -288,36 +397,80 @@ main {
 .tiptap table {
   border-collapse: separate;
   border-spacing: 0;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
   line-height: 1.5;
   font-variant-numeric: tabular-nums;
 }
 .tiptap th,
 .tiptap td {
+  position: relative;
   /* An empty cell must still be wide enough to click into. */
   min-width: 3em;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--line);
+  padding: 7px 14px;
+  border-right: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
   text-align: left;
   vertical-align: top;
 }
-.tiptap th,
+.tiptap :is(th, td):last-child {
+  border-right: 0;
+}
 .tiptap tr:last-child > * {
   border-bottom: 0;
 }
 .tiptap th {
   background: var(--inset);
 }
-.tiptap th:first-child {
-  border-radius: 6px 0 0 6px;
+/* The frame's corners are the cells' too. */
+.tiptap tr:first-child > :first-child {
+  border-top-left-radius: 7px;
 }
-.tiptap th:last-child {
-  border-radius: 0 6px 6px 0;
+.tiptap tr:first-child > :last-child {
+  border-top-right-radius: 7px;
+}
+.tiptap tr:last-child > :first-child {
+  border-bottom-left-radius: 7px;
+}
+.tiptap tr:last-child > :last-child {
+  border-bottom-right-radius: 7px;
 }
 .tiptap :is(td, th) > p {
   margin: 0;
 }
 .tiptap .selectedCell {
   background: var(--badge);
+}
+/*
+ * Sorting (see Grid in blocks.js): a small sign in the right margin of a
+ * heading's cell - there under the pointer, and there for good, in the
+ * text's colour, on the column the table stands sorted by. It takes no room
+ * of its own, so the heading's words stay over their column.
+ */
+.tiptap th .sort {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: grid;
+  place-items: center end;
+  width: 14px;
+  padding-right: 1px;
+  color: var(--dim);
+  opacity: 0;
+}
+.tiptap th .sort::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 0 -6px;
+}
+.tiptap th:hover .sort,
+.tiptap th .sort[data-sorted] {
+  opacity: 1;
+}
+.tiptap th .sort:hover,
+.tiptap th .sort[data-sorted] {
+  color: var(--text);
 }
 /*
  * The table's controls (see table.js) lie over the page, in the margins
@@ -460,9 +613,18 @@ main {
 @media print {
   #tools,
   .table-tools,
-  .tiptap .corner button,
-  .tiptap .corner input:placeholder-shown {
+  .tiptap .sort,
+  .tiptap .corner {
     display: none;
+  }
+  /* Code is not printed white on black: it keeps its frame and its letters. */
+  .tiptap .code {
+    border: 1px solid var(--rule);
+    background: none;
+    color: inherit;
+  }
+  .tiptap .code [class^='hljs'] {
+    color: inherit;
   }
 }
 @media (prefers-reduced-motion: reduce) {
