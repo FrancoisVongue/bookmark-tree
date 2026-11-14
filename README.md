@@ -42,7 +42,8 @@ with a library you care about, and keep backups (Settings has a button).
 The extension never reorders the browser's own tabs. It listens to what
 happens to them, and asks only five things of the browser: to open a tab,
 show one, close one, send one to an address, or - when you ask for it - give
-one a window of its own.
+one a window of its own. (And one thing of itself: when a window goes full
+screen, its panel hides; Alt+T or the button brings it back.)
 
 ## Install
 

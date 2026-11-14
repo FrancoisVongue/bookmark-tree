@@ -1,7 +1,7 @@
 // The panel's entry: the mouse, and the start. It turns what the user does
 // into commands for the worker (see screen.js for what the panel itself owns).
 
-import { allOfJournal, app, applySaved, arrange, clearFilters, closeMenu, closeNotice, closeOverlay, closePane, deselect, forgetSaved, here, idAt, log, menuUnder, openMenu, paneAt, pickFrom, picker, pointAt, redraw, refresh, revealActive, rowOf, search, searchJournal, select, setFocus, show, showActiveTree, split, targets, tick, tickRow, togglePicked, toggleStrip, ui, watch } from './screen.js';
+import { allOfJournal, app, applySaved, applyTicks, arrange, clearFilters, closeMenu, closeNotice, closeOverlay, closePane, deselect, forgetSaved, here, hush, idAt, log, menuUnder, openMenu, paneAt, pickFrom, picker, pointAt, redraw, refresh, revealActive, rowOf, search, searchJournal, select, setFocus, show, showActiveTree, split, targets, tick, tickRow, togglePicked, toggleStrip, ui, watch } from './screen.js';
 import { mainMenu, rowMenu, treeMenu } from './menus.js';
 import { endsDrag } from './drag.js';
 import { saveBackup } from '../page.js';
@@ -51,6 +51,9 @@ const actions = {
   'plan-go': ({ el }) => cmd.revisit(el.dataset.node),
   unplan: ({ el }) => cmd.plan([el.closest('.place').dataset.node], false),
   'plan-toggle': () => toggleStrip('plan'),
+  // A page that plays out of sight: to its tab - in the tree the user works in, if it is there.
+  'sound-go': ({ el }) => cmd.revisit(el.dataset.node, here().tree),
+  'sound-hush': ({ el }) => hush(el.closest('.place').dataset.node),
   'overlay-close': closeOverlay,
 };
 

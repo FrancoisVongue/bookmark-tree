@@ -12,7 +12,7 @@ const shots = process.argv[2];
 const sound = '<script>const c = new AudioContext(); const o = c.createOscillator(); const g = c.createGain(); g.gain.value = 0.01; o.connect(g).connect(c.destination); o.start(); c.resume();</script>';
 const server = http.createServer((req, res) => {
   res.setHeader('content-type', 'text/html');
-  res.end(`<title>Page ${req.url}</title>${req.url === '/sound' ? sound : ''}<a id="l" target="_blank" href="/child-of${req.url.replace('/', '-')}">link</a>`);
+  res.end(`<title>Page ${req.url}</title>${req.url.startsWith('/sound') ? sound : ''}<a id="l" target="_blank" href="/child-of${req.url.replace('/', '-')}">link</a>`);
 }).listen(0);
 const base = `http://localhost:${server.address().port}`;
 const ctx = await chromium.launchPersistentContext(fs.mkdtempSync(`${os.tmpdir()}/tree-wave2-`), {
@@ -130,8 +130,28 @@ await open(`${base}/sound`);
 await sleep(1500);
 await panel.bringToFront();
 await sleep(500);
-console.log('\n== sound: waves along the row:', await panel.locator('.row.playing .sound').count(), '| moving:', await panel.locator('.sound').evaluate((el) => getComputedStyle(el).animationName));
+console.log('\n== sound: waves along the row:', await panel.locator('.row.playing .sound').count(), '| moving:', await panel.locator('.row .sound').evaluate((el) => getComputedStyle(el).animationName));
 await shot('6-sound');
+
+// Sound out of sight: the pages that play stand in a stack at the bottom, and their tree says it in the table.
+await open(`${base}/sound-2`);
+await open(`${base}/sound-3`);
+await sleep(1500);
+await panel.bringToFront();
+await panel.locator('.grid .cell').first().click();
+await sleep(300);
+await panel.keyboard.type('Quiet');
+await panel.keyboard.press('Enter');
+await sleep(600);
+const stack = () => panel.locator('.sounds .place .title').allTextContents();
+console.log('\n== an empty tree is shown while three pages play: in the stack:', await stack(), '| trees with waves:', (await panel.locator('.grid .tab.playing').allTextContents()).map((name) => name.trim()));
+await shot('7-sound-elsewhere');
+await panel.locator('.sounds .place', { hasText: 'Page /sound-2' }).hover();
+await panel.locator('.sounds .place', { hasText: 'Page /sound-2' }).locator('[data-action="sound-hush"]').click();
+console.log('  one sent away: in the stack:', await stack());
+await panel.locator('.sounds .go').first().click();
+await say('a click on the first: its tab, its tree, its row');
+console.log('  in the stack:', await stack());
 
 console.log('\nERRORS:', errors.length ? `\n${errors.join('\n')}` : 'none');
 await ctx.close();

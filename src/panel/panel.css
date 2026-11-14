@@ -292,6 +292,11 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* A tree with a page that plays in it says so the way that page's row does: the waves (see .sound), behind its name. */
+.tab.playing {
+  position: relative;
+  isolation: isolate;
+}
 
 /* --- A pane: one tree ---------------------------------------------------------- */
 
@@ -603,14 +608,16 @@
  * A page that plays: waves run along its row, behind the text - two of them,
  * of different lengths, towards each other. They are drawn in the accent
  * colour through a mask (so they follow the theme), fade out towards the
- * name, and stand still for those who asked for less motion.
+ * name, and stand still for those who asked for less motion. The same waves
+ * say it wherever else it is said: in the cell of a tree that holds such a
+ * page, and in the stack of those that play out of sight (see .sounds).
  */
 .row.playing {
   isolation: isolate;
 }
 .sound {
   position: absolute;
-  inset: 0 0 0 calc(var(--depth) * var(--indent));
+  inset: 0 0 0 calc(var(--depth, 0) * var(--indent));
   z-index: -1;
   border-radius: inherit;
   background: var(--accent);
@@ -777,14 +784,93 @@
 .notice span {
   flex: 1;
 }
-/* The notice of what was done stands above the strips at the bottom, whatever they are. */
+/*
+ * What stands over the trees, above the strips at the bottom, whatever they
+ * are: one column that grows upwards from there. At its foot the pages that
+ * play out of sight, which stay; on top of them the notice of what was done,
+ * which passes - so neither covers the other, and what stays keeps its place.
+ */
 .toasts {
   flex: none;
   position: relative;
+  bottom: 12px;
+  z-index: 15;
   height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
 }
 .toasts .toast {
-  position: absolute;
+  position: static;
+  flex: none;
+  transform: none;
+}
+/*
+ * The pages that play out of sight: one shape of the notice's kind, a line
+ * for each (a place, as in the strips: see strip.css), in the notice's own
+ * colours. The button that sends a page away has its room from the start,
+ * and shows under the pointer.
+ */
+.toast.sounds {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  box-sizing: border-box;
+  min-width: min(200px, 100% - 24px); /* Room past a short name for the waves to run in. */
+  max-width: min(300px, 100% - 24px);
+  padding: 5px;
+}
+.sounds .place {
+  position: relative;
+  isolation: isolate;
+  flex: none;
+  padding: 0 2px 0 8px;
+  border-radius: 13px;
+  color: inherit;
+}
+.sounds .place:hover,
+.sounds .act:hover {
+  background: rgb(127 127 127 / 0.35);
+}
+.sounds .sound {
+  background: currentColor;
+}
+.sounds .favicon.glyph {
+  color: inherit;
+}
+.sounds .act {
+  display: grid;
+  opacity: 0;
+}
+.sounds .place:hover .act,
+.sounds .act:focus-visible {
+  opacity: 1;
+}
+.sounds .more {
+  margin: 0;
+  padding: 0 8px 0 30px; /* Under the names. */
+  font-size: 11px;
+  line-height: 22px;
+  opacity: 0.7;
+}
+/* A page comes into the stack quietly. (It leaves at once: its row has come in sight, or it is silent.) */
+.toast.sounds,
+.sounds .place {
+  animation: arrive 0.16s ease-out;
+}
+@keyframes arrive {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast.sounds,
+  .sounds .place {
+    animation: none;
+  }
 }
 
 /* --- While something is dragged ------------------------------------------------ */

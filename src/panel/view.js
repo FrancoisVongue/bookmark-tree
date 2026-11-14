@@ -2,7 +2,7 @@
 
 import { html, render, nothing } from '../vendor/lit-html/lit-html.js';
 import { repeat } from '../vendor/lit-html/directives/repeat.js';
-import { descendantsOf, gridOf, isGroup, isNote, parentOf, planOf } from '../model.js';
+import { descendantsOf, gridOf, inTree, isGroup, isNote, parentOf, planOf } from '../model.js';
 import { t } from '../i18n.js';
 import { toastView } from '../parts.js';
 import { keyOf } from './keymap.js';
@@ -264,9 +264,12 @@ function treeGrid(ui) {
     if (!id) return html`<button class="cell ${drop}" data-action="tree-add" data-cell=${cell} title=${t('newTree')}>${ICONS.add}</button>`;
     const tree = ui.library.trees[id];
     if (ui.renaming?.tree === id) return html`<input class="rename tree-name" .value=${tree.name} aria-label=${t('renameHint')} />`;
-    // The tree of the current tab is marked wherever the panel is looking.
-    const state = `${id === current ? 'current' : ''} ${id === ui.activeTree ? 'has-active' : ''} ${ui.drag?.tree === id ? 'dragging' : ''} ${drop}`;
-    return html`<button class="tab ${state}" data-action="tree-show" data-tree=${id} data-cell=${cell}><span>${treeLabel(tree)}</span></button>`;
+    // The tree of the current tab is marked wherever the panel is looking. So is a tree with a page that plays, by the sign its row has.
+    const playing = [...ui.audible].some((node) => inTree(tree, node));
+    const state = `${id === current ? 'current' : ''} ${id === ui.activeTree ? 'has-active' : ''} ${playing ? 'playing' : ''} ${ui.drag?.tree === id ? 'dragging' : ''} ${drop}`;
+    return html`<button class="tab ${state}" data-action="tree-show" data-tree=${id} data-cell=${cell} title=${playing ? t('playing') : nothing}>
+      ${playing ? html`<span class="sound"></span>` : nothing}<span>${treeLabel(tree)}</span>
+    </button>`;
   };
   return html`<div class="grid" style="grid-template-columns:repeat(${columns}, minmax(0, 1fr))">${cells.map(cellView)}</div>`;
 }
@@ -410,6 +413,26 @@ function planView(ui) {
   });
 }
 
+/**
+ * The pages that play out of sight (see outOfSight in sound.js), in a stack
+ * shaped as the notice of what was done: each a place to go to, with the
+ * waves its row would have, and a button to send it away.
+ */
+function soundsView(ui) {
+  const { ids, more } = ui.sounds;
+  if (!ids.length) return nothing;
+  const entry = (id) => html`
+    <div class="place" data-node=${id}>
+      <span class="sound"></span>
+      <button class="go" data-action="sound-go" data-node=${id} title=${`${titleOf(ui.library.nodes[id])}\n${t('soundGo')}`}>
+        ${iconView(ui.library.nodes[id])}<span class="title">${titleOf(ui.library.nodes[id])}</span>
+      </button>
+      ${act('sound-hush', 'close', t('soundHush'))}
+    </div>
+  `;
+  return html`<div class="toast sounds">${repeat(ids, (id) => id, entry)}${more ? html`<p class="more">${t('soundMore', more)}</p>` : nothing}</div>`;
+}
+
 /** Draws the panel from `ui` (see screen.js). */
 export function draw(container, ui) {
   if (!ui.library) return;
@@ -441,9 +464,7 @@ export function draw(container, ui) {
       </header>
       ${planView(ui)}
       <main class="panes split-${ui.split}">${repeat(ui.panes, (pane) => pane.id, (pane, index) => paneView(pane, index, ui))}</main>
-      ${ui.toast
-        ? html`<div class="toasts">${toastView(ui.toast)}</div>`
-        : nothing}
+      <div class="toasts">${ui.toast ? toastView(ui.toast) : nothing}${soundsView(ui)}</div>
       ${journalView(ui)}
       ${ui.notice
         ? html`<footer class="notice">

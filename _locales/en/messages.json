@@ -344,6 +344,15 @@
   "playing": {
     "message": "Playing sound"
   },
+  "soundGo": {
+    "message": "Go to this tab"
+  },
+  "soundHush": {
+    "message": "Hide until it plays again"
+  },
+  "soundMore": {
+    "message": "+$1 more"
+  },
   "alsoIn": {
     "message": "Also in: $1"
   },
