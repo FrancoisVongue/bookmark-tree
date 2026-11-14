@@ -137,6 +137,7 @@
   --snd-line: oklch(0.87 0.07 150);
   --snd-hov: oklch(0.6 0.15 150 / 0.16);
   --snd-bubble: oklch(0.8 0.14 150); /* The sign on the dark shape of a notice (see .bubble), which has the other theme's ground. */
+  --next: #1a9fe6; /* What is ahead: the sign of a plan that has something in it. A sky blue - not the accent, which says where to act and where one is. */
   /* What is said aloud: something to notice, something wrong. */
   --notice-bg: #fdf1c7;
   --notice-text: #4d3d00;
@@ -167,6 +168,7 @@
     --snd-line: oklch(0.37 0.06 150);
     --snd-hov: oklch(0.8 0.14 150 / 0.16);
     --snd-bubble: oklch(0.52 0.15 150);
+    --next: #5cc3f7;
     --notice-bg: #3a3317;
     --notice-text: #f0dc9c;
     --trouble-bg: #47201c;

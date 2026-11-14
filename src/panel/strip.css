@@ -74,6 +74,33 @@
 .strip.ahead.open .fold svg {
   transform: rotate(-90deg);
 }
+/*
+ * While something is planned its arrow says so: in the blue of what is
+ * ahead, and now and then it leans forward a little - a reminder at the edge
+ * of sight, with long rests, never a call. With nothing planned it is still
+ * and grey like the rest.
+ */
+.strip.pending .strip-head > .glyph {
+  color: var(--next);
+}
+.strip.pending .strip-head > .glyph svg {
+  animation: ahead 7s ease-in-out infinite;
+}
+@keyframes ahead {
+  0%,
+  72%,
+  100% {
+    transform: none;
+  }
+  86% {
+    transform: translateX(3px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .strip.pending .strip-head > .glyph svg {
+    animation: none;
+  }
+}
 /* A place of the plan is two buttons: the one that goes there takes the room, the one that takes it off the plan stands at the end. */
 .place .go {
   flex: 1;
