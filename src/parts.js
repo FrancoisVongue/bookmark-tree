@@ -42,9 +42,9 @@ export function ask(question, yes, value) {
   });
 }
 
-/** The notice of what was just done: { text, undo } - with an "Undo" (data-action="undo") when it can be undone. */
+/** The notice of what was just done: { text, undo } - with an "Undo" (data-action="undo") when it can be undone. (Where it stands is said by what holds it: `.toasts`, on each page.) */
 export const toastView = ({ text, undo }) => html`
-  <div class="toast">
+  <div class="bubble toast">
     <span>${text}</span>
     ${undo ? html`<button class="pill" data-action="undo">${t('undo')}</button>` : nothing}
   </div>

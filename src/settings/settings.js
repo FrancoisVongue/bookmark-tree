@@ -256,7 +256,7 @@ function draw() {
       <h1>${t('settingsTitle')}</h1>
       ${page.trouble ? html`<p class="trouble">${page.trouble}</p>` : nothing}
       ${syncView()} ${versionsView()} ${filesView()} ${trashView()} ${appearanceView()} ${keysView()}
-      ${page.said ? toastView(page.said) : nothing}
+      <div class="toasts">${page.said ? toastView(page.said) : nothing}</div>
     `,
     app,
   );

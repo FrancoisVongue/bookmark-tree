@@ -415,8 +415,8 @@ function planView(ui) {
 
 /**
  * The pages that play out of sight (see outOfSight in sound.js), in a stack
- * shaped as the notice of what was done: each a place to go to, with the
- * waves its row would have, and a button to send it away.
+ * of the same dark shape as the notice of what was done: each a place to go
+ * to, with the waves its row would have, and a button to send it away.
  */
 function soundsView(ui) {
   const { ids, more } = ui.sounds;
@@ -430,7 +430,7 @@ function soundsView(ui) {
       ${act('sound-hush', 'close', t('soundHush'))}
     </div>
   `;
-  return html`<div class="toast sounds">${repeat(ids, (id) => id, entry)}${more ? html`<p class="more">${t('soundMore', more)}</p>` : nothing}</div>`;
+  return html`<div class="bubble sounds">${repeat(ids, (id) => id, entry)}${more ? html`<p class="more">${t('soundMore', more)}</p>` : nothing}</div>`;
 }
 
 /** Draws the panel from `ui` (see screen.js). */

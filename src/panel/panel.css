@@ -802,21 +802,18 @@
   align-items: center;
   gap: 6px;
 }
-.toasts .toast {
-  position: static;
+.toasts > * {
   flex: none;
-  transform: none;
 }
 /*
- * The pages that play out of sight: one shape of the notice's kind, a line
- * for each (a place, as in the strips: see strip.css), in the notice's own
- * colours. The button that sends a page away has its room from the start,
- * and shows under the pointer.
+ * The pages that play out of sight: one shape of the notice's kind (`.bubble`
+ * in base.css), a line for each (a place, as in the strips: see strip.css),
+ * in that shape's own colours. The button that sends a page away has its
+ * room from the start, and shows under the pointer.
  */
-.toast.sounds {
+.sounds {
+  display: flex;
   flex-direction: column;
-  align-items: stretch;
-  gap: 0;
   box-sizing: border-box;
   min-width: min(200px, 100% - 24px); /* Room past a short name for the waves to run in. */
   max-width: min(300px, 100% - 24px);
@@ -856,7 +853,7 @@
   opacity: 0.7;
 }
 /* A page comes into the stack quietly. (It leaves at once: its row has come in sight, or it is silent.) */
-.toast.sounds,
+.sounds,
 .sounds .place {
   animation: arrive 0.16s ease-out;
 }
@@ -867,7 +864,7 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .toast.sounds,
+  .sounds,
   .sounds .place {
     animation: none;
   }
