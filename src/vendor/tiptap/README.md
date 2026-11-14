@@ -16,8 +16,10 @@ To rebuild it, in an empty folder:
 
 with this `entry.js`:
 
-    export { Editor } from '@tiptap/core';
+    export { Editor, InputRule, Node } from '@tiptap/core';
     export { default as StarterKit } from '@tiptap/starter-kit';
+    export { default as CodeBlock } from '@tiptap/extension-code-block';
+    export { default as Text } from '@tiptap/extension-text';
     export { default as TaskList } from '@tiptap/extension-task-list';
     export { default as TaskItem } from '@tiptap/extension-task-item';
     export { default as Link } from '@tiptap/extension-link';
@@ -27,5 +29,9 @@ with this `entry.js`:
     export { default as TableRow } from '@tiptap/extension-table-row';
     export { default as TableHeader } from '@tiptap/extension-table-header';
     export { default as TableCell } from '@tiptap/extension-table-cell';
+
+(`Node` and `InputRule` are what the note's own blocks are made of - see
+`src/note/blocks.js`; the code block and the text come with the starter kit,
+and are named here because the note changes how they are written down.)
 
 Built from versions 2.27.3 (Tiptap) and 0.8.10 (tiptap-markdown).
