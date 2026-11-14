@@ -6,7 +6,9 @@
   flex-direction: column;
   max-height: 50%;
   padding: 2px 6px;
-  background: var(--surface-side); /* A place of its own, beside the trees: said by its tone. */
+  /* A place of its own, beside the trees: a tone hardly off the ground, and a line as faint where the two meet. */
+  background: var(--surface-side);
+  border-top: 1px solid var(--line);
   color: var(--dim);
 }
 .strip-head {
@@ -62,6 +64,10 @@
 }
 
 /* The strip of what is ahead mirrors the one of what is behind: it is at the top, and its list unfolds downwards. */
+.strip.ahead {
+  border-top: 0;
+  border-bottom: 1px solid var(--line);
+}
 .strip.ahead .fold svg {
   transform: rotate(90deg);
 }

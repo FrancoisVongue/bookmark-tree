@@ -24,7 +24,7 @@ section {
 h2 {
   margin: 0;
   padding-bottom: 6px;
-  border-bottom: 1px solid var(--badge);
+  border-bottom: 1px solid var(--line);
   font-size: 15px;
   font-weight: 600;
 }
@@ -101,7 +101,7 @@ h2 {
 .field input[type='range'] {
   height: 20px;
   padding: 0;
-  border: 0;
+  background: none;
   accent-color: var(--accent);
 }
 

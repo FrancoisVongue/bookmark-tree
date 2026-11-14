@@ -1,20 +1,5 @@
-:root {
-  color-scheme: light dark;
-  --bg: #fff;
-  --text: #1f1f1f;
-  --dim: #6b6f6d;
-  --line: #e3e3e3;
-  --accent: #0b57d0;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #1f2022;
-    --text: #e3e3e3;
-    --dim: #9aa0a6;
-    --line: #3c4043;
-    --accent: #a8c7fa;
-  }
-}
+/* The note's page. (Its colours are the ones every page shares: see base.css.) */
+
 body {
   margin: 0;
   background: var(--bg);
@@ -54,7 +39,7 @@ body {
   cursor: pointer;
 }
 #tools button:hover {
-  background: color-mix(in srgb, var(--text) 8%, transparent);
+  background: var(--hover);
   color: var(--text);
 }
 #tools button[aria-pressed='true'] {
@@ -128,7 +113,7 @@ main {
 .tiptap code,
 .tiptap pre {
   font: 14px ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-  background: color-mix(in srgb, var(--text) 8%, transparent);
+  background: var(--badge);
   border-radius: 4px;
 }
 .tiptap code {
@@ -161,7 +146,7 @@ main {
   vertical-align: top;
 }
 .tiptap th {
-  background: color-mix(in srgb, var(--text) 5%, transparent);
+  background: var(--hover);
 }
 .tiptap th > p,
 .tiptap td > p {

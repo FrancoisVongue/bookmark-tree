@@ -13,17 +13,13 @@
   flex-direction: column;
   height: 100%;
 }
-/* What is selected: a quiet fill in the light, a tint of the accent in the dark, where a grey would look like a hover. */
+/* What is selected: a veil a step deeper than the pointer's in the light; a tint of the accent in the dark, where a veil would look like a hover. */
 :root {
-  --selected: var(--badge);
+  --selected: color-mix(in srgb, var(--text) 9%, transparent);
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --selected: color-mix(in srgb, var(--accent) 22%, var(--bg));
-  }
-  .notice {
-    background: #4a3f12;
-    color: #fde293;
+    --selected: color-mix(in srgb, var(--accent) 15%, var(--bg));
   }
 }
 
@@ -36,7 +32,8 @@
   flex-direction: column;
   gap: var(--gap);
   padding: 6px;
-  background: var(--surface-frame);
+  /* The bar lies on the ground itself, as the tree in focus does: what holds the tools is never heavier than what they work on. A line, hardly there, parts the two. */
+  border-bottom: 1px solid var(--line);
 }
 .tools {
   display: flex;
@@ -197,7 +194,7 @@
 }
 .saved .forget:hover {
   color: var(--danger);
-  background: rgb(217 48 37 / 0.12);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
 }
 
 /* --- Small buttons, wherever they are ------------------------------------------ */
@@ -255,11 +252,11 @@
 }
 .notice .pill {
   color: inherit;
-  background: rgb(0 0 0 / 0.08);
+  background: var(--badge);
 }
 .act.danger:hover {
   color: var(--danger);
-  background: rgb(217 48 37 / 0.12);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
 }
 
 /* --- The table of trees -------------------------------------------------------- */
@@ -334,8 +331,9 @@
 
 /*
  * Each tree lies on a surface. The one the user works in is the nearest, and
- * keeps all its contrast; the others step back a tone, and what is written
- * in them gives up a little of its colour - no more: where the current tab
+ * keeps all its contrast; the others step back under a veil that is felt
+ * more than seen, and what is written in them gives up a little of its
+ * colour, which says it more than the ground does - no more: where the current tab
  * is, and what the pointer is on, read as they do anywhere. That is all that
  * says where the focus is, and all that parts two trees: there is no line
  * between them. (With one tree shown there is nothing to step back from.)
@@ -605,7 +603,7 @@
   white-space: nowrap;
   text-overflow: ellipsis;
   pointer-events: none;
-  box-shadow: 0 2px 8px rgb(0 0 0 / 0.25);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.14);
 }
 .check {
   flex: none;
@@ -719,7 +717,7 @@
   padding: 4px;
   border-radius: 10px;
   background: var(--surface-over);
-  box-shadow: 0 0 0 1px var(--badge), 0 6px 24px rgb(0 0 0 / 0.3);
+  box-shadow: var(--lift);
 }
 .menu button {
   display: flex;
@@ -745,7 +743,7 @@
 }
 .menu hr {
   border: 0;
-  border-top: 1px solid var(--badge);
+  border-top: 1px solid var(--line);
   margin: 4px 0;
 }
 .menu:focus,
@@ -788,8 +786,8 @@
   padding: 0 8px;
   font: inherit;
   color: var(--text);
-  background: var(--bg);
-  border: 1px solid var(--badge);
+  background: var(--badge);
+  border: 0;
   border-radius: 6px;
   user-select: text;
 }
@@ -824,8 +822,8 @@
   align-items: center;
   gap: 8px;
   padding: 6px 6px 6px 12px;
-  background: #fde293;
-  color: #3b2f00;
+  background: var(--notice-bg);
+  color: var(--notice-text);
   line-height: 1.4;
 }
 .notice span {

@@ -2,43 +2,62 @@
 
 :root {
   color-scheme: light dark;
-  --danger: #d93025; /* What cannot be taken lightly: an error, a removal. */
   --control: 28px; /* The height of a field, a button with words, a strip's heading. */
-  --text: #1f1f1f;
-  --dim: #6b6f6d;
-  --hover: rgb(31 31 31 / 0.07);
-  --active-bg: #d3e3fd;
-  --active-text: #041e49;
-  --accent: #0b57d0;
   /*
-   * The surfaces: what a region lies on, from far to near. Every region takes
-   * one step, and that tone - no line - is what sets it apart from its
-   * neighbours. The step is small on purpose. (What speaks over a page for a
-   * moment, `.bubble`, turns the ladder over: the text's colour is its ground.)
+   * Colour. The grounds are near white and have no hue of their own; what is
+   * darker than the ground is the text's colour laid over it as a veil of a
+   * few percent - never a grey of its own. Colour is kept for what says
+   * something: where to act and where one is (the accent), what cannot be
+   * taken lightly, what is to be noticed.
    */
-  --surface-frame: #e9ebf0; /* What holds the tools: the panel's bar. */
-  --surface-side: #eff1f5; /* A place beside the content: a strip. */
-  --surface-back: #f4f5f8; /* Content that has stepped back: a tree out of focus. */
-  --bg: #fff; /* The content in hand: the tree in focus, a page. */
-  --surface-over: #fff; /* What floats over it all: a menu, a dialog. */
-  /* A contained thing - a field, a pressed button, a chip, what belongs to one control - on whatever surface it lies: one step away from it. */
-  --badge: rgb(20 60 130 / 0.1);
+  --text: #1f1f1f;
+  --dim: #6b6b6b;
+  --accent: #0b57d0;
+  --danger: #d93025; /* What cannot be taken lightly: an error, a removal. */
+  /*
+   * The surfaces: what a region lies on. The ground itself, `--bg`, is where
+   * the work is and what holds the tools: the tree in focus, a page, the
+   * panel's bar. The others are that ground a step away - a step that is
+   * felt, not seen.
+   */
+  --bg: #fff;
+  --surface-side: #fbfbfb; /* A place beside the content: a strip. */
+  --surface-back: #f9f9f9; /* Content that has stepped back: a tree out of focus. */
+  --surface-over: #fff; /* What floats over it all: a menu, a dialog. In the light its shadow lifts it. */
+  --lift: 0 0 0 1px var(--line), 0 2px 6px rgb(0 0 0 / 0.06), 0 10px 28px rgb(0 0 0 / 0.14);
+  /* The veils, on whatever surface they lie. */
+  --hover: rgb(31 31 31 / 0.05); /* What the pointer is on. */
+  --badge: rgb(31 31 31 / 0.06); /* A contained thing: a field, a pressed button, a chip, what belongs to one control. */
+  --line: rgb(31 31 31 / 0.08); /* Where two regions of one tone meet, and the tone alone cannot part them. */
+  /* The current tab's row: the one fill that has a colour. */
+  --active-bg: #e4edfb;
+  --active-text: #0a2f6e;
+  /* What is said aloud: something to notice, something wrong. */
+  --notice-bg: #fdf1c7;
+  --notice-text: #4d3d00;
+  --trouble-bg: #fce8e6;
+  --trouble-text: #a11b12;
 }
 @media (prefers-color-scheme: dark) {
+  /* In the dark the ground is near black, lighter is nearer, and a veil is of white. What floats is lighter still, where a shadow hardly shows. */
   :root {
-    --text: #e3e3e3;
-    --dim: #9aa0a6;
-    --hover: rgb(227 227 227 / 0.08);
-    --active-bg: #004a77;
-    --active-text: #c2e7ff;
+    --text: #ededed;
+    --dim: #a0a0a0;
     --accent: #a8c7fa;
-    /* In the dark, lighter is nearer; what floats is lighter still, where a shadow hardly shows. */
-    --surface-frame: #17181a;
-    --surface-side: #1b1d1f;
-    --surface-back: #202224;
-    --bg: #282a2c;
-    --surface-over: #323437;
-    --badge: rgb(227 232 240 / 0.11);
+    --bg: #1c1c1c;
+    --surface-side: #1a1a1a;
+    --surface-back: #181818;
+    --surface-over: #252525;
+    --lift: 0 0 0 1px var(--line), 0 8px 28px rgb(0 0 0 / 0.5);
+    --hover: rgb(237 237 237 / 0.06);
+    --badge: rgb(237 237 237 / 0.08);
+    --line: rgb(237 237 237 / 0.1);
+    --active-bg: #283a54;
+    --active-text: #d6e4fb;
+    --notice-bg: #3a3317;
+    --notice-text: #f0dc9c;
+    --trouble-bg: #47201c;
+    --trouble-text: #f6d5d1;
   }
 }
 
@@ -125,7 +144,7 @@ svg.line {
   /* One cell the size of the page: a dialog's "100%" is then the page, not what the dialog holds. */
   grid-template: minmax(0, 1fr) / minmax(0, 1fr);
   padding: 12px;
-  background: rgb(0 0 0 / 0.35);
+  background: rgb(0 0 0 / 0.25);
 }
 .dialog {
   display: flex;
@@ -138,7 +157,7 @@ svg.line {
   padding: 12px;
   border-radius: 12px;
   background: var(--surface-over);
-  box-shadow: 0 8px 32px rgb(0 0 0 / 0.35);
+  box-shadow: var(--lift);
 }
 .dialog footer {
   display: flex;
@@ -171,15 +190,15 @@ dialog.dialog {
   color: var(--text);
 }
 dialog.dialog::backdrop {
-  background: rgb(0 0 0 / 0.35);
+  background: rgb(0 0 0 / 0.25);
 }
 dialog.dialog input {
   height: var(--control);
   padding: 0 8px;
   font: inherit;
   color: var(--text);
-  background: var(--bg);
-  border: 1px solid var(--badge);
+  background: var(--badge);
+  border: 0;
   border-radius: 6px;
 }
 .dialog p {
@@ -201,14 +220,14 @@ dialog.dialog input {
   font: inherit;
   font-size: 13px;
   color: var(--text);
-  background: var(--bg);
-  border: 1px solid var(--badge);
+  background: var(--badge);
+  border: 0;
   border-radius: 6px;
   user-select: text;
 }
 .field input:focus {
   outline: 2px solid var(--accent);
-  outline-offset: -1px;
+  outline-offset: -2px;
 }
 
 .hint {
@@ -222,17 +241,11 @@ dialog.dialog input {
   margin: 0;
   padding: 8px 10px;
   border-radius: 8px;
-  background: var(--danger);
-  color: #fff;
+  background: var(--trouble-bg);
+  color: var(--trouble-text);
   user-select: text;
 }
 
 .dialog footer button {
   white-space: nowrap;
-}
-@media (prefers-color-scheme: dark) {
-  .trouble {
-    background: #5c1f1a;
-    color: #f9dedc;
-  }
 }
