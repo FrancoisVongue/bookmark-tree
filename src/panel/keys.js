@@ -1,6 +1,6 @@
 // The keyboard.
 
-import { app, closeMenu, closeOverlay, deselect, focusRow, here, idAt, onTop, paneAt, rowOf, search, searchJournal, selectAlso, targets, ui, under } from './screen.js';
+import { app, closeMenu, closeOverlay, deselect, focusRow, here, idAt, onTop, paneAt, rowOf, search, searchJournal, selectAlso, showBranch, targets, ui, under } from './screen.js';
 import { endDrag } from './drag.js';
 import * as cmd from './commands.js';
 
@@ -77,6 +77,7 @@ addEventListener('keydown', (event) => {
     Tab: () => (event.shiftKey ? cmd.outdent : cmd.indent)(pane, ids),
     d: () => cmd.duplicate(pane, ids), // (With Ctrl: a letter alone is not a key of the tree, see below.)
     a: () => selectAlso(pane),
+    b: () => showBranch(pane.tree, id),
   };
   const key = keys[event.key] ?? keys[letter];
   if (!key || (event.key.length === 1 && event.key !== ' ' && !ctrl)) return;

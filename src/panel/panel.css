@@ -73,6 +73,55 @@
   text-decoration: underline;
 }
 
+/*
+ * What the tree is narrowed to, under the tools: plain words in one quiet
+ * line, each with a small cross to take it off. No frames, no fills: that
+ * the filter is on is said by the pressed funnel and by this line being there.
+ */
+.filtered {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 12px;
+  padding: 0 4px 2px 6px;
+  font-size: 12px;
+  color: var(--dim);
+}
+.filtered .by {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 100%;
+  color: var(--text);
+}
+.filtered .by > button:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.filtered button:hover {
+  color: var(--accent);
+}
+.filtered .off {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  color: var(--dim);
+}
+.filtered .off svg {
+  width: 12px;
+  height: 12px;
+}
+.filtered .count {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+.hint button {
+  color: var(--accent);
+}
+
 /* --- Small buttons, wherever they are ------------------------------------------ */
 
 .act:disabled {
@@ -266,6 +315,13 @@
 
 /* --- A row --------------------------------------------------------------------- */
 
+/* A row that only leads to one that answers the search or the filter: there to say where that one is, and quieter. */
+.row.lead .title {
+  color: var(--dim);
+}
+.row.lead .favicon {
+  opacity: 0.45;
+}
 .row {
   position: relative;
   /*
@@ -556,6 +612,15 @@
 
 /* --- Menus --------------------------------------------------------------------- */
 
+/* An item that is ticked: the tick stands where the keys' names are for other items. */
+.menu [aria-checked] kbd::before {
+  content: '✓';
+  color: var(--accent);
+  visibility: hidden;
+}
+.menu [aria-checked='true'] kbd::before {
+  visibility: visible;
+}
 .menu {
   position: fixed;
   z-index: 40;

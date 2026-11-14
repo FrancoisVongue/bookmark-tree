@@ -95,6 +95,42 @@
   "noteLinkYes": {
     "message": "Link"
   },
+  "filter": {
+    "message": "Filter"
+  },
+  "filterOpen": {
+    "message": "Open now"
+  },
+  "filterWeek": {
+    "message": "Used this week"
+  },
+  "filterSound": {
+    "message": "Playing sound"
+  },
+  "filterKept": {
+    "message": "Pinned or kept in sight"
+  },
+  "filterBranch": {
+    "message": "Show only this branch"
+  },
+  "filterCount": {
+    "message": "$1 of $2"
+  },
+  "filterClear": {
+    "message": "Clear"
+  },
+  "filterNothing": {
+    "message": "Nothing matches"
+  },
+  "filterClearAll": {
+    "message": "Clear filters"
+  },
+  "filterRemove": {
+    "message": "Remove"
+  },
+  "filterUp": {
+    "message": "Click to go one level up"
+  },
   "extDescription": {
     "message": "Your pages as trees, in the side panel."
   },

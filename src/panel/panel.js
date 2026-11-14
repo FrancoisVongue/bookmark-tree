@@ -1,8 +1,8 @@
 // The panel's entry: the mouse, and the start. It turns what the user does
 // into commands for the worker (see screen.js for what the panel itself owns).
 
-import { allOfJournal, app, arrange, closeMenu, closeNotice, closeOverlay, closePane, deselect, here, idAt, log, menuUnder, openMenu, paneAt, pickFrom, picker, pointAt, redraw, refresh, revealActive, rowOf, search, searchJournal, select, setFocus, show, showActiveTree, split, targets, togglePicked, toggleStrip, ui, watch } from './screen.js';
-import { mainMenu, rowMenu, treeMenu } from './menus.js';
+import { allOfJournal, app, arrange, clearFilters, closeMenu, closeNotice, closeOverlay, closePane, deselect, here, idAt, log, menuUnder, openMenu, paneAt, pickFrom, picker, pointAt, redraw, refresh, revealActive, rowOf, search, searchJournal, select, setFocus, show, showActiveTree, showBranch, split, targets, toggleFilter, togglePicked, toggleStrip, ui, watch, widenBranch } from './screen.js';
+import { filterMenu, mainMenu, rowMenu, treeMenu } from './menus.js';
 import { endsDrag } from './drag.js';
 import { saveBackup } from '../page.js';
 import * as cmd from './commands.js';
@@ -29,6 +29,11 @@ const actions = {
   'tree-add': ({ el }) => cmd.newTree(Number(el.dataset.cell)),
   'pane-close': ({ pane }) => closePane(pane),
   more: ({ el }) => menuUnder(el, mainMenu()),
+  filter: ({ el }) => menuUnder(el, filterMenu),
+  'filter-off': ({ el }) => toggleFilter(here().tree, el.dataset.name),
+  'filter-up': () => widenBranch(here().tree),
+  'filter-branch-off': () => showBranch(here().tree),
+  'filter-clear': () => clearFilters(here().tree),
   'split-row': () => split('row'),
   'split-column': () => split('column'),
   'picker-tree': ({ el }) => pickFrom(el.dataset.tree),

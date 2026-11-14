@@ -2,8 +2,9 @@
 // the library itself; it owns only this: which trees are shown, what is
 // selected, searched for, dragged, or open on top.
 
-import { descendantsOf, parentOf, rowsOf } from '../model.js';
+import { DAY, ROOT, descendantsOf, inTree, parentOf, rowsOf } from '../model.js';
 import { find } from '../find.js';
+import { CONDITIONS, branchOf, narrows, passes, withLeads } from './filter.js';
 import { t } from '../i18n.js';
 import { draw, titleOf } from './view.js';
 
@@ -11,7 +12,7 @@ export const log = (...args) => console.log('[tree panel]', ...args);
 export const app = document.getElementById('app');
 
 const kept = JSON.parse(localStorage.getItem('view') ?? '{}');
-// A pane: its own id (what it is known by in the page, whatever its place among the panes), the tree it shows, its rows with their places, and which of them are drawn (`from`..`to`, between gaps `before` and `after`: see inSight). (While searching, also `loose`: see found().)
+// A pane: its own id (what it is known by in the page, whatever its place among the panes), the tree it shows, its rows with their places, and which of them are drawn (`from`..`to`, between gaps `before` and `after`: see inSight). (Also `count`, `first` and, while searching, `loose`: see rowsFor.)
 let panes = 0;
 export const newPane = (tree, size = 1) => ({ id: `p${++panes}`, tree, size, rows: [], from: 0, to: 0, sel: new Set() });
 
@@ -31,6 +32,9 @@ export const ui = {
   journalQuery: '', // What is searched for in the unfolded journal.
   journalAll: false, // Whether the unfolded journal shows all its places, or only the latest.
   places: { shown: [], more: 0, loose: undefined }, // What the unfolded journal shows (see layJournal).
+  // What each tree is narrowed to on this screen: { [treeId]: { branch?, open?, week?, sound?, kept? } } (see filter.js). Kept with the view, never with the library.
+  filters: kept.filters ?? {},
+  filtered: undefined, // What the bar says of the focused pane's filter: { branch: { id, name, path }, conditions, shown, of }, if it has one.
   notice: undefined, // The one thing to tell the user at the bottom: { id, text, button?: { action, label } } (see noticeOf).
   canUndo: false,
   canRedo: false,
@@ -349,6 +353,30 @@ export function openOverlay(overlay) {
 /** The pane on top to choose nodes of tree `treeId` from; they go `into` { pane, id }. */
 export const pick = (treeId, into) => openOverlay({ kind: 'picker', ...newPane(treeId), into });
 
+/** Turns a condition of a tree's filter on or off (see CONDITIONS in filter.js). */
+export function toggleFilter(treeId, name) {
+  const filter = (ui.filters[treeId] ??= {});
+  if (filter[name]) delete filter[name];
+  else filter[name] = true;
+  arrange();
+}
+/** Shows only node `id` and what is under it in a tree; the same node again, or none, shows the whole tree. */
+export function showBranch(treeId, id) {
+  const filter = (ui.filters[treeId] ??= {});
+  if (!id || filter.branch === id) delete filter.branch;
+  else filter.branch = id;
+  arrange();
+}
+/** One level up from the branch shown: its parent's branch, or - from the top - the whole tree. */
+export function widenBranch(treeId) {
+  const up = parentOf(ui.library.trees[treeId], ui.filters[treeId]?.branch);
+  showBranch(treeId, up === ROOT ? undefined : up);
+}
+export function clearFilters(treeId) {
+  delete ui.filters[treeId];
+  arrange();
+}
+
 /** In the picker: shows another tree to choose from, and marks or unmarks a row of it. */
 export const pickFrom = (treeId) => pick(treeId, picker().into);
 export function togglePicked(id) {
@@ -359,12 +387,15 @@ export function togglePicked(id) {
 
 /** Shows a menu at a point: items { label, hint, disabled, run }; `null` is a separator, `false` and `undefined` are left out. */
 export function openMenu(x, y, items, opener) {
+  // `items` may be a function that makes them: then an item marked `stay` leaves the menu open, made anew, when it has run (things to tick, one after another).
+  const make = typeof items === 'function' ? items : () => items;
   const run = (entry) => () => {
-    closeMenu();
+    if (!entry.stay) closeMenu();
     entry.run();
+    if (entry.stay && ui.menu) (ui.menu.items = wrap()), redraw();
   };
-  const shown = items.filter((entry) => entry !== false && entry !== undefined);
-  ui.menu = { x, y, opener, items: shown.map((entry) => entry && { ...entry, run: run(entry) }) };
+  const wrap = () => make().filter((entry) => entry !== false && entry !== undefined).map((entry) => entry && { ...entry, run: run(entry) });
+  ui.menu = { x, y, opener, items: wrap() };
   redraw();
   // Keep it on screen.
   const box = app.querySelector('.menu').getBoundingClientRect();
@@ -494,21 +525,41 @@ const textOf = (id) => {
 };
 
 /**
- * The rows that answer the search (see find.js) and the rows above them
- * that lead there; the first of those that answer it; and, when nothing
- * answered it exactly, how it was read: { rows, first, loose: { how, as } | undefined }.
+ * The rows a pane shows of its tree: all of them as the tree has them, or -
+ * narrowed by the tree's filter (see filter.js) and by the search, the
+ * search working on what the filter left - those that answer, with the rows
+ * above them that lead there. Gives { rows, first (the first that answers),
+ * loose (how a search that nothing answered exactly was read), count: { shown, of } }.
+ *
+ * The current tab's row is always among them, even where it answers
+ * nothing: the user must not lose where they are.
  */
-function found(rows, query) {
-  const { hits, how, as } = find(rows, query, (row) => textOf(row.id));
-  const hit = new Set(hits);
-  const out = [];
-  let need = 0; // Walking up: a row shallower than the last one kept leads to it.
-  for (const row of rows.toReversed()) {
-    if (!hit.has(row) && row.depth >= need) continue;
-    out.unshift(row);
-    need = row.depth;
+function rowsFor(pane) {
+  const { library } = ui;
+  const tree = library.trees[pane.tree];
+  const filter = pane === picker() ? {} : (ui.filters[pane.tree] ?? {});
+  const query = pane === picker() ? '' : ui.query;
+  const narrowed = narrows(filter) || !!query;
+  // Narrowed, every row is a candidate, folded away or not; else the tree is shown as it is.
+  const whole = narrowed ? rowsOf(library, pane.tree, true) : rowsOf(library, pane.tree, false, ui.live);
+  let rows = (filter.branch && branchOf(whole, filter.branch)) || whole;
+  const count = { shown: rows.length, of: descendantsOf(tree, ROOT).length };
+  let first, loose;
+  if (narrowed) {
+    const facts = { live: ui.live, audible: ui.audible, day: Math.floor(Date.now() / DAY) };
+    let hits = rows.filter((row) => passes(library.nodes[row.id], filter, facts));
+    count.shown = hits.length;
+    if (query) {
+      const { hits: answers, how, as } = find(hits, query, (row) => textOf(row.id));
+      [hits, loose] = [answers, how === 'exact' ? undefined : { how, as }];
+    }
+    first = hits[0]?.id;
+    rows = withLeads(rows, new Set([...hits.map((row) => row.id), ui.activeId]));
   }
-  return { rows: out, first: out.find((row) => hit.has(row))?.id, loose: how === 'exact' ? undefined : { how, as } };
+  // The current tab outside the branch shown (a new tab that landed elsewhere, say) stands under it, on its own.
+  const outside = filter.branch && !rows.some((row) => row.id === ui.activeId) && whole.find((row) => row.id === ui.activeId);
+  if (outside) rows = [...rows, { ...outside, depth: 0, kids: 0, collapsed: false, hidden: 0 }];
+  return { rows, first, loose, count };
 }
 
 const JOURNAL_SHOWN = 8; // Places in the unfolded journal at first; "more" shows the rest.
@@ -560,19 +611,34 @@ function layOut() {
   if (!ui.panes.length) ui.panes = [newPane(Object.keys(library.trees)[0])];
   ui.focus = here();
   if (picker() && !library.trees[picker().tree]) ui.overlay = undefined;
+  for (const [treeId, filter] of Object.entries(ui.filters)) {
+    if (!library.trees[treeId]) delete ui.filters[treeId];
+    else if (filter.branch && !inTree(library.trees[treeId], filter.branch)) delete filter.branch; // The node it showed is not in the tree any more.
+  }
   for (const pane of [...ui.panes, picker()]) {
     if (!pane) continue;
-    const searching = ui.query && pane !== picker();
-    const { rows, first, loose } = searching ? found(rowsOf(library, pane.tree, true), ui.query) : { rows: rowsOf(library, pane.tree, false, ui.live) };
-    Object.assign(pane, { rows, loose, first: first ?? rows[0]?.id });
+    const { rows, first, loose, count } = rowsFor(pane);
+    Object.assign(pane, { rows, loose, count, first: first ?? rows[0]?.id });
     place(pane);
     pane.sel = new Set([...pane.sel].filter((id) => rowOf(pane, id)));
   }
   // The cursor's row is gone (removed, folded away): the cursor stays where it was, on the row now there. In another tree it starts from the current tab.
   const same = cursorWas.tree === here().tree && cursorWas.at >= 0;
   if (!rowOf(here(), ui.cursor)) ui.cursor = same ? here().rows[Math.min(cursorWas.at, here().rows.length - 1)]?.id : (rowOf(here(), ui.activeId)?.id ?? here().rows[0]?.id);
-  if (ui.renaming?.id && !rowOf(ui.renaming.pane, ui.renaming.id)) ui.renaming = undefined;
+  if (ui.renaming?.id && !rowOf(ui.renaming.pane, ui.renaming.id)) ui.renaming = undefined;  ui.filtered = filterLine(here());
 }
+
+/** What the bar says of a pane's filter: the branch shown (with the way to it), the conditions that are on, how many nodes answer. Nothing, without a filter. */
+function filterLine(pane) {
+  const filter = ui.filters[pane.tree] ?? {};
+  const conditions = CONDITIONS.filter((name) => filter[name]);
+  if (!filter.branch && !conditions.length) return undefined;
+  const tree = ui.library.trees[pane.tree];
+  const way = [];
+  for (let id = filter.branch; id && id !== ROOT; id = parentOf(tree, id)) way.unshift(titleOf(ui.library.nodes[id]));
+  return { branch: filter.branch && { id: filter.branch, name: way.at(-1), path: way.join(' › ') }, conditions, ...pane.count };
+}
+
 
 /** Which of the shown nodes sit in other trees too, and in which. */
 function findShared() {
@@ -592,7 +658,7 @@ function findShared() {
 let shownTree;
 /** Remembers the layout for next time, and tells the worker which tree new tabs of this window go to. */
 function remember() {
-  const view = { panes: ui.panes.map(({ tree, size }) => ({ tree, size })), split: ui.split, open: ui.open, unsyncedClosed: ui.unsyncedClosed };
+  const view = { panes: ui.panes.map(({ tree, size }) => ({ tree, size })), split: ui.split, open: ui.open, unsyncedClosed: ui.unsyncedClosed, filters: ui.filters };
   localStorage.setItem('view', JSON.stringify(view));
   if (shownTree === here().tree) return;
   shownTree = here().tree;

@@ -17,6 +17,7 @@ const ICONS = {
   sleep: line('M15 11.6A5.8 5.8 0 0 1 8.400 5a5.800 5.800 0 1 0 6.600 6.600z'),
   trash: line('M4.500 6h11M8 6V4.500h4V6M6 6l.6 9.500h6.800L14 6M8.700 9v3.700M11.300 9v3.700'),
   keep: line('M2.500 10S5.500 5.500 10 5.500 17.500 10 17.500 10s-3 4.500-7.500 4.500S2.500 10 2.500 10zM10 8.200a1.800 1.800 0 1 0 0 3.600 1.800 1.800 0 0 0 0-3.600z'),
+  filter: line('M3.500 5h13L11.500 11v4.500l-3 1.500V11z'),
   locate: line('M10 2.500V5M10 15v2.500M2.500 10H5M15 10h2.500M10 5.500a4.500 4.500 0 1 0 0 9 4.500 4.500 0 0 0 0-9zM10 9.700v.6'),
   add: line('M10 4.500v11M4.500 10h11'),
   home: line('M3.500 9.500 10 4l6.500 5.500M5.500 8.500V16h9V8.500'),
@@ -89,6 +90,7 @@ function rowView(row, pane, ui, { leads, included }, lit) {
     included?.has(row.id) && 'included',
     row.kids && 'parent',
     row.collapsed && 'collapsed',
+    row.lead && 'lead',
     row.kept && 'kept', // (No style of its own: the scenarios tell such rows by it.)
     node.pinned && 'pinned',
     ui.audible.has(row.id) && 'playing',
@@ -162,6 +164,34 @@ function litGuide(rows, id) {
 const looseView = (loose) =>
   loose ? html`<p class="loose">${loose.how === 'layout' ? t('foundAs', loose.as) : t('foundNear')}</p>` : nothing;
 
+/** The texts of a filter's conditions (see CONDITIONS in filter.js). */
+export const LABEL = { open: 'filterOpen', week: 'filterWeek', sound: 'filterSound', kept: 'filterKept' };
+
+/** What a pane with no rows says: the tree is empty, or nothing answers the search or the filter (which can then be cleared right there). */
+function emptyView(pane, ui) {
+  if (ui.filters[pane.tree]) return html`<p class="hint">${t('filterNothing')} · <button data-action="filter-clear">${t('filterClearAll')}</button></p>`;
+  return html`<p class="hint">${t(ui.query ? 'nothingFound' : 'emptyTree')}</p>`;
+}
+
+/**
+ * The filter of the focused pane's tree, said in one quiet line under the
+ * tools: the branch shown (a press goes one level up) and each condition, to
+ * be taken off one by one; how many nodes answer; and "clear".
+ */
+function filteredView({ branch, conditions, shown, of }) {
+  const off = (action, name, label) => html`<button class="off" data-action=${action} data-name=${name ?? nothing} title=${t('filterRemove')} aria-label="${t('filterRemove')}: ${label}">${ICONS.close}</button>`;
+  return html`
+    <div class="filtered">
+      ${branch
+        ? html`<span class="by"><button data-action="filter-up" title="${branch.path}\n${t('filterUp')}">${branch.name}</button>${off('filter-branch-off', undefined, branch.name)}</span>`
+        : nothing}
+      ${conditions.map((name) => html`<span class="by">${t(LABEL[name])}${off('filter-off', name, t(LABEL[name]))}</span>`)}
+      <span class="count">${t('filterCount', shown, of)}</span>
+      <button data-action="filter-clear">${t('filterClear')}</button>
+    </div>
+  `;
+}
+
 /** One tree: its rows in sight, each where screen.js put it (`pull`, `shift`), with gaps as tall as the rows not drawn. The same view serves the panes of the panel and the picker. */
 function paneView(pane, index, ui) {
   const way = { leads: leadsToActive(pane, ui) };
@@ -196,7 +226,7 @@ function paneView(pane, index, ui) {
         <div class="gap" style="height:${pane.after}px"></div>
         ${pane.line ? html`<div class="dropline" style="top:${pane.line.top}px; --depth:${pane.line.depth}"></div>` : nothing}
       </div>
-      ${pane.rows.length || picking ? '' : html`<p class="hint">${t(ui.query ? 'nothingFound' : 'emptyTree')}</p>`}
+      ${pane.rows.length || picking ? '' : emptyView(pane, ui)}
     </section>
   `;
 }
@@ -233,7 +263,12 @@ function menuView(menu) {
     <div class="menu" role="menu" tabindex="-1" style="left:${menu.x}px; top:${menu.y}px">
       ${menu.items.map((item) =>
         item
-          ? html`<button role="menuitem" ?disabled=${item.disabled} @click=${item.run}>
+          ? html`<button
+              role=${item.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}
+              aria-checked=${item.checked ?? nothing}
+              ?disabled=${item.disabled}
+              @click=${item.run}
+            >
               <span>${item.label}</span><kbd>${item.hint ?? ''}</kbd>
             </button>`
           : html`<hr />`,
@@ -370,8 +405,8 @@ function planView(ui) {
 /** Draws the panel from `ui` (see screen.js). */
 export function draw(container, ui) {
   if (!ui.library) return;
-  const tool = (action, icon, title, { disabled = false, place = '' } = {}) =>
-    html`<button class="act shown ${place}" data-action=${action} title=${title} ?disabled=${disabled}>${ICONS[icon]}</button>`;
+  const tool = (action, icon, title, { disabled = false, place = '', pressed } = {}) =>
+    html`<button class="act shown ${place}" data-action=${action} title=${title} ?disabled=${disabled} aria-pressed=${pressed ?? nothing}>${ICONS[icon]}</button>`;
   // A split button looks pressed while the trees lie its way.
   const split = (way, icon) =>
     html`<button class="act shown" data-action="split-${way}" title=${t(icon)} aria-pressed=${ui.panes.length > 1 && ui.split === way}>
@@ -391,8 +426,10 @@ export function draw(container, ui) {
           ${tool('new-note', 'note', `${t('newNote')} (${keyOf('newNote')})`)}
           ${tool('undo', 'undo', `${t('undo')} (${keyOf('undo')})`, { disabled: !ui.canUndo })}
           ${tool('show-active', 'locate', t('showActive'), { disabled: !ui.activeTree })}
+          ${tool('filter', 'filter', t('filter'), { pressed: !!ui.filtered })}
           ${split('row', 'splitRow')} ${split('column', 'splitColumn')} ${tool('more', 'more', t('more'), { place: 'end' })}
         </div>
+        ${ui.filtered ? filteredView(ui.filtered) : nothing}
       </header>
       ${planView(ui)}
       <main class="panes split-${ui.split}">${repeat(ui.panes, (pane) => pane.id, (pane, index) => paneView(pane, index, ui))}</main>
