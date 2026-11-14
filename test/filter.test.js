@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DAY, MAIN, ROOT, addNode, createLibrary, rowsOf, setCollapsed } from '../src/model.js';
-import { answers, narrowedTo, topmost, withLeads } from '../src/panel/filter.js';
+import { MAIN, ROOT, addNode, createLibrary, rowsOf, setCollapsed } from '../src/model.js';
+import { alive, nameFor, narrowedTo, savedAs, topmost, withLeads, withSaved } from '../src/panel/filter.js';
 
 /** A library from an outline: a dot per level, ids are the names. */
 function library(outline) {
@@ -49,20 +49,30 @@ test('what is wanted comes with the rows that lead to it, and those are marked',
   assert.equal(shown(withLeads(rows, new Set())), '');
 });
 
-test('the quick ways to tick', () => {
-  const facts = { live: new Set(['open']), audible: new Set(['loud']), day: 1000 };
-  const node = (id, more) => ({ id, ...more });
-  assert.equal(answers(node('open'), 'open', facts), true);
-  assert.equal(answers(node('x'), 'open', facts), false);
-  assert.equal(answers(node('loud'), 'sound', facts), true);
-  // Used this week: the tab opened or closed, or the node added, less than seven days ago.
-  assert.equal(answers(node('x', { touched: 994 }), 'week', facts), true);
-  assert.equal(answers(node('x', { touched: 993 }), 'week', facts), false);
-  assert.equal(answers(node('x', { added: 999 * DAY }), 'week', facts), true);
-  assert.equal(answers(node('x'), 'week', facts), false);
-  assert.equal(answers(node('x', { pinned: true }), 'kept', facts), true);
-  assert.equal(answers(node('x', { keep: true }), 'kept', facts), true);
-  assert.equal(answers(node('x'), 'kept', facts), false);
+test('a saved filter lives while something it ticked is in the tree', () => {
+  const { trees } = library('a .b ..c .d e');
+  const saved = [{ name: 'one', picked: ['c', 'gone', 'b'] }, { name: 'none', picked: ['gone'] }, { name: 'two', picked: ['e'] }];
+  assert.deepEqual(alive(trees[MAIN], saved), [{ name: 'one', picked: ['b'] }, { name: 'two', picked: ['e'] }]);
+  assert.deepEqual(alive(undefined, saved), []); // The tree itself is gone.
+  assert.deepEqual(alive(trees[MAIN], [{ picked: ['e', 'a'], at: 5 }]), [{ picked: ['a', 'e'], at: 5 }]); // A tree's own filter, the same way.
+});
+
+test('saving a filter, and knowing a saved one', () => {
+  let saved = withSaved([], 'work', ['a', 'b']);
+  saved = withSaved(saved, 'read', ['c']);
+  assert.deepEqual(saved.map((each) => each.name), ['work', 'read']);
+  assert.equal(savedAs(saved, ['b', 'a']).name, 'work'); // The same nodes, in whatever order.
+  assert.equal(savedAs(saved, ['a']), undefined);
+  assert.equal(savedAs(saved, ['a', 'b', 'c']), undefined);
+  // The same name again takes its place.
+  saved = withSaved(saved, 'work', ['d']);
+  assert.deepEqual(saved, [{ name: 'work', picked: ['d'] }, { name: 'read', picked: ['c'] }]);
+});
+
+test('what ticked nodes are called together', () => {
+  assert.equal(nameFor(['Inbox']), 'Inbox');
+  assert.equal(nameFor(['Inbox', 'A very long title of a page somewhere']), 'Inbox · A very long title…');
+  assert.equal(nameFor(['a', 'b', 'c', 'd']), 'a · b +2');
 });
 
 test('what came after the filter was set is always shown: the filter took away only what was there to see', () => {

@@ -98,18 +98,6 @@
   "filter": {
     "message": "Filter: tick what to show"
   },
-  "filterOpen": {
-    "message": "Open now"
-  },
-  "filterWeek": {
-    "message": "Used this week"
-  },
-  "filterSound": {
-    "message": "Playing sound"
-  },
-  "filterKept": {
-    "message": "Pinned or kept in sight"
-  },
   "filterBranch": {
     "message": "Show only this branch"
   },
@@ -122,17 +110,20 @@
   "filterPicked": {
     "message": "$1 picked"
   },
-  "filterApply": {
-    "message": "Show these"
+  "filterSave": {
+    "message": "Save"
   },
-  "filterNone": {
-    "message": "Show all"
+  "filterSaveHint": {
+    "message": "Save this filter under a name, to choose it later"
+  },
+  "filterName": {
+    "message": "Name of the filter. Enter saves, Esc cancels."
+  },
+  "filterForget": {
+    "message": "Remove this saved filter"
   },
   "filterApplyHint": {
     "message": "Show only what is ticked (Enter)"
-  },
-  "filterQuick": {
-    "message": "Tick all of these"
   },
   "extDescription": {
     "message": "Your pages as trees, in the side panel."

@@ -2,9 +2,9 @@
 // the library itself; it owns only this: which trees are shown, what is
 // selected, searched for, dragged, or open on top.
 
-import { DAY, ROOT, descendantsOf, inTree, parentOf, rowsOf } from '../model.js';
+import { ROOT, descendantsOf, inTree, parentOf, rowsOf } from '../model.js';
 import { find } from '../find.js';
-import { QUICK, answers, narrowedTo, topmost, withLeads } from './filter.js';
+import { alive, nameFor, narrowedTo, savedAs, topmost, withLeads, withSaved } from './filter.js';
 import { t } from '../i18n.js';
 import { draw, titleOf } from './view.js';
 
@@ -34,6 +34,8 @@ export const ui = {
   places: { shown: [], more: 0, loose: undefined }, // What the unfolded journal shows (see layJournal).
   // The filter of each tree, on this screen: { [treeId]: { picked: [nodeId], at } } - what is ticked to be shown alone, and when that was said (see filter.js). Kept with the view, never with the library.
   filters: kept.filters ?? {},
+  // The filters the user saved, of each tree, to set its filter from: { [treeId]: [{ name, picked }] }, a name once in a tree. Kept with the view too.
+  saved: kept.saved ?? {},
   // While the user ticks them: { tree, ids: Set, anchor } - the whole tree is shown, every row with a tick to set; nothing is narrowed until they say so.
   ticking: undefined,
   filtered: undefined, // What the bar says of the focused pane's filter (see filterLine), if it has one or is being ticked.
@@ -45,7 +47,7 @@ export const ui = {
   split: kept.split ?? 'column', // Panes one under another, or 'row': side by side.
   query: '', // What is searched for.
   cursor: undefined, // The row the keyboard is on, in the focused pane.
-  renaming: undefined, // { id, pane, field? } or { tree }.
+  renaming: undefined, // { id, pane, field? }, { tree } or - a filter being saved under a name - { filter: treeId }.
   // What is dragged: { kind: 'rows', ids, from, label }, { kind: 'tree', tree, label }, { kind: 'plan', ids, label } (an entry of the plan) or { kind: 'link' }.
   drag: undefined,
   // Where it would land: { pane, targetId, position } in a pane, { cell, tree } in the table of trees, { plan, before } in the plan.
@@ -375,14 +377,6 @@ export function tickRow(pane, id, range) {
   ui.cursor = id;
   arrange();
 }
-/** Ticks every node a quick way names (see QUICK in filter.js) - or, if all of them are ticked, unticks them. */
-export function tickQuickly(way) {
-  const { ids, tree } = ui.ticking;
-  const named = quickly(ui.library.trees[tree], way);
-  const all = named.every((id) => ids.has(id));
-  for (const id of named) all ? ids.delete(id) : ids.add(id);
-  arrange();
-}
 /** Leaves only what is ticked (nothing ticked: no filter) - of what is there to see now: what comes later is shown all the same (see rootsOf in filter.js). */
 export function applyTicks() {
   const { tree, ids } = ui.ticking;
@@ -409,6 +403,22 @@ export function showBranch(treeId, id) {
 export function clearFilters(treeId) {
   ui.ticking = undefined;
   setFilter(treeId, []);
+}
+/** Keeps what a tree's filter has ticked under `name`, to be chosen later; a saved filter of that name gives way to it. */
+export function saveFilter(treeId, name) {
+  const filter = ui.filters[treeId];
+  if (!filter || !name.trim()) return;
+  ui.saved[treeId] = withSaved(ui.saved[treeId] ?? [], name.trim(), filter.picked);
+  arrange();
+}
+/** Sets a tree's filter from the saved one called `name`: ticked now, so what was added since it was saved is shown. */
+export function applySaved(treeId, name) {
+  ui.ticking = undefined;
+  setFilter(treeId, ui.saved[treeId].find((each) => each.name === name).picked);
+}
+export function forgetSaved(treeId, name) {
+  ui.saved[treeId] = ui.saved[treeId].filter((each) => each.name !== name);
+  arrange();
 }
 
 /** In the picker: shows another tree to choose from, and marks or unmarks a row of it. */
@@ -508,7 +518,7 @@ export async function closeNotice() {
   refresh();
 }
 
-/** Starts typing a name: of row { id, pane } (its address, with `field: 'url'`), or of { tree }. The field takes the keyboard (see settleFocus). */
+/** Starts typing a name: of row { id, pane } (its address, with `field: 'url'`), of { tree }, or of the filter of a tree to save, { filter }. The field takes the keyboard (see settleFocus). */
 export function rename(what) {
   ui.renaming = what;
   redraw();
@@ -637,11 +647,14 @@ function layOut() {
   if (!ui.panes.length) ui.panes = [newPane(Object.keys(library.trees)[0])];
   ui.focus = here();
   if (picker() && !library.trees[picker().tree]) ui.overlay = undefined;
-  for (const [treeId, ids] of Object.entries(ui.filters)) { // (`ids`: the tree's filter.)
-    // A tree that is gone has no filter; a ticked node that is gone falls out of it. (An older version kept another shape: that is let go too.)
-    const still = library.trees[treeId] ? (ids.picked ?? []).filter((id) => inTree(library.trees[treeId], id)) : [];
-    if (still.length) ids.picked = still;
+  // A ticked node that is gone falls out of its tree's filter and of the saved ones; one with nothing left is no more (see alive in filter.js).
+  for (const treeId of Object.keys({ ...ui.filters, ...ui.saved })) {
+    const [filter] = alive(library.trees[treeId], [ui.filters[treeId] ?? {}]);
+    const saved = alive(library.trees[treeId], ui.saved[treeId] ?? []);
+    if (filter) ui.filters[treeId] = filter;
     else delete ui.filters[treeId];
+    if (saved.length) ui.saved[treeId] = saved;
+    else delete ui.saved[treeId];
   }
   if (ui.ticking && !ui.panes.some((pane) => pane.tree === ui.ticking.tree)) ui.ticking = undefined;
   for (const pane of [...ui.panes, picker()]) {
@@ -657,33 +670,26 @@ function layOut() {
   // The cursor's row is gone (removed, folded away): the cursor stays where it was, on the row now there. In another tree it starts from the current tab.
   const same = cursorWas.tree === here().tree && cursorWas.at >= 0;
   if (!rowOf(here(), ui.cursor)) ui.cursor = same ? here().rows[Math.min(cursorWas.at, here().rows.length - 1)]?.id : (rowOf(here(), ui.activeId)?.id ?? here().rows[0]?.id);
-  if (ui.renaming?.id && !rowOf(ui.renaming.pane, ui.renaming.id)) ui.renaming = undefined;  ui.filtered = filterLine(here());
+  if (ui.renaming?.id && !rowOf(ui.renaming.pane, ui.renaming.id)) ui.renaming = undefined;
+  ui.filtered = filterLine(here());
+  if (ui.renaming?.filter && !(ui.renaming.filter === here().tree && ui.filtered?.save)) ui.renaming = undefined; // Nothing to save there any more.
 }
 
 /**
  * What the bar says of a pane's filter. While nodes are being ticked:
- * { ticking: true, picked, quick: [{ way, on }] } - how many are ticked, and
- * the quick ways to tick, each `on` when all it would tick are ticked.
- * With a filter on: { names (of the ticked, when they are one or two), picked, shown, of }.
+ * { ticking: true, picked, saved } - how many are ticked, and the names of
+ * the tree's saved filters, to choose from. With a filter on:
+ * { by, save, shown, of } - what it is called (as it was saved, or else by
+ * the ticked nodes), and whether it is there to be saved: not saved yet.
  */
 function filterLine(pane) {
-  const tree = ui.library.trees[pane.tree];
-  if (ui.ticking?.tree === pane.tree) {
-    const { ids } = ui.ticking;
-    const quick = QUICK.map((way) => ({ way, on: quickly(tree, way).length > 0 && quickly(tree, way).every((id) => ids.has(id)) }));
-    return { ticking: true, picked: ids.size, quick };
-  }
-  const ticked = topmost(tree, ui.filters[pane.tree]?.picked ?? []);
-  if (!ticked.length) return undefined;
-  return { names: ticked.length <= 2 ? ticked.map((id) => titleOf(ui.library.nodes[id])) : undefined, picked: ticked.length, ...pane.count };
+  const saved = ui.saved[pane.tree] ?? [];
+  if (ui.ticking?.tree === pane.tree) return { ticking: true, picked: ui.ticking.ids.size, saved: saved.map((each) => each.name) };
+  const { picked } = ui.filters[pane.tree] ?? {};
+  if (!picked) return undefined;
+  const name = savedAs(saved, picked)?.name;
+  return { by: name ?? nameFor(picked.map((id) => titleOf(ui.library.nodes[id]))), save: !name, ...pane.count };
 }
-
-/** The nodes of a tree that a quick way would tick. */
-function quickly(tree, way) {
-  const facts = { live: ui.live, audible: ui.audible, day: Math.floor(Date.now() / DAY) };
-  return descendantsOf(tree, ROOT).filter((id) => answers(ui.library.nodes[id], way, facts));
-}
-
 
 /** Which of the shown nodes sit in other trees too, and in which. */
 function findShared() {
@@ -703,7 +709,7 @@ function findShared() {
 let shownTree;
 /** Remembers the layout for next time, and tells the worker which tree new tabs of this window go to. */
 function remember() {
-  const view = { panes: ui.panes.map(({ tree, size }) => ({ tree, size })), split: ui.split, open: ui.open, unsyncedClosed: ui.unsyncedClosed, filters: ui.filters };
+  const view = { panes: ui.panes.map(({ tree, size }) => ({ tree, size })), split: ui.split, open: ui.open, unsyncedClosed: ui.unsyncedClosed, filters: ui.filters, saved: ui.saved };
   localStorage.setItem('view', JSON.stringify(view));
   if (shownTree === here().tree) return;
   shownTree = here().tree;

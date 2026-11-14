@@ -76,35 +76,96 @@
 /*
  * The filter, under the tools: plain words in one quiet line. No frames, no
  * fills: that a filter is on is said by the pressed funnel and by this line
- * being there. While nodes are ticked, the quick ways to tick stand here; one
- * whose nodes are all ticked is in the text's full colour.
+ * being there. What the filter is called stands at the left, in the text's
+ * full colour; while nodes are ticked, the saved filters stand there - what
+ * one of them would become. What can be done to it is quieter, at the right.
  */
 .filtered {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 2px 12px;
+  align-items: flex-start;
+  gap: 12px;
   padding: 0 4px 2px 6px;
   font-size: 12px;
+  line-height: 20px;
   color: var(--dim);
+  white-space: nowrap;
 }
 .filtered .by {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
   color: var(--text);
 }
-.filtered button:hover {
+.filtered > button:hover {
   color: var(--accent);
-}
-.filtered [aria-pressed='true'] {
-  color: var(--text);
-  font-weight: 600;
 }
 .filtered .count {
   margin-left: auto;
   font-variant-numeric: tabular-nums;
+}
+/*
+ * The saved filters: as many as fit in two lines; the rest are a turn of the
+ * wheel away. That there are more below is said by the lower line fading
+ * out, less and less as they are scrolled to. (Where all of them fit there
+ * is nothing to scroll, and so no fading.)
+ */
+@property --more {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+@keyframes more-below {
+  from {
+    --more: 18px;
+  }
+}
+.saved {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  max-height: 40px;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -webkit-mask: linear-gradient(#000 calc(100% - var(--more)), transparent calc(100% + 4px));
+  animation: more-below linear both;
+  animation-timeline: scroll(self);
+}
+.saved .one {
+  display: flex;
+  min-width: 0;
+}
+.saved .name {
+  max-width: 14ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text);
+}
+.saved .name:hover {
+  color: var(--accent);
+}
+/* The button that takes a saved filter off the list has its room after the name always - that is the space between two names - and is seen under the pointer, or when the keyboard is on it. */
+.saved .forget {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  opacity: 0;
+}
+.saved .forget svg {
+  width: 12px;
+  height: 12px;
+}
+.saved .one:hover .forget,
+.saved .forget:focus-visible {
+  opacity: 1;
+}
+.saved .forget:hover {
+  color: var(--danger);
+  background: rgb(217 48 37 / 0.12);
 }
 
 /* --- Small buttons, wherever they are ------------------------------------------ */

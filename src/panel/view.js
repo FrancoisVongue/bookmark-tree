@@ -166,32 +166,39 @@ function litGuide(rows, id) {
 const looseView = (loose) =>
   loose ? html`<p class="loose">${loose.how === 'layout' ? t('foundAs', loose.as) : t('foundNear')}</p>` : nothing;
 
-/** The texts of the quick ways to tick (see QUICK in filter.js). */
-const QUICKLY = { open: 'filterOpen', week: 'filterWeek', sound: 'filterSound', kept: 'filterKept' };
-
 /** What a pane with no rows says: the tree is empty, or nothing answers the search. */
 const emptyView = (ui) => html`<p class="hint">${t(ui.query ? 'nothingFound' : 'emptyTree')}</p>`;
 
 /**
  * The filter of the focused pane's tree, said in one quiet line under the
- * tools. While nodes are being ticked: the quick ways to tick, how many are
- * ticked, and "show these". With the filter on: what is shown alone, how
- * much of the tree that is, and "clear".
+ * tools. While nodes are being ticked: the saved filters to choose from (each
+ * with a button to take it off the list), and how many are ticked. With the
+ * filter on: what is shown alone - or, while that is being saved, a field
+ * for its name - how much of the tree that is, "save" and "clear".
  */
-function filteredView({ ticking, quick, names, picked, shown, of }) {
+function filteredView({ ticking, saved, picked, by, save, shown, of }, naming) {
   if (ticking) {
     return html`
       <div class="filtered">
-        ${quick.map(({ way, on }) => html`<button data-action="filter-quick" data-way=${way} aria-pressed=${on} title=${t('filterQuick')}>${t(QUICKLY[way])}</button>`)}
+        <div class="saved">
+          ${saved.map(
+            (name) => html`
+              <span class="one">
+                <button class="name" data-action="filter-saved" data-name=${name} title=${name}>${name}</button>
+                <button class="forget" data-action="filter-forget" data-name=${name} title=${t('filterForget')}>${ICONS.close}</button>
+              </span>
+            `,
+          )}
+        </div>
         <span class="count">${t('filterPicked', picked)}</span>
-        <button data-action="filter-apply" title=${t('filterApplyHint')}>${t(picked ? 'filterApply' : 'filterNone')}</button>
       </div>
     `;
   }
   return html`
     <div class="filtered">
-      <span class="by">${names ? names.join(' · ') : t('filterPicked', picked)}</span>
+      ${naming ? html`<input class="rename" .value=${by} aria-label=${t('filterName')} />` : html`<span class="by" title=${by}>${by}</span>`}
       <span class="count">${t('filterCount', shown, of)}</span>
+      ${save ? html`<button data-action="filter-save" title=${t('filterSaveHint')}>${t('filterSave')}</button>` : nothing}
       <button data-action="filter-clear">${t('filterClear')}</button>
     </div>
   `;
@@ -430,7 +437,7 @@ export function draw(container, ui) {
           ${tool('filter', 'filter', t(ui.ticking ? 'filterApplyHint' : 'filter'), { pressed: !!ui.filtered })}
           ${split('row', 'splitRow')} ${split('column', 'splitColumn')} ${tool('more', 'more', t('more'), { place: 'end' })}
         </div>
-        ${ui.filtered ? filteredView(ui.filtered) : nothing}
+        ${ui.filtered ? filteredView(ui.filtered, ui.renaming?.filter === ui.focus.tree) : nothing}
       </header>
       ${planView(ui)}
       <main class="panes split-${ui.split}">${repeat(ui.panes, (pane) => pane.id, (pane, index) => paneView(pane, index, ui))}</main>

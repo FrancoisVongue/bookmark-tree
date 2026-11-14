@@ -60,6 +60,11 @@ await step('note: live markdown', async () => { [note] = await Promise.all([ctx.
 const lib = (await msg({ type: 'get-state' })).library;
 console.log('saved markdown:', JSON.stringify(Object.values(lib.nodes).find((n) => n.note)?.note));
 await step('note reload keeps text', async () => { await note.reload(); await sleep(700); console.log('after reload:', (await note.innerText('.tiptap')).replace(/\n+/g, ' / ')); await panel.bringToFront(); });
+const funnel = '[data-action="filter"]';
+const filterLine = async () => (await panel.locator('.filtered').innerText()).replace(/\s+/g, ' ').trim();
+await step('filter: tick a group, the funnel again, save it as "Mine"', async () => { await panel.click(funnel); await row('Work').click(); await panel.click(funnel); await panel.click('[data-action="filter-save"]'); await panel.keyboard.type('Mine'); await panel.keyboard.press('Enter'); await sleep(300); console.log('line:', await filterLine()); });
+await step('filter: cleared, then chosen from the saved ones while ticking', async () => { await panel.click('[data-action="filter-clear"]'); await panel.click(funnel); await sleep(200); console.log('ticking:', await filterLine()); await panel.click('.saved .name'); await sleep(300); console.log('line:', await filterLine()); });
+await panel.click('[data-action="filter-clear"]'); await sleep(200);
 await row('Page /a').first().click({ button: 'right' }); await sleep(200);
 console.log('\nERRORS:', errors.length ? '\n' + errors.join('\n') : 'none');
 await ctx.close(); server.close();

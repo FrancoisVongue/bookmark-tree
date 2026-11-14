@@ -1,23 +1,10 @@
 // A filter: { picked, at } - the nodes the user ticked, to be shown alone,
 // each with all that is under it, and when they said so. Here is what that
-// means. Pure: no screen here.
+// means. A saved filter is such a set of ticked nodes under a name,
+// { name, picked }: something to set the filter from, not a filter of another
+// kind. Pure: no screen here.
 
-import { ROOT, descendantsOf, freshOf, inTree } from '../model.js';
-
-/** Ways to tick many nodes at once: every node that answers one. */
-export const QUICK = ['open', 'week', 'sound', 'kept'];
-
-/**
- * Whether a node answers a quick way. `facts`: { live, audible } - the ids
- * of nodes with an open tab and of those making sound - and `day`, today
- * counted from 1970.
- */
-export function answers(node, way, { live, audible, day }) {
-  if (way === 'open') return live.has(node.id);
-  if (way === 'week') return day - freshOf(node) < 7;
-  if (way === 'sound') return audible.has(node.id);
-  return !!(node.pinned || node.keep);
-}
+import { ROOT, descendantsOf, inTree } from '../model.js';
 
 /**
  * The ticked nodes that count, in the order of the tree: those still in it,
@@ -28,6 +15,28 @@ export function topmost(tree, ids) {
   const under = new Set(ids.flatMap((id) => (inTree(tree, id) ? descendantsOf(tree, id) : [])));
   return descendantsOf(tree, ROOT).filter((id) => ticked.has(id) && !under.has(id));
 }
+
+/**
+ * Of filters (each with `picked`: a tree's own, or saved ones), those that
+ * still have something to show in `tree`, each with the ticked nodes that
+ * count. A tree that is gone has none.
+ */
+export const alive = (tree, filters) =>
+  filters.map((filter) => ({ ...filter, picked: tree ? topmost(tree, filter.picked ?? []) : [] })).filter((filter) => filter.picked.length);
+
+/** The saved filter that ticks exactly the nodes `picked`, if there is one. */
+export const savedAs = (saved, picked) =>
+  saved.find((each) => each.picked.length === picked.length && each.picked.every((id) => picked.includes(id)));
+
+/** The saved filters with `picked` kept as `name`: in the place of the one called so, or after them all. */
+export function withSaved(saved, name, picked) {
+  const at = saved.findIndex((each) => each.name === name);
+  return saved.toSpliced(at < 0 ? saved.length : at, 1, { name, picked: [...picked] });
+}
+
+const short = (text, most = 18) => (text.length > most ? `${text.slice(0, most - 1).trimEnd()}…` : text);
+/** What ticked nodes are called together, from their names: the first two, shortened, and how many more there are. */
+export const nameFor = (titles) => `${titles.slice(0, 2).map((title) => short(title)).join(' · ')}${titles.length > 2 ? ` +${titles.length - 2}` : ''}`;
 
 /**
  * What stands at the top of a tree seen through a filter { picked, at }: the

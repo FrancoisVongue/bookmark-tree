@@ -7,7 +7,7 @@ import { t } from '../i18n.js';
 import { ask } from '../parts.js';
 import { askForBookmarks, saveFile } from '../page.js';
 import { titleOf } from './view.js';
-import { branches, closeOverlay, endRenaming, here, op, openOverlay, pick, picker, refresh, rename, rowOf, say, send, show, ui, under, unsay } from './screen.js';
+import { branches, closeOverlay, endRenaming, here, op, openOverlay, pick, picker, refresh, rename, rowOf, saveFilter, say, send, show, ui, under, unsay } from './screen.js';
 
 export const activate = (pane, id, where) =>
   send({ type: 'activate', nodeId: id, treeId: pane.tree, windowId: ui.windowId, where });
@@ -140,7 +140,7 @@ export function undo(again = false) {
   send({ type: again ? 'redo' : 'undo' });
 }
 
-// --- Renaming (and typing an address) ------------------------------------------
+// --- Renaming (typing an address, naming a filter to save) ----------------------
 
 export const startRename = rename;
 
@@ -148,6 +148,7 @@ export function endRename(save) {
   const { renaming, text } = endRenaming();
   if (!renaming || !save) return;
   if (renaming.tree) return op('tree-rename', { tree: renaming.tree, name: text });
+  if (renaming.filter) return saveFilter(renaming.filter, text);
   const node = ui.library.nodes[renaming.id];
   if (renaming.field === 'url') {
     if (text !== node.url) op('address', { id: renaming.id, url: text });

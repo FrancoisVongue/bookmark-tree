@@ -1,7 +1,7 @@
 // The panel's entry: the mouse, and the start. It turns what the user does
 // into commands for the worker (see screen.js for what the panel itself owns).
 
-import { allOfJournal, app, applyTicks, arrange, clearFilters, closeMenu, closeNotice, closeOverlay, closePane, deselect, here, idAt, log, menuUnder, openMenu, paneAt, pickFrom, picker, pointAt, redraw, refresh, revealActive, rowOf, search, searchJournal, select, setFocus, show, showActiveTree, split, targets, tick, tickQuickly, tickRow, togglePicked, toggleStrip, ui, watch } from './screen.js';
+import { allOfJournal, app, applySaved, arrange, clearFilters, closeMenu, closeNotice, closeOverlay, closePane, deselect, forgetSaved, here, idAt, log, menuUnder, openMenu, paneAt, pickFrom, picker, pointAt, redraw, refresh, revealActive, rowOf, search, searchJournal, select, setFocus, show, showActiveTree, split, targets, tick, tickRow, togglePicked, toggleStrip, ui, watch } from './screen.js';
 import { mainMenu, rowMenu, treeMenu } from './menus.js';
 import { endsDrag } from './drag.js';
 import { saveBackup } from '../page.js';
@@ -30,8 +30,9 @@ const actions = {
   'pane-close': ({ pane }) => closePane(pane),
   more: ({ el }) => menuUnder(el, mainMenu()),
   filter: tick,
-  'filter-quick': ({ el }) => tickQuickly(el.dataset.way),
-  'filter-apply': applyTicks,
+  'filter-saved': ({ el }) => applySaved(here().tree, el.dataset.name),
+  'filter-forget': ({ el }) => forgetSaved(here().tree, el.dataset.name),
+  'filter-save': () => cmd.startRename({ filter: here().tree }),
   'filter-clear': () => clearFilters(here().tree),
   'split-row': () => split('row'),
   'split-column': () => split('column'),
