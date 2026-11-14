@@ -18,20 +18,20 @@
 import { descendantsOf } from '../model.js';
 import { t } from '../i18n.js';
 import { titleOf } from './view.js';
-import { app, arrange, idAt, op, paneAt, paneEl, redraw, rowOf, rowUnder, say, setDrag, setDrop, setFocus, targets, tickRow, tickRows, ui } from './screen.js';
+import { app, arrange, idAt, op, paneAt, paneEl, redraw, rowOf, rowUnder, say, setDrag, setDrop, setFocus, targets, tickRow, tickTo, ui } from './screen.js';
 import { pagesIn } from './commands.js';
 
 // The gesture in progress, from the button going down to the click after it.
 const gesture = {
   // { x, y, id, pane } on a row, { x, y, tree } on a tree's name, { x, y, plan } on an entry of the plan, or { divider } on the line between panes.
-  // On a row while ticking for the filter: { x, y, sweep: { pane, on, at, going } } - the rows passed take the tick the first one got (`on`); `at` is the row painted last, by its number; `going` once the pointer has moved.
+  // On a row while ticking for the filter: { x, y, sweep: { pane, on, going } } - the rows passed take the tick the first one got (`on`); `going` once the pointer has moved.
   press: undefined,
   pointer: { x: 0, y: 0 },
   unfold: undefined, // A timer: a folded row opens when something is held over it.
   dragged: false, // The button came up after a drag, or went down to tick a row: the click that follows is not a click.
 };
 
-/** Whether the click now arriving merely ends a drag. */
+/** Whether the click now arriving merely ends a drag, or a press that ticked. */
 export const endsDrag = () => gesture.dragged;
 
 function dropAt(pane, within, y) {
@@ -129,22 +129,19 @@ function tick() {
 }
 
 /**
- * While sweeping ticks on: every row between the one painted last and the
- * one the pointer is at now takes the tick, so a fast pointer skips none;
- * the pane scrolls at its edges as it does under dragged rows. The row is
- * found by where it stands, not in the page: only rows in sight are there.
+ * While sweeping ticks on: the row the pointer is at now takes the tick,
+ * with every row since the one ticked last (see tickTo), so a fast pointer
+ * skips none; the pane scrolls at its edges as it does under dragged rows.
+ * The row is found by where it stands, not in the page: only rows in sight
+ * are there.
  */
 function sweep() {
-  const { sweep: swept } = gesture.press ?? {};
-  const el = swept && ui.ticking && paneEl(swept.pane);
+  const { pane, on } = gesture.press?.sweep ?? {};
+  const el = pane && ui.ticking && paneEl(pane);
   if (!el) return;
   scrollAtEdge(el);
-  const at = rowUnder(swept.pane, gesture.pointer.y);
-  if (at >= 0 && at !== swept.at) {
-    const rows = swept.pane.rows.slice(Math.min(at, swept.at), Math.max(at, swept.at) + 1).map((row) => row.id);
-    swept.at = at;
-    tickRows(swept.pane, rows, swept.on, swept.pane.rows[at].id);
-  }
+  const row = rowUnder(pane, gesture.pointer.y);
+  if (row && row.id !== ui.ticking.anchor) tickTo(pane, row.id, on);
   requestAnimationFrame(sweep);
 }
 
@@ -189,10 +186,8 @@ app.addEventListener('pointerdown', (event) => {
     if (ui.ticking.tree !== pane.tree) return;
     gesture.dragged = true;
     setFocus(pane);
-    if (event.shiftKey) return tickRow(pane, id, true);
-    const on = !ui.ticking.ids.has(id);
-    tickRows(pane, [id], on);
-    gesture.press = { x: event.clientX, y: event.clientY, sweep: { pane, on, at: pane.rows.findIndex((row) => row.id === id), going: false } };
+    tickRow(pane, id, event.shiftKey);
+    if (!event.shiftKey) gesture.press = { x: event.clientX, y: event.clientY, sweep: { pane, on: ui.ticking.ids.has(id) } };
   } else if (id && pane) {
     gesture.press = { x: event.clientX, y: event.clientY, id, pane };
   }

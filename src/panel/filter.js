@@ -1,13 +1,12 @@
 // A filter: { picked, mode, at } - the nodes the user ticked, each with all
 // that is under it, what the ticks mean, and when they said so. The ticked
-// are either shown alone ('only') or left out ('hide'): one or the other,
-// never both. Here is what that means. A saved filter is such a set of
-// ticked nodes and their meaning under a name, { name, picked, mode }:
-// something to set the filter from, not a filter of another kind. Both are
-// kept as the user said them: a ticked node that is gone is
-// left out when the filter is read (stillPicked), never taken out of what is
-// kept - so a node that comes back (an undo) is ticked as before.
-// Pure: no screen here.
+// are either shown alone ('only') or left out ('hide'). Here is what that
+// means. A saved filter is such a set of ticked nodes and their meaning
+// under a name, { name, picked, mode }: something to set the filter from,
+// not a filter of another kind. Both are kept as the user said them: a
+// ticked node that is gone is left out when the filter is read
+// (stillPicked), never taken out of what is kept - so a node that comes
+// back (an undo) is ticked as before. Pure: no screen here.
 
 import { ROOT, descendantsOf, inTree } from '../model.js';
 
@@ -58,10 +57,10 @@ export const nameFor = (titles) => `${titles.slice(0, 2).map((title) => short(ti
 
 /**
  * What stands at the top of a tree seen through a filter that shows the
- * ticked alone, { picked, at }: the
- * ticked nodes - and every node added after the filter was set (`at`) that
- * is not under one of those already. A filter takes away only what the user
- * saw and did not tick; what was not there then, it never took away.
+ * ticked alone, { picked, at }: the ticked nodes - and every node added
+ * after the filter was set (`at`) that is not under one of those already.
+ * Such a filter takes away only what the user saw and did not tick; what
+ * was not there then, it never took away.
  */
 export function rootsOf(library, treeId, { picked, at }) {
   const tree = library.trees[treeId];
@@ -97,7 +96,7 @@ const withoutPicked = (tree, picked) => {
  */
 export function narrowedTo(library, treeId, filter) {
   const tree = library.trees[treeId];
-  const children = modeOf(filter) === 'hide' ? withoutPicked(tree, filter.picked) : { ...tree.children, [ROOT]: rootsOf(library, treeId, filter) };
+  const children = filter.mode === 'hide' ? withoutPicked(tree, filter.picked) : { ...tree.children, [ROOT]: rootsOf(library, treeId, filter) };
   return { ...library, trees: { ...library.trees, [treeId]: { ...tree, children } } };
 }
 

@@ -75,7 +75,7 @@ const act = (action, icon, title, more = '') =>
 function rowView(row, pane, ui, { leads, ticks }, lit) {
   const node = ui.library.nodes[row.id];
   if (!node) return '';
-  // A row has a tick to set in the pane to choose from, and while ticking for the filter; `ticks`: { on, with, hide } - what is ticked, what comes with it, and whether the ticked are those that will go.
+  // A row has a tick to set in the pane to choose from, and while ticking for the filter; `ticks`: { on, with, mode } - what is ticked, what comes with it, and what the ticks will mean.
   const picking = !!ticks;
   const live = ui.live.has(row.id);
   const drop = ui.drop?.pane === pane && ui.drop.targetId === row.id && ui.drop.position;
@@ -90,7 +90,7 @@ function rowView(row, pane, ui, { leads, ticks }, lit) {
     pane.sel.has(row.id) && 'selected',
     ticks?.on.has(row.id) && 'ticked',
     ticks?.with.has(row.id) && 'included',
-    ticks?.hide && (ticks.on.has(row.id) || ticks.with.has(row.id)) && 'going',
+    ticks?.mode === 'hide' && (ticks.on.has(row.id) || ticks.with.has(row.id)) && 'going',
     row.kids && 'parent',
     row.collapsed && 'collapsed',
     row.lead && 'lead',
@@ -180,8 +180,8 @@ const emptyView = (ui) => html`<p class="hint">${t(ui.query ? 'nothingFound' : '
  * there and says so - see draw - so nothing moves between a tree that has
  * one and a tree that has none.)
  */
-function filteredView({ ticking, mode, saved, picked, by, hide, save, shown, of }, naming) {
-  const called = (name, hides) => (hides ? t('filterHideNamed', name) : name); // A filter that hides says so before its name.
+function filteredView({ ticking, mode, saved, picked, by, save, shown, of }, naming) {
+  const called = (name, its = mode) => (its === 'hide' ? t('filterHideNamed', name) : name); // A filter that hides says so before its name.
   if (ticking) {
     const way = (each, label) => html`<button data-action="filter-mode" data-mode=${each} aria-pressed=${mode === each}>${t(label)}</button>`;
     return html`
@@ -189,9 +189,9 @@ function filteredView({ ticking, mode, saved, picked, by, hide, save, shown, of 
         <div class="mode" role="group">${way('only', 'filterOnly')}${way('hide', 'filterHide')}</div>
         <div class="saved">
           ${saved.map(
-            ({ name, hide }) => html`
+            ({ name, mode: its }) => html`
               <span class="one">
-                <button class="name" data-action="filter-saved" data-name=${name} title=${called(name, hide)}>${called(name, hide)}</button>
+                <button class="name" data-action="filter-saved" data-name=${name} title=${called(name, its)}>${called(name, its)}</button>
                 <button class="forget" data-action="filter-forget" data-name=${name} title=${t('filterForget')}>${ICONS.close}</button>
               </span>
             `,
@@ -203,8 +203,8 @@ function filteredView({ ticking, mode, saved, picked, by, hide, save, shown, of 
   }
   return html`
     <div class="filtered">
-      ${naming ? html`<input class="rename" .value=${naming.text} aria-label=${t('filterName')} />` : html`<span class="by" title=${called(by, hide)}>${called(by, hide)}</span>`}
-      <span class="count">${hide ? t('filterHidden', of - shown) : t('filterCount', shown, of)}</span>
+      ${naming ? html`<input class="rename" .value=${naming.text} aria-label=${t('filterName')} />` : html`<span class="by" title=${called(by)}>${called(by)}</span>`}
+      <span class="count">${mode === 'hide' ? t('filterHidden', of - shown) : t('filterCount', shown, of)}</span>
       ${save ? html`<button data-action="filter-save" title=${t('filterSaveHint')}>${t('filterSave')}</button>` : nothing}
       <button data-action="filter-clear">${t('filterClear')}</button>
     </div>

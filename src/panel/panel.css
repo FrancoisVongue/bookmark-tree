@@ -79,8 +79,9 @@
  * in the text's full colour; while nodes are ticked, the saved filters stand
  * there - what one of them would become - after the choice of what the
  * ticks mean: two words in one shape, the chosen one on a veil a step
- * deeper. At the end of the line, what leads out of it: buttons with a shape of their own, a step off the line's tone -
- * quiet, and where the eye arrives when it looks for the way out.
+ * deeper. At the end of the line, what leads out of it: buttons with a
+ * shape of their own, a step off the line's tone - quiet, and where the eye
+ * arrives when it looks for the way out.
  */
 .tools .act[data-action='filter'][aria-pressed='true'] {
   position: relative;
