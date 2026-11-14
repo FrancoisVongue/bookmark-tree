@@ -106,6 +106,7 @@
   /* The veils, on whatever surface they lie. */
   --hover: rgb(31 31 31 / 0.05); /* What the pointer is on. */
   --badge: rgb(31 31 31 / 0.06); /* A contained thing: a field, a pressed button, a chip, what belongs to one control. */
+  --inset: rgb(31 31 31 / 0.035); /* A block set into a page of text: code, a quote, a table's heading. */
   --line: rgb(31 31 31 / 0.08); /* Where two regions of one tone meet, and the tone alone cannot part them. */
   /* The current tab's row: the one fill that has a colour. */
   --active-bg: #e4edfb;
@@ -129,6 +130,7 @@
     --lift: 0 0 0 1px var(--line), 0 8px 28px rgb(0 0 0 / 0.5);
     --hover: rgb(237 237 237 / 0.06);
     --badge: rgb(237 237 237 / 0.08);
+    --inset: rgb(237 237 237 / 0.05);
     --line: rgb(237 237 237 / 0.1);
     --active-bg: #283a54;
     --active-text: #d6e4fb;

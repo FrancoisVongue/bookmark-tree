@@ -77,9 +77,10 @@ main {
 .tiptap p,
 .tiptap ul,
 .tiptap ol,
-.tiptap pre,
 .tiptap blockquote,
-.tiptap table {
+.tiptap .code,
+.tiptap .fold,
+.tiptap .tableWrapper {
   margin: 0 0 1em;
 }
 .tiptap p,
@@ -103,11 +104,13 @@ main {
 .tiptap > :first-child {
   margin-top: 0;
 }
-.tiptap p.is-editor-empty:first-child::before {
+.tiptap p.is-editor-empty:first-child::before,
+.tiptap [data-fold-title].is-empty::before {
   content: attr(data-placeholder);
   float: left;
   height: 0;
   color: var(--dim);
+  font-weight: 400;
   pointer-events: none;
 }
 /*
@@ -166,60 +169,302 @@ main {
 .tiptap a {
   color: var(--accent);
 }
+/*
+ * Code. Its letters are as tall as the text's: whatever fixed-width font the
+ * system has is sized by the height of its small letters, a little under
+ * Inter's - so a word of code in a line neither sticks out of it nor shrinks.
+ */
 .tiptap code,
 .tiptap pre {
   font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-  font-size: 0.9em;
-  background: var(--badge);
-  border-radius: 4px;
+  font-size: 1em;
+  font-size-adjust: 0.51;
 }
 .tiptap code {
-  padding: 1px 4px;
+  padding: 0.1em 0.3em;
+  border-radius: 4px;
+  background: var(--badge);
 }
-/* Code is read line under line: closer than prose. */
+/* A block of code lies on a surface of its own. Its lines are not broken: a long one scrolls. They are read line under line: closer than prose. */
+.tiptap .code {
+  position: relative;
+  border-radius: 8px;
+  background: var(--inset);
+}
 .tiptap pre {
-  padding: 12px;
+  margin: 0;
+  padding: 12px 16px;
   line-height: 1.55;
+  tab-size: 2;
   overflow-x: auto;
 }
 .tiptap pre code {
   padding: 0;
-  font-size: inherit;
   background: none;
+  white-space: pre; /* The editor would break a long line, as it does in prose. */
 }
-.tiptap blockquote {
-  padding-left: 16px;
-  border-left: 3px solid var(--line);
+/* The block's corner: its language - and, under the pointer, in the same place, "Copy". */
+.tiptap .corner {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: grid;
+  font-size: 11.5px;
+  line-height: 1;
   color: var(--dim);
+  user-select: none;
 }
-.tiptap blockquote > :last-child {
+.tiptap .corner > * {
+  grid-area: 1 / 1;
+  justify-self: end;
+  padding: 6px 8px;
+  border-radius: 4px;
+}
+.tiptap .corner button {
+  background: linear-gradient(var(--badge), var(--badge)), var(--bg); /* Over the code that may run under it. */
+  color: var(--text);
+  opacity: 0;
+}
+.tiptap .code:hover .corner button {
+  opacity: 1;
+}
+.tiptap .code:hover .corner span {
+  opacity: 0;
+}
+.tiptap .corner button:active {
+  background: linear-gradient(var(--badge), var(--badge)), linear-gradient(var(--badge), var(--badge)), var(--bg);
+}
+
+/* A quote is set into the page as code is: on the same quiet surface, in from its edges. A quote within a quote lies deeper by itself. */
+.tiptap blockquote {
+  padding: 12px 16px;
+  border-radius: 8px;
+  background: var(--inset);
+}
+.tiptap :is(blockquote, td, th, [data-fold-body], [data-footnote]) > :last-child {
   margin-bottom: 0;
 }
+
+/*
+ * A table. Rows are parted by a hairline and nothing else; the heading is
+ * told by its weight and by the surface it lies on, which needs no line
+ * under it. A table too wide for the page scrolls in its own frame.
+ */
+.tiptap .tableWrapper {
+  overflow-x: auto;
+}
+/* What scrolls sideways - a wide table, a long line of code - says so quietly. */
+.tiptap .tableWrapper,
+.tiptap pre {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--dim) 40%, transparent) transparent;
+}
 .tiptap table {
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   line-height: 1.5;
+  font-variant-numeric: tabular-nums;
 }
 .tiptap th,
 .tiptap td {
   /* An empty cell must still be wide enough to click into. */
   min-width: 3em;
-  border: 1px solid var(--line);
-  padding: 4px 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
   text-align: left;
   vertical-align: top;
 }
-.tiptap th {
-  background: var(--hover);
+.tiptap th,
+.tiptap tr:last-child > * {
+  border-bottom: 0;
 }
-.tiptap th > p,
-.tiptap td > p {
+.tiptap th {
+  background: var(--inset);
+}
+.tiptap th:first-child {
+  border-radius: 6px 0 0 6px;
+}
+.tiptap th:last-child {
+  border-radius: 0 6px 6px 0;
+}
+.tiptap :is(td, th) > p {
   margin: 0;
 }
 .tiptap .selectedCell {
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  background: var(--badge);
+}
+/*
+ * The table's controls (see table.js) lie over the page, in the margins
+ * around the table: quiet shapes a step off the ground, found by where they
+ * are. Each is easier to hit than it looks.
+ */
+.table-tools button {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  border-radius: 5px;
+  background: var(--badge);
+  color: var(--dim);
+}
+.table-tools button::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+}
+.table-tools button:hover,
+.table-tools button[aria-expanded] {
+  background: linear-gradient(var(--badge), var(--badge)), var(--badge);
+  color: var(--text);
+}
+.table-tools button:active {
+  background: linear-gradient(var(--badge), var(--badge)), linear-gradient(var(--badge), var(--badge)), var(--badge);
+}
+.table-tools .handle.column {
+  width: 24px;
+  height: 12px;
+}
+.table-tools .handle.row {
+  width: 12px;
+  height: 24px;
+}
+.table-tools .handle.row svg {
+  transform: rotate(90deg);
+}
+.table-tools .add {
+  background: var(--hover);
+}
+.table-tools .add.column {
+  width: 12px;
+}
+.table-tools .add.row {
+  height: 12px;
+}
+/* What a handle opens: as the panel's menus are (panel.css). */
+.menu {
+  position: fixed;
+  z-index: 2;
+  min-width: 180px;
+  padding: 4px;
+  border-radius: 10px;
+  background: var(--surface-over);
+  box-shadow: var(--lift);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.menu button {
+  display: block;
+  width: 100%;
+  padding: 5px 10px;
+  border-radius: 6px;
+  text-align: left;
+  white-space: nowrap;
+}
+.menu button:hover,
+.menu button:focus-visible {
+  outline: none;
+  background: var(--hover);
+}
+.menu hr {
+  margin: 4px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+/*
+ * A block that folds: the tree's sign, a title in the weight of a heading,
+ * and under the title - in line with it, as a row's children are in the
+ * tree - what the block holds. Where the indent ends, so does the block.
+ */
+.tiptap .fold {
+  position: relative;
+  padding-left: 24px;
+}
+.tiptap .fold > .twisty {
+  position: absolute;
+  top: calc((1.7em - 20px) / 2); /* In the middle of the title's line. */
+  left: 0;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  color: var(--dim);
+}
+.tiptap .fold > .twisty:hover {
+  background: var(--hover);
+}
+.tiptap .fold > .twisty svg {
+  transition: transform 0.1s;
+}
+.tiptap .fold[data-fold='open'] > .twisty svg {
+  transform: rotate(90deg);
+}
+.tiptap [data-fold-title] {
+  font-weight: var(--bold);
+}
+/* The title belongs to what is under it: nearer than two paragraphs are. */
+.tiptap [data-fold-body] {
+  margin-top: 0.4em;
+}
+.tiptap .fold[data-fold='folded'] [data-fold-body] {
+  display: none;
+}
+
+/*
+ * Footnotes. The mark in the text is a small raised label, which goes to its
+ * note; the note is set smaller, its label before it in grey, and the first
+ * of the notes stands well apart from the text above.
+ */
+.tiptap sup[data-footnote-ref] {
+  padding: 0 1px;
+  font-size: 0.72em;
+  line-height: 0;
+  color: var(--accent);
+  cursor: pointer;
+}
+.tiptap sup.ProseMirror-selectednode {
+  border-radius: 3px;
+  background: var(--badge);
+}
+.tiptap [data-footnote] {
+  position: relative;
+  margin: 0 0 8px;
+  padding-left: 2.6em;
+  font-size: 0.87em;
+  line-height: 1.6;
+}
+.tiptap [data-footnote]::before {
+  content: attr(data-footnote);
+  position: absolute;
+  left: 0;
+  width: 2.2em;
+  overflow: hidden;
+  color: var(--dim);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tiptap :not([data-footnote]) + [data-footnote] {
+  margin-top: 3em;
+}
+.tiptap [data-footnote] > p {
+  margin-bottom: 6px;
 }
 .tiptap hr {
   margin: 2em 0;
   border: 0;
   border-top: 1px solid var(--line);
+}
+
+/* On paper there is the note, and none of the tools. */
+@media print {
+  #tools,
+  .table-tools,
+  .tiptap .corner button {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tiptap .fold > .twisty svg {
+    transition: none;
+  }
 }

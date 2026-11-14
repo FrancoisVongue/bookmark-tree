@@ -2,8 +2,10 @@
 // ("# ", "- ", "[ ] ", "**bold**") turns into formatting at once. The text
 // lives in the library as markdown; this page only sends changes.
 
-import { Editor, Link, Markdown, Placeholder, StarterKit, Table, TableCell, TableHeader, TableRow, TaskItem, TaskList } from '../vendor/tiptap/tiptap.js';
+import { Editor, Link, Markdown, Placeholder, StarterKit, TableRow, TaskItem, TaskList } from '../vendor/tiptap/tiptap.js';
 import { t } from '../i18n.js';
+import { Cell, Code, Fold, FoldBody, FoldTitle, Footnote, FootnoteRef, Grid, HeaderCell, Words, followFootnote, rules } from './blocks.js';
+import { tableTools } from './table.js';
 import { toolbar } from './tools.js';
 
 const log = (...args) => console.log('[tree note]', ...args);
@@ -13,15 +15,27 @@ const send = (message) => chrome.runtime.sendMessage(message).catch((error) => l
 const editor = new Editor({
   element: document.getElementById('note'),
   extensions: [
-    StarterKit,
+    StarterKit.configure({ codeBlock: false, text: false }), // The note has its own: see blocks.js.
+    Words,
+    Code,
     TaskList,
     TaskItem.configure({ nested: true }),
-    Table,
+    Grid.configure({ renderWrapper: true }), // The frame a wide table scrolls in.
     TableRow,
-    TableHeader,
-    TableCell,
+    HeaderCell,
+    Cell,
+    Fold,
+    FoldTitle,
+    FoldBody,
+    FootnoteRef,
+    Footnote,
     Link.configure({ openOnClick: false, autolink: true, shouldAutoLink: (url) => /^https?:\/\//i.test(url) }),
-    Placeholder.configure({ placeholder: t('notePlaceholder') }),
+    // An empty note says what to do with it, and the empty title of a foldable block what it is. (Which of the empty lines show their words: note.css.)
+    Placeholder.configure({
+      placeholder: ({ node }) => t(node.type.name === 'foldTitle' ? 'noteFoldTitle' : 'notePlaceholder'),
+      includeChildren: true,
+      showOnlyCurrent: false,
+    }),
     Markdown.configure({ linkify: true, transformPastedText: true }),
   ],
   autofocus: 'end',
@@ -37,8 +51,10 @@ const editor = new Editor({
 // from markdown or pasted, it is markdown-it's linkify, which is told here
 // not to guess links, and to forget the other schemes it knows.
 editor.storage.markdown.parser.md.linkify.set({ fuzzyLink: false, fuzzyEmail: false }).add('mailto:', null).add('ftp:', null).add('//', null);
+rules(editor.storage.markdown.parser.md);
 
 toolbar(editor, document.getElementById('tools'));
+tableTools(editor, document.querySelector('main'));
 
 let timer;
 let saved; // The text as the library has it, as far as this page knows.
@@ -68,8 +84,9 @@ async function load() {
   name();
 }
 
-// A link opens in a new tab, which becomes a child of the note in the tree.
+// A link opens in a new tab, which becomes a child of the note in the tree; a footnote's mark goes to its note.
 document.getElementById('note').addEventListener('click', (event) => {
+  if (followFootnote(editor, event.target)) return;
   const link = event.target.closest('a[href]');
   if (!link) return;
   event.preventDefault();

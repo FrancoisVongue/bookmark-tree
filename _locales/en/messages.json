@@ -375,7 +375,7 @@
     "message": "Clear selection and search"
   },
   "notePlaceholder": {
-    "message": "Write here. Markdown works: # heading, - list, [ ] task, **bold**…"
+    "message": "Write here. Markdown works: # heading, - list, [ ] task, **bold**, +++ foldable block…"
   },
   "noteUndo": {
     "message": "Undo"
@@ -423,19 +423,61 @@
     "message": "Insert table"
   },
   "noteRowAdd": {
-    "message": "Add row below"
+    "message": "Add row"
+  },
+  "noteColumnAdd": {
+    "message": "Add column"
+  },
+  "noteRow": {
+    "message": "Row"
+  },
+  "noteColumn": {
+    "message": "Column"
+  },
+  "noteRowAbove": {
+    "message": "Insert row above"
+  },
+  "noteRowBelow": {
+    "message": "Insert row below"
   },
   "noteRowRemove": {
     "message": "Delete row"
   },
-  "noteColumnAdd": {
-    "message": "Add column to the right"
+  "noteColumnLeft": {
+    "message": "Insert column left"
+  },
+  "noteColumnRight": {
+    "message": "Insert column right"
   },
   "noteColumnRemove": {
     "message": "Delete column"
   },
+  "noteAlignLeft": {
+    "message": "Align left"
+  },
+  "noteAlignCenter": {
+    "message": "Align center"
+  },
+  "noteAlignRight": {
+    "message": "Align right"
+  },
   "noteTableRemove": {
     "message": "Delete table"
+  },
+  "noteFold": {
+    "message": "Foldable block"
+  },
+  "noteFoldTitle": {
+    "message": "Title"
+  },
+  "noteFootnote": {
+    "message": "Footnote"
+  },
+  "noteCopy": {
+    "message": "Copy"
+  },
+  "noteCopied": {
+    "message": "Copied"
   },
   "syncRepo": {
     "message": "GitHub repository (private)"

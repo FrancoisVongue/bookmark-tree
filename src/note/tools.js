@@ -4,6 +4,7 @@
 
 import { t } from '../i18n.js';
 import { ask } from '../parts.js';
+import { keys } from './blocks.js';
 
 const svg = (path) => `<svg viewBox="0 0 20 20" width="18" height="18"><path d="${path}" /></svg>`;
 const heading = (level) => ({
@@ -40,8 +41,9 @@ const groups = [
     heading(1),
     heading(2),
     heading(3),
-    { title: t('noteQuote'), keys: 'Mod+Shift+B', icon: svg('M4 5v10M8 7h8M8 10h8M8 13h5'), run: (chain) => chain.toggleBlockquote(), on: ['blockquote'] },
+    { title: t('noteQuote'), keys: 'Mod+Shift+B', icon: svg('M8.500 6.500c-2 .8-3 2.300-3 4.500v2.500H9V10H6.500M15.500 6.500c-2 .8-3 2.300-3 4.500v2.500H16V10h-2.500'), run: (chain) => chain.toggleBlockquote(), on: ['blockquote'] },
     { title: t('noteCodeBlock'), keys: 'Mod+Alt+C', icon: svg('M3 4h14v12H3zM8 8l-2 2 2 2M12 8l2 2-2 2'), run: (chain) => chain.toggleCodeBlock(), on: ['codeBlock'] },
+    { title: t('noteFold'), keys: '+++', icon: svg('M4 6l3 2.500L4 11M10.500 8.500h6M10.500 12.500h6M10.500 16.500h3.500'), run: (chain) => chain.setFold() },
   ],
   [
     { title: t('noteBulletList'), keys: 'Mod+Shift+8', icon: svg('M8 5h9M8 10h9M8 15h9M4 5h.01M4 10h.01M4 15h.01'), run: (chain) => chain.toggleBulletList(), on: ['bulletList'] },
@@ -51,19 +53,9 @@ const groups = [
   [
     { title: t('noteLink'), icon: svg('M8.5 11.5a3 3 0 0 0 4.2 0l2.5-2.5A3 3 0 0 0 11 4.8l-1 1M11.5 8.5a3 3 0 0 0-4.2 0L4.8 11A3 3 0 0 0 9 15.2l1-1'), ask: (editor) => ask(t('noteLinkAddress'), t('noteLinkYes'), editor.getAttributes('link').href ?? 'https://').then((href) => href?.trim()), run: link, on: ['link'] },
     { title: t('noteTable'), icon: svg('M3 4h14v12H3zM3 8h14M3 12h14M7.7 4v12M12.3 4v12'), run: (chain) => chain.insertTable({ rows: 3, cols: 3, withHeaderRow: true }) },
+    { title: t('noteFootnote'), keys: '[^1]', icon: '<span>a<sup>1</sup></span>', run: (chain) => chain.addFootnote() },
   ],
 ];
-
-// These are only there while the cursor is in a table.
-const inTable = [
-  { title: t('noteRowAdd'), icon: svg('M3 4h14v5H3zM10 12v5M7.5 14.5h5'), run: (chain) => chain.addRowAfter() },
-  { title: t('noteRowRemove'), icon: svg('M3 4h14v5H3zM8 12.5l4 4M12 12.5l-4 4'), run: (chain) => chain.deleteRow() },
-  { title: t('noteColumnAdd'), icon: svg('M4 3h5v14H4zM12 10h5M14.5 7.5v5'), run: (chain) => chain.addColumnAfter() },
-  { title: t('noteColumnRemove'), icon: svg('M4 3h5v14H4zM12.5 8l4 4M16.5 8l-4 4'), run: (chain) => chain.deleteColumn() },
-  { title: t('noteTableRemove'), icon: svg('M4 6h12M8 6V4h4v2M5.5 6l.7 10h7.6l.7-10M8.5 9v4.5M11.5 9v4.5'), run: (chain) => chain.deleteTable() },
-];
-
-const mod = navigator.platform.startsWith('Mac') ? '⌘' : 'Ctrl';
 
 /** Fills `bar` with the tools of `editor` and keeps them true to where the cursor is. */
 export function toolbar(editor, bar) {
@@ -74,7 +66,7 @@ export function toolbar(editor, bar) {
       const button = element.appendChild(document.createElement('button'));
       button.type = 'button';
       button.innerHTML = tool.icon;
-      button.title = tool.keys ? `${tool.title} (${tool.keys.replace('Mod', mod)})` : tool.title;
+      button.title = tool.keys ? `${tool.title} (${keys(tool.keys)})` : tool.title;
       button.setAttribute('aria-label', tool.title);
       // A tool that needs an answer asks for it first; what it then does is one step, as for the others.
       button.addEventListener('click', async () => {
@@ -83,16 +75,13 @@ export function toolbar(editor, bar) {
       });
       buttons.set(button, tool);
     }
-    return element;
   };
   groups.forEach(group);
-  const table = group(inTable);
 
   // A press on a tool must not take the cursor, or the selection, out of the text.
   bar.addEventListener('mousedown', (event) => event.preventDefault());
 
   const refresh = () => {
-    table.hidden = !editor.isActive('table');
     for (const [button, tool] of buttons) {
       button.disabled = !tool.run(editor.can().chain(), editor).run();
       if (tool.on) button.setAttribute('aria-pressed', editor.isActive(...tool.on));
