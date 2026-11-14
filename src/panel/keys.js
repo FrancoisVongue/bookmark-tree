@@ -1,6 +1,6 @@
 // The keyboard.
 
-import { app, closeMenu, closeOverlay, deselect, focusRow, here, idAt, onTop, paneAt, rowOf, search, searchJournal, selectAlso, showBranch, targets, ui, under } from './screen.js';
+import { app, applyTicks, closeMenu, closeOverlay, deselect, focusRow, here, idAt, onTop, paneAt, rowOf, search, searchJournal, selectAlso, showBranch, stopTicking, targets, tickRow, ui, under } from './screen.js';
 import { endDrag } from './drag.js';
 import * as cmd from './commands.js';
 
@@ -22,6 +22,7 @@ addEventListener('keydown', (event) => {
     const [first] = ui.places.shown;
     return first && cmd.revisit(first.node, first.tree);
   }
+  if (event.key === 'Escape' && ui.ticking) return stopTicking();
   if (event.key === 'Escape') {
     if (ui.drag) endDrag();
     if (ui.query) search('');
@@ -44,6 +45,13 @@ addEventListener('keydown', (event) => {
   const id = idAt(event.target) ?? (event.target === document.body ? ui.cursor : undefined);
   const pane = paneAt(event.target) ?? here();
   if (!id || !pane || onTop()) return;
+  if (ui.ticking) {
+    // Ticking for the filter: Enter leaves what is ticked, Esc gives up, Space ticks the row; the arrows walk as ever, and nothing else is done to the tree meanwhile.
+    if (event.key === 'Enter') return applyTicks();
+    if (event.key === 'Escape') return stopTicking();
+    if (event.key === ' ') return event.preventDefault(), tickRow(pane, id, event.shiftKey);
+    if (!['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+  }
   const tree = pane.tree;
   const ids = targets(pane, id);
   const index = pane.rows.findIndex((row) => row.id === id);

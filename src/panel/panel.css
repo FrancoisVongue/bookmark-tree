@@ -74,9 +74,10 @@
 }
 
 /*
- * What the tree is narrowed to, under the tools: plain words in one quiet
- * line, each with a small cross to take it off. No frames, no fills: that
- * the filter is on is said by the pressed funnel and by this line being there.
+ * The filter, under the tools: plain words in one quiet line. No frames, no
+ * fills: that a filter is on is said by the pressed funnel and by this line
+ * being there. While nodes are ticked, the quick ways to tick stand here; one
+ * whose nodes are all ticked is in the text's full colour.
  */
 .filtered {
   display: flex;
@@ -88,38 +89,22 @@
   color: var(--dim);
 }
 .filtered .by {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  max-width: 100%;
-  color: var(--text);
-}
-.filtered .by > button:first-child {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--text);
 }
 .filtered button:hover {
   color: var(--accent);
 }
-.filtered .off {
-  display: grid;
-  place-items: center;
-  width: 16px;
-  height: 16px;
-  color: var(--dim);
-}
-.filtered .off svg {
-  width: 12px;
-  height: 12px;
+.filtered [aria-pressed='true'] {
+  color: var(--text);
+  font-weight: 600;
 }
 .filtered .count {
   margin-left: auto;
   font-variant-numeric: tabular-nums;
-}
-.hint button {
-  color: var(--accent);
 }
 
 /* --- Small buttons, wherever they are ------------------------------------------ */
@@ -522,7 +507,8 @@
   border: 1.5px solid var(--dim);
   border-radius: 4px;
 }
-.row.selected .check {
+.row.selected .check,
+.row.ticked .check {
   border-color: var(--accent);
   background: var(--accent);
   box-shadow: inset 0 0 0 2px var(--bg);
@@ -612,15 +598,6 @@
 
 /* --- Menus --------------------------------------------------------------------- */
 
-/* An item that is ticked: the tick stands where the keys' names are for other items. */
-.menu [aria-checked] kbd::before {
-  content: '✓';
-  color: var(--accent);
-  visibility: hidden;
-}
-.menu [aria-checked='true'] kbd::before {
-  visibility: visible;
-}
 .menu {
   position: fixed;
   z-index: 40;

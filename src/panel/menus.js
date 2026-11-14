@@ -2,11 +2,10 @@
 
 import { gridOf, isGroup, isNote, planOf } from '../model.js';
 import { t } from '../i18n.js';
-import { here, openBeside, openMenu, rename, rowOf, showBranch, targets, toggleFilter, ui, under } from './screen.js';
+import { here, openBeside, openMenu, rename, rowOf, showBranch, targets, ui, under } from './screen.js';
 import * as cmd from './commands.js';
-import { CONDITIONS } from './filter.js';
 import { keyOf } from './keymap.js';
-import { LABEL, isAway, removeLabel } from './view.js';
+import { isAway, removeLabel } from './view.js';
 
 const item = (label, run, hint, disabled = false) => ({ label: t(label), hint, disabled, run });
 
@@ -67,11 +66,6 @@ export function treeMenu(treeId) {
   ];
 }
 
-/** What a tree can be narrowed to: conditions to tick, which hold together. The menu stays open while they are ticked. */
-export function filterMenu() {
-  const tree = here().tree;
-  return CONDITIONS.map((name) => ({ ...item(LABEL[name], () => toggleFilter(tree, name)), checked: !!ui.filters[tree]?.[name], stay: true }));
-}
 export function mainMenu() {
   // The table of trees can grow freely, and shrink while every tree still has a cell.
   const { columns, rows } = gridOf(ui.library);

@@ -4,7 +4,7 @@
 
 import { DAY, ROOT, descendantsOf, inTree, parentOf, rowsOf } from '../model.js';
 import { find } from '../find.js';
-import { CONDITIONS, branchOf, narrows, passes, withLeads } from './filter.js';
+import { QUICK, answers, narrowedTo, topmost, withLeads } from './filter.js';
 import { t } from '../i18n.js';
 import { draw, titleOf } from './view.js';
 
@@ -32,9 +32,11 @@ export const ui = {
   journalQuery: '', // What is searched for in the unfolded journal.
   journalAll: false, // Whether the unfolded journal shows all its places, or only the latest.
   places: { shown: [], more: 0, loose: undefined }, // What the unfolded journal shows (see layJournal).
-  // What each tree is narrowed to on this screen: { [treeId]: { branch?, open?, week?, sound?, kept? } } (see filter.js). Kept with the view, never with the library.
+  // The filter of each tree, on this screen: { [treeId]: { picked: [nodeId], at } } - what is ticked to be shown alone, and when that was said (see filter.js). Kept with the view, never with the library.
   filters: kept.filters ?? {},
-  filtered: undefined, // What the bar says of the focused pane's filter: { branch: { id, name, path }, conditions, shown, of }, if it has one.
+  // While the user ticks them: { tree, ids: Set, anchor } - the whole tree is shown, every row with a tick to set; nothing is narrowed until they say so.
+  ticking: undefined,
+  filtered: undefined, // What the bar says of the focused pane's filter (see filterLine), if it has one or is being ticked.
   notice: undefined, // The one thing to tell the user at the bottom: { id, text, button?: { action, label } } (see noticeOf).
   canUndo: false,
   canRedo: false,
@@ -353,28 +355,60 @@ export function openOverlay(overlay) {
 /** The pane on top to choose nodes of tree `treeId` from; they go `into` { pane, id }. */
 export const pick = (treeId, into) => openOverlay({ kind: 'picker', ...newPane(treeId), into });
 
-/** Turns a condition of a tree's filter on or off (see CONDITIONS in filter.js). */
-export function toggleFilter(treeId, name) {
-  const filter = (ui.filters[treeId] ??= {});
-  if (filter[name]) delete filter[name];
-  else filter[name] = true;
+// A filter is set by ticking: the funnel shows a tick to set on every row of the tree, and - pressed again - leaves only what was ticked.
+
+/** Starts ticking in the focused pane's tree, from what its filter has ticked now; or, when ticking already, applies it. */
+export function tick() {
+  if (ui.ticking) return applyTicks();
+  ui.ticking = { tree: here().tree, ids: new Set(ui.filters[here().tree]?.picked ?? []), anchor: undefined };
   arrange();
 }
-/** Shows only node `id` and what is under it in a tree; the same node again, or none, shows the whole tree. */
+/** Ticks or unticks row `id` - or, with `range`, ticks every row from the one ticked last to it. */
+export function tickRow(pane, id, range) {
+  const { ids, anchor } = ui.ticking;
+  const rows = pane.rows.map((row) => row.id);
+  if (range && rows.includes(anchor)) {
+    const [from, to] = [rows.indexOf(anchor), rows.indexOf(id)].sort((a, b) => a - b);
+    for (const each of rows.slice(from, to + 1)) ids.add(each);
+  } else if (!ids.delete(id)) ids.add(id);
+  ui.ticking.anchor = id;
+  ui.cursor = id;
+  arrange();
+}
+/** Ticks every node a quick way names (see QUICK in filter.js) - or, if all of them are ticked, unticks them. */
+export function tickQuickly(way) {
+  const { ids, tree } = ui.ticking;
+  const named = quickly(ui.library.trees[tree], way);
+  const all = named.every((id) => ids.has(id));
+  for (const id of named) all ? ids.delete(id) : ids.add(id);
+  arrange();
+}
+/** Leaves only what is ticked (nothing ticked: no filter) - of what is there to see now: what comes later is shown all the same (see rootsOf in filter.js). */
+export function applyTicks() {
+  const { tree, ids } = ui.ticking;
+  ui.ticking = undefined;
+  setFilter(tree, [...ids]);
+}
+/** Stops ticking; the filter stays as it was. */
+export function stopTicking() {
+  ui.ticking = undefined;
+  arrange();
+}
+function setFilter(treeId, ids) {
+  const picked = topmost(ui.library.trees[treeId], ids);
+  if (picked.length) ui.filters[treeId] = { picked, at: Date.now() };
+  else delete ui.filters[treeId];
+  arrange();
+}
+/** The short way: shows only node `id` and what is under it. The same node again shows the whole tree. */
 export function showBranch(treeId, id) {
-  const filter = (ui.filters[treeId] ??= {});
-  if (!id || filter.branch === id) delete filter.branch;
-  else filter.branch = id;
-  arrange();
-}
-/** One level up from the branch shown: its parent's branch, or - from the top - the whole tree. */
-export function widenBranch(treeId) {
-  const up = parentOf(ui.library.trees[treeId], ui.filters[treeId]?.branch);
-  showBranch(treeId, up === ROOT ? undefined : up);
+  const now = ui.filters[treeId]?.picked ?? [];
+  ui.ticking = undefined;
+  setFilter(treeId, now.length === 1 && now[0] === id ? [] : [id]);
 }
 export function clearFilters(treeId) {
-  delete ui.filters[treeId];
-  arrange();
+  ui.ticking = undefined;
+  setFilter(treeId, []);
 }
 
 /** In the picker: shows another tree to choose from, and marks or unmarks a row of it. */
@@ -387,15 +421,12 @@ export function togglePicked(id) {
 
 /** Shows a menu at a point: items { label, hint, disabled, run }; `null` is a separator, `false` and `undefined` are left out. */
 export function openMenu(x, y, items, opener) {
-  // `items` may be a function that makes them: then an item marked `stay` leaves the menu open, made anew, when it has run (things to tick, one after another).
-  const make = typeof items === 'function' ? items : () => items;
   const run = (entry) => () => {
-    if (!entry.stay) closeMenu();
+    closeMenu();
     entry.run();
-    if (entry.stay && ui.menu) (ui.menu.items = wrap()), redraw();
   };
-  const wrap = () => make().filter((entry) => entry !== false && entry !== undefined).map((entry) => entry && { ...entry, run: run(entry) });
-  ui.menu = { x, y, opener, items: wrap() };
+  const shown = items.filter((entry) => entry !== false && entry !== undefined);
+  ui.menu = { x, y, opener, items: shown.map((entry) => entry && { ...entry, run: run(entry) }) };
   redraw();
   // Keep it on screen.
   const box = app.querySelector('.menu').getBoundingClientRect();
@@ -524,41 +555,36 @@ const textOf = (id) => {
   return `${titleOf(node)} ${node.url ?? ''} ${node.note ?? ''}`;
 };
 
+/** The filter of a pane's tree; none while it is being ticked (then all of the tree is there to tick), nor in the picker. */
+const filterOf = (pane) => (pane === picker() || ui.ticking?.tree === pane.tree ? undefined : ui.filters[pane.tree]);
+
 /**
- * The rows a pane shows of its tree: all of them as the tree has them, or -
- * narrowed by the tree's filter (see filter.js) and by the search, the
- * search working on what the filter left - those that answer, with the rows
- * above them that lead there. Gives { rows, first (the first that answers),
- * loose (how a search that nothing answered exactly was read), count: { shown, of } }.
+ * The rows a pane shows of its tree: as the tree has them - all of it, or,
+ * seen through its filter, the ticked nodes with what is under them and what
+ * came after the filter was set - and,
+ * while searching, those of them that answer, with the rows that lead
+ * there. Gives { rows, first (the first that answers the search), loose
+ * (how a search that nothing answered exactly was read), count: { shown, of } }.
  *
- * The current tab's row is always among them, even where it answers
- * nothing: the user must not lose where they are.
+ * The current tab's row is always among them, even where the filter leaves
+ * it out: the user must not lose where they are.
  */
 function rowsFor(pane) {
-  const { library } = ui;
-  const tree = library.trees[pane.tree];
-  const filter = pane === picker() ? {} : (ui.filters[pane.tree] ?? {});
+  const filter = filterOf(pane);
   const query = pane === picker() ? '' : ui.query;
-  const narrowed = narrows(filter) || !!query;
-  // Narrowed, every row is a candidate, folded away or not; else the tree is shown as it is.
-  const whole = narrowed ? rowsOf(library, pane.tree, true) : rowsOf(library, pane.tree, false, ui.live);
-  let rows = (filter.branch && branchOf(whole, filter.branch)) || whole;
-  const count = { shown: rows.length, of: descendantsOf(tree, ROOT).length };
+  const library = filter ? narrowedTo(ui.library, pane.tree, filter) : ui.library;
+  const all = rowsOf(library, pane.tree, true);
+  const count = { shown: all.length, of: descendantsOf(ui.library.trees[pane.tree], ROOT).length };
+  let rows = query ? all : rowsOf(library, pane.tree, false, ui.live);
   let first, loose;
-  if (narrowed) {
-    const facts = { live: ui.live, audible: ui.audible, day: Math.floor(Date.now() / DAY) };
-    let hits = rows.filter((row) => passes(library.nodes[row.id], filter, facts));
-    count.shown = hits.length;
-    if (query) {
-      const { hits: answers, how, as } = find(hits, query, (row) => textOf(row.id));
-      [hits, loose] = [answers, how === 'exact' ? undefined : { how, as }];
-    }
-    first = hits[0]?.id;
-    rows = withLeads(rows, new Set([...hits.map((row) => row.id), ui.activeId]));
+  if (query) {
+    const { hits, how, as } = find(all, query, (row) => textOf(row.id));
+    [first, loose] = [hits[0]?.id, how === 'exact' ? undefined : { how, as }];
+    rows = withLeads(all, new Set([...hits.map((row) => row.id), ui.activeId]));
   }
-  // The current tab outside the branch shown (a new tab that landed elsewhere, say) stands under it, on its own.
-  const outside = filter.branch && !rows.some((row) => row.id === ui.activeId) && whole.find((row) => row.id === ui.activeId);
-  if (outside) rows = [...rows, { ...outside, depth: 0, kids: 0, collapsed: false, hidden: 0 }];
+  // The current tab outside what the filter shows (a new tab that landed elsewhere, say) stands under it, on its own.
+  const outside = filter && !all.some((row) => row.id === ui.activeId) && inTree(ui.library.trees[pane.tree], ui.activeId);
+  if (outside) rows = [...rows, { id: ui.activeId, depth: 0, kids: 0, collapsed: false, hidden: 0 }];
   return { rows, first, loose, count };
 }
 
@@ -611,14 +637,20 @@ function layOut() {
   if (!ui.panes.length) ui.panes = [newPane(Object.keys(library.trees)[0])];
   ui.focus = here();
   if (picker() && !library.trees[picker().tree]) ui.overlay = undefined;
-  for (const [treeId, filter] of Object.entries(ui.filters)) {
-    if (!library.trees[treeId]) delete ui.filters[treeId];
-    else if (filter.branch && !inTree(library.trees[treeId], filter.branch)) delete filter.branch; // The node it showed is not in the tree any more.
+  for (const [treeId, ids] of Object.entries(ui.filters)) { // (`ids`: the tree's filter.)
+    // A tree that is gone has no filter; a ticked node that is gone falls out of it. (An older version kept another shape: that is let go too.)
+    const still = library.trees[treeId] ? (ids.picked ?? []).filter((id) => inTree(library.trees[treeId], id)) : [];
+    if (still.length) ids.picked = still;
+    else delete ui.filters[treeId];
   }
+  if (ui.ticking && !ui.panes.some((pane) => pane.tree === ui.ticking.tree)) ui.ticking = undefined;
   for (const pane of [...ui.panes, picker()]) {
     if (!pane) continue;
     const { rows, first, loose, count } = rowsFor(pane);
     Object.assign(pane, { rows, loose, count, first: first ?? rows[0]?.id });
+    // While ticking: what is ticked in this pane, and what comes with it (all under a ticked node).
+    const ticks = ui.ticking?.tree === pane.tree && pane !== picker() ? ui.ticking.ids : undefined;
+    pane.ticks = ticks && { on: ticks, with: new Set([...ticks].flatMap((id) => descendantsOf(library.trees[pane.tree], id))) };
     place(pane);
     pane.sel = new Set([...pane.sel].filter((id) => rowOf(pane, id)));
   }
@@ -628,15 +660,28 @@ function layOut() {
   if (ui.renaming?.id && !rowOf(ui.renaming.pane, ui.renaming.id)) ui.renaming = undefined;  ui.filtered = filterLine(here());
 }
 
-/** What the bar says of a pane's filter: the branch shown (with the way to it), the conditions that are on, how many nodes answer. Nothing, without a filter. */
+/**
+ * What the bar says of a pane's filter. While nodes are being ticked:
+ * { ticking: true, picked, quick: [{ way, on }] } - how many are ticked, and
+ * the quick ways to tick, each `on` when all it would tick are ticked.
+ * With a filter on: { names (of the ticked, when they are one or two), picked, shown, of }.
+ */
 function filterLine(pane) {
-  const filter = ui.filters[pane.tree] ?? {};
-  const conditions = CONDITIONS.filter((name) => filter[name]);
-  if (!filter.branch && !conditions.length) return undefined;
   const tree = ui.library.trees[pane.tree];
-  const way = [];
-  for (let id = filter.branch; id && id !== ROOT; id = parentOf(tree, id)) way.unshift(titleOf(ui.library.nodes[id]));
-  return { branch: filter.branch && { id: filter.branch, name: way.at(-1), path: way.join(' › ') }, conditions, ...pane.count };
+  if (ui.ticking?.tree === pane.tree) {
+    const { ids } = ui.ticking;
+    const quick = QUICK.map((way) => ({ way, on: quickly(tree, way).length > 0 && quickly(tree, way).every((id) => ids.has(id)) }));
+    return { ticking: true, picked: ids.size, quick };
+  }
+  const ticked = topmost(tree, ui.filters[pane.tree]?.picked ?? []);
+  if (!ticked.length) return undefined;
+  return { names: ticked.length <= 2 ? ticked.map((id) => titleOf(ui.library.nodes[id])) : undefined, picked: ticked.length, ...pane.count };
+}
+
+/** The nodes of a tree that a quick way would tick. */
+function quickly(tree, way) {
+  const facts = { live: ui.live, audible: ui.audible, day: Math.floor(Date.now() / DAY) };
+  return descendantsOf(tree, ROOT).filter((id) => answers(ui.library.nodes[id], way, facts));
 }
 
 

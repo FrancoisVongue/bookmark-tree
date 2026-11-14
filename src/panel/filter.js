@@ -1,38 +1,62 @@
-// What a filter lets through. A filter narrows what a pane shows of its
-// tree: { branch?, open?, week?, sound?, kept? } - a node to show alone with
-// all under it, and conditions that hold together. Pure: no screen here.
+// A filter: { picked, at } - the nodes the user ticked, to be shown alone,
+// each with all that is under it, and when they said so. Here is what that
+// means. Pure: no screen here.
 
-import { freshOf } from '../model.js';
+import { ROOT, descendantsOf, freshOf, inTree } from '../model.js';
 
-/** The conditions, in the order they are offered. */
-export const CONDITIONS = ['open', 'week', 'sound', 'kept'];
-export const narrows = (filter) => CONDITIONS.some((name) => filter[name]);
+/** Ways to tick many nodes at once: every node that answers one. */
+export const QUICK = ['open', 'week', 'sound', 'kept'];
 
 /**
- * Whether a node answers every condition of `filter` that is on. `facts`:
- * { live, audible } - the ids of nodes with an open tab and of those making
- * sound - and `day`, today counted from 1970.
+ * Whether a node answers a quick way. `facts`: { live, audible } - the ids
+ * of nodes with an open tab and of those making sound - and `day`, today
+ * counted from 1970.
  */
-export function passes(node, filter, { live, audible, day }) {
-  if (filter.open && !live.has(node.id)) return false;
-  if (filter.week && day - freshOf(node) >= 7) return false;
-  if (filter.sound && !audible.has(node.id)) return false;
-  if (filter.kept && !(node.pinned || node.keep)) return false;
-  return true;
+export function answers(node, way, { live, audible, day }) {
+  if (way === 'open') return live.has(node.id);
+  if (way === 'week') return day - freshOf(node) < 7;
+  if (way === 'sound') return audible.has(node.id);
+  return !!(node.pinned || node.keep);
 }
 
 /**
- * The rows of one branch: row `id` and all under it, the branch's own row
- * at depth 0 - nothing of what is above it, so the room that took is given
- * back. Nothing, if the row is not among `rows`.
+ * The ticked nodes that count, in the order of the tree: those still in it,
+ * without the ones under another ticked node (they come with it anyway).
  */
-export function branchOf(rows, id) {
-  const at = rows.findIndex((row) => row.id === id);
-  if (at === -1) return undefined;
-  const top = rows[at].depth;
-  let end = at + 1;
-  while (end < rows.length && rows[end].depth > top) end++;
-  return rows.slice(at, end).map((row) => ({ ...row, depth: row.depth - top }));
+export function topmost(tree, ids) {
+  const ticked = new Set(ids);
+  const under = new Set(ids.flatMap((id) => (inTree(tree, id) ? descendantsOf(tree, id) : [])));
+  return descendantsOf(tree, ROOT).filter((id) => ticked.has(id) && !under.has(id));
+}
+
+/**
+ * What stands at the top of a tree seen through a filter { picked, at }: the
+ * ticked nodes - and every node added after the filter was set (`at`) that
+ * is not under one of those already. A filter takes away only what the user
+ * saw and did not tick; what was not there then, it never took away.
+ */
+export function rootsOf(library, treeId, { picked, at }) {
+  const tree = library.trees[treeId];
+  const ticked = new Set(picked);
+  const under = new Set();
+  const roots = [];
+  for (const id of descendantsOf(tree, ROOT)) {
+    if (under.has(id) || !(ticked.has(id) || library.nodes[id].added > at)) continue;
+    roots.push(id);
+    for (const each of descendantsOf(tree, id)) under.add(each);
+  }
+  return roots;
+}
+
+/**
+ * The library as it is seen through a filter: in tree `treeId` the nodes of
+ * rootsOf stand at the top, each with what is under it, and nothing else is
+ * there - nothing of what was above them, so the room that took is given
+ * back. The rows of this are made as for any tree (rowsOf in model.js).
+ */
+export function narrowedTo(library, treeId, filter) {
+  const tree = library.trees[treeId];
+  return { ...library, trees: { ...library.trees, [treeId]: { ...tree, children: { ...tree.children, [ROOT]: rootsOf(library, treeId, filter) } } } };
 }
 
 /**

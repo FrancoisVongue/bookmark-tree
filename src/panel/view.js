@@ -73,10 +73,11 @@ export function iconView(node) {
 const act = (action, icon, title, more = '') =>
   html`<button class="act ${more}" data-action=${action} tabindex="-1" title=${title}>${ICONS[icon]}</button>`;
 
-function rowView(row, pane, ui, { leads, included }, lit) {
+function rowView(row, pane, ui, { leads, ticks }, lit) {
   const node = ui.library.nodes[row.id];
   if (!node) return '';
-  const picking = pane === ui.overlay;
+  // A row has a tick to set in the pane to choose from, and while ticking for the filter; `ticks`: { on, with } - what is ticked, and what comes with it.
+  const picking = !!ticks;
   const live = ui.live.has(row.id);
   const drop = ui.drop?.pane === pane && ui.drop.targetId === row.id && ui.drop.position;
   const shared = ui.shared.get(row.id);
@@ -87,7 +88,8 @@ function rowView(row, pane, ui, { leads, included }, lit) {
     row.id === ui.activeId && 'active',
     leads.has(row.id) && 'leads',
     pane.sel.has(row.id) && 'selected',
-    included?.has(row.id) && 'included',
+    ticks?.on.has(row.id) && 'ticked',
+    ticks?.with.has(row.id) && 'included',
     row.kids && 'parent',
     row.collapsed && 'collapsed',
     row.lead && 'lead',
@@ -164,28 +166,31 @@ function litGuide(rows, id) {
 const looseView = (loose) =>
   loose ? html`<p class="loose">${loose.how === 'layout' ? t('foundAs', loose.as) : t('foundNear')}</p>` : nothing;
 
-/** The texts of a filter's conditions (see CONDITIONS in filter.js). */
-export const LABEL = { open: 'filterOpen', week: 'filterWeek', sound: 'filterSound', kept: 'filterKept' };
+/** The texts of the quick ways to tick (see QUICK in filter.js). */
+const QUICKLY = { open: 'filterOpen', week: 'filterWeek', sound: 'filterSound', kept: 'filterKept' };
 
-/** What a pane with no rows says: the tree is empty, or nothing answers the search or the filter (which can then be cleared right there). */
-function emptyView(pane, ui) {
-  if (ui.filters[pane.tree]) return html`<p class="hint">${t('filterNothing')} · <button data-action="filter-clear">${t('filterClearAll')}</button></p>`;
-  return html`<p class="hint">${t(ui.query ? 'nothingFound' : 'emptyTree')}</p>`;
-}
+/** What a pane with no rows says: the tree is empty, or nothing answers the search. */
+const emptyView = (ui) => html`<p class="hint">${t(ui.query ? 'nothingFound' : 'emptyTree')}</p>`;
 
 /**
  * The filter of the focused pane's tree, said in one quiet line under the
- * tools: the branch shown (a press goes one level up) and each condition, to
- * be taken off one by one; how many nodes answer; and "clear".
+ * tools. While nodes are being ticked: the quick ways to tick, how many are
+ * ticked, and "show these". With the filter on: what is shown alone, how
+ * much of the tree that is, and "clear".
  */
-function filteredView({ branch, conditions, shown, of }) {
-  const off = (action, name, label) => html`<button class="off" data-action=${action} data-name=${name ?? nothing} title=${t('filterRemove')} aria-label="${t('filterRemove')}: ${label}">${ICONS.close}</button>`;
+function filteredView({ ticking, quick, names, picked, shown, of }) {
+  if (ticking) {
+    return html`
+      <div class="filtered">
+        ${quick.map(({ way, on }) => html`<button data-action="filter-quick" data-way=${way} aria-pressed=${on} title=${t('filterQuick')}>${t(QUICKLY[way])}</button>`)}
+        <span class="count">${t('filterPicked', picked)}</span>
+        <button data-action="filter-apply" title=${t('filterApplyHint')}>${t(picked ? 'filterApply' : 'filterNone')}</button>
+      </div>
+    `;
+  }
   return html`
     <div class="filtered">
-      ${branch
-        ? html`<span class="by"><button data-action="filter-up" title="${branch.path}\n${t('filterUp')}">${branch.name}</button>${off('filter-branch-off', undefined, branch.name)}</span>`
-        : nothing}
-      ${conditions.map((name) => html`<span class="by">${t(LABEL[name])}${off('filter-off', name, t(LABEL[name]))}</span>`)}
+      <span class="by">${names ? names.join(' · ') : t('filterPicked', picked)}</span>
       <span class="count">${t('filterCount', shown, of)}</span>
       <button data-action="filter-clear">${t('filterClear')}</button>
     </div>
@@ -200,7 +205,8 @@ function paneView(pane, index, ui) {
   const focused = pane === ui.focus;
   const tree = ui.library.trees[pane.tree];
   // In the picker a chosen node brings its subtree along: show that.
-  way.included = picking ? new Set([...pane.sel].flatMap((id) => descendantsOf(tree, id))) : undefined;
+  // In the picker what is chosen is ticked, and a chosen node brings what is under it along.
+  way.ticks = picking ? { on: pane.sel, with: new Set([...pane.sel].flatMap((id) => descendantsOf(tree, id))) } : pane.ticks;
   return html`
     ${index > 0 ? html`<div class="divider" data-divider=${index}></div>` : ''}
     <section
@@ -226,7 +232,7 @@ function paneView(pane, index, ui) {
         <div class="gap" style="height:${pane.after}px"></div>
         ${pane.line ? html`<div class="dropline" style="top:${pane.line.top}px; --depth:${pane.line.depth}"></div>` : nothing}
       </div>
-      ${pane.rows.length || picking ? '' : emptyView(pane, ui)}
+      ${pane.rows.length || picking ? '' : emptyView(ui)}
     </section>
   `;
 }
@@ -263,12 +269,7 @@ function menuView(menu) {
     <div class="menu" role="menu" tabindex="-1" style="left:${menu.x}px; top:${menu.y}px">
       ${menu.items.map((item) =>
         item
-          ? html`<button
-              role=${item.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}
-              aria-checked=${item.checked ?? nothing}
-              ?disabled=${item.disabled}
-              @click=${item.run}
-            >
+          ? html`<button role="menuitem" ?disabled=${item.disabled} @click=${item.run}>
               <span>${item.label}</span><kbd>${item.hint ?? ''}</kbd>
             </button>`
           : html`<hr />`,
@@ -426,7 +427,7 @@ export function draw(container, ui) {
           ${tool('new-note', 'note', `${t('newNote')} (${keyOf('newNote')})`)}
           ${tool('undo', 'undo', `${t('undo')} (${keyOf('undo')})`, { disabled: !ui.canUndo })}
           ${tool('show-active', 'locate', t('showActive'), { disabled: !ui.activeTree })}
-          ${tool('filter', 'filter', t('filter'), { pressed: !!ui.filtered })}
+          ${tool('filter', 'filter', t(ui.ticking ? 'filterApplyHint' : 'filter'), { pressed: !!ui.filtered })}
           ${split('row', 'splitRow')} ${split('column', 'splitColumn')} ${tool('more', 'more', t('more'), { place: 'end' })}
         </div>
         ${ui.filtered ? filteredView(ui.filtered) : nothing}

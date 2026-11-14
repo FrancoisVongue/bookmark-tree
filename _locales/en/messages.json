@@ -96,7 +96,7 @@
     "message": "Link"
   },
   "filter": {
-    "message": "Filter"
+    "message": "Filter: tick what to show"
   },
   "filterOpen": {
     "message": "Open now"
@@ -119,17 +119,20 @@
   "filterClear": {
     "message": "Clear"
   },
-  "filterNothing": {
-    "message": "Nothing matches"
+  "filterPicked": {
+    "message": "$1 picked"
   },
-  "filterClearAll": {
-    "message": "Clear filters"
+  "filterApply": {
+    "message": "Show these"
   },
-  "filterRemove": {
-    "message": "Remove"
+  "filterNone": {
+    "message": "Show all"
   },
-  "filterUp": {
-    "message": "Click to go one level up"
+  "filterApplyHint": {
+    "message": "Show only what is ticked (Enter)"
+  },
+  "filterQuick": {
+    "message": "Tick all of these"
   },
   "extDescription": {
     "message": "Your pages as trees, in the side panel."

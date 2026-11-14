@@ -1,8 +1,8 @@
 // The panel's entry: the mouse, and the start. It turns what the user does
 // into commands for the worker (see screen.js for what the panel itself owns).
 
-import { allOfJournal, app, arrange, clearFilters, closeMenu, closeNotice, closeOverlay, closePane, deselect, here, idAt, log, menuUnder, openMenu, paneAt, pickFrom, picker, pointAt, redraw, refresh, revealActive, rowOf, search, searchJournal, select, setFocus, show, showActiveTree, showBranch, split, targets, toggleFilter, togglePicked, toggleStrip, ui, watch, widenBranch } from './screen.js';
-import { filterMenu, mainMenu, rowMenu, treeMenu } from './menus.js';
+import { allOfJournal, app, applyTicks, arrange, clearFilters, closeMenu, closeNotice, closeOverlay, closePane, deselect, here, idAt, log, menuUnder, openMenu, paneAt, pickFrom, picker, pointAt, redraw, refresh, revealActive, rowOf, search, searchJournal, select, setFocus, show, showActiveTree, split, targets, tick, tickQuickly, tickRow, togglePicked, toggleStrip, ui, watch } from './screen.js';
+import { mainMenu, rowMenu, treeMenu } from './menus.js';
 import { endsDrag } from './drag.js';
 import { saveBackup } from '../page.js';
 import * as cmd from './commands.js';
@@ -29,10 +29,9 @@ const actions = {
   'tree-add': ({ el }) => cmd.newTree(Number(el.dataset.cell)),
   'pane-close': ({ pane }) => closePane(pane),
   more: ({ el }) => menuUnder(el, mainMenu()),
-  filter: ({ el }) => menuUnder(el, filterMenu),
-  'filter-off': ({ el }) => toggleFilter(here().tree, el.dataset.name),
-  'filter-up': () => widenBranch(here().tree),
-  'filter-branch-off': () => showBranch(here().tree),
+  filter: tick,
+  'filter-quick': ({ el }) => tickQuickly(el.dataset.way),
+  'filter-apply': applyTicks,
   'filter-clear': () => clearFilters(here().tree),
   'split-row': () => split('row'),
   'split-column': () => split('column'),
@@ -66,6 +65,7 @@ app.addEventListener('click', (event) => {
     return actions[el.dataset.action]?.({ pane, id, el });
   }
   if (id && !pane) return togglePicked(id); // A row of the pane on top, to choose from: a click marks it.
+  if (id && ui.ticking?.tree === pane.tree) return tickRow(pane, id, event.shiftKey); // Ticking for the filter: a click ticks, and opens nothing.
   if (!id) {
     // A click on nothing lets go of the selection.
     return pane ? deselect(pane) : redraw();
@@ -83,7 +83,7 @@ app.addEventListener('dblclick', (event) => {
   const pane = paneAt(event.target);
   const treeId = event.target.closest('.bar .tab[data-tree]')?.dataset.tree;
   if (treeId) cmd.startRename({ tree: treeId });
-  else if (pane && id && id === chosen && event.target.closest('.title')) cmd.startRename({ id, pane });
+  else if (pane && id && id === chosen && !ui.ticking && event.target.closest('.title')) cmd.startRename({ id, pane });
 });
 
 // Middle click, as on a tab: closes a live node's tab (the node stays,
@@ -91,7 +91,7 @@ app.addEventListener('dblclick', (event) => {
 app.addEventListener('auxclick', (event) => {
   const id = idAt(event.target);
   const pane = paneAt(event.target);
-  if (!pane || !id || event.button !== 1) return;
+  if (!pane || !id || event.button !== 1 || ui.ticking) return;
   if (ui.live.has(id)) cmd.sleepOne(id);
   else cmd.remove(pane, id);
 });
