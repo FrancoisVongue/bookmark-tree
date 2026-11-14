@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createState, tabOpened } from '../src/core.js';
-import { DWELL, attend, placesOf } from '../src/journal.js';
+import { DWELL, attend, placesOf, visited } from '../src/journal.js';
+import { planOf } from '../src/model.js';
 
 /** Three open tabs, 1 2 3, showing nodes named a b c. */
 function browsing() {
@@ -54,14 +55,32 @@ test('a node that is gone is not a place to go back to', () => {
   assert.equal(places(state), '');
 });
 
-test('a page the user has been at leaves the plan; one only passed stays in it', () => {
+test('a planned page leaves the plan at the moment the visit counts - not before, and not only on leaving', () => {
   const state = browsing();
   const [a, b] = [1, 2].map((tab) => state.binding[tab].node);
   state.library.plan = [a, b];
   attend(state, 1, 0);
-  attend(state, 2, STAY); // Was at a for a while.
+  assert.equal(visited(state, DWELL - 1), false); // Not yet a visit:
+  assert.deepEqual(planOf(state.library), [a, b]); // a is still planned, and still there to be seen.
+  assert.equal(visited(state, DWELL), true); // Now it counts - the user has not left a -
+  assert.deepEqual(planOf(state.library), [b]); // and a is planned no more.
+  attend(state, 2, STAY);
   attend(state, 3, STAY + 100); // Passed b.
+  assert.deepEqual(planOf(state.library), [b]);
+  assert.equal(visited(state, STAY + 100 + DWELL), true); // At c, which was never planned: nothing to do.
   assert.deepEqual(state.library.plan, [b]);
+});
+
+test('the page the user is at cannot stay planned, whatever put it in the plan', () => {
+  const state = browsing();
+  const a = state.binding[1].node;
+  attend(state, 1, 0);
+  visited(state, STAY);
+  state.library.plan = [a]; // Planned on another computer, say, or by a step of undo.
+  visited(state, STAY + 1); // (The worker asks after everything it does.)
+  assert.equal('plan' in state.library, false);
+  attend(state, undefined, 2 * STAY); // Nowhere: nothing is visited.
+  assert.equal(visited(state, 9 * STAY), false);
 });
 
 test('a hundred places are kept, the oldest dropping off', () => {

@@ -8,7 +8,8 @@
 //                  once it leaves it: the way back. A `pinned` page goes back
 //                  there by itself when its tab closes. A node with `note`
 //                  (markdown text) is a note, not a page.
-//   library.trees  { [treeId]: { id, name, icon?, children, collapsed } }  where it sits
+//   library.trees  { [treeId]: { id, name, icon?, children, collapsed, quick? } }  where it sits;
+//                  `quick` [nodeId]: the tree's own nodes kept at hand, in order
 //   library.grid   { columns, rows, cells: [treeId | null] }  where each tree
 //                  sits in the table of trees at the top of the panel
 //   library.plan   [nodeId]  what the user means to open next, in order
@@ -91,33 +92,39 @@ export function problems(library) {
   return found;
 }
 
-/**
- * The plan: the nodes to open next, in order. Whatever is stored, each comes
- * out once, and only those that are still nodes.
- */
-export const planOf = (library) => [...new Set(library.plan ?? [])].filter((id) => library.nodes[id]);
+// --- Lists kept at hand --------------------------------------------------------
+// The plan (of the library) and a tree's quick row are the same thing: an
+// ordered list of node ids, stored as it was last written and read through
+// one rule - each id once, and only while it is still there (a node of the
+// library; a node of that tree). Nothing else says what is in such a list.
 
-/** Leaves `ids` in the plan: what is kept of it is what the plan is (no plan, when nothing is). */
-export function setPlan(library, ids) {
-  if (ids.length) library.plan = ids;
-  else delete library.plan;
+const listOf = (stored, has) => [...new Set(stored ?? [])].filter(has);
+
+/** The plan: the pages to open next, in order. */
+export const planOf = (library) => listOf(library.plan, (id) => library.nodes[id]);
+
+/** A tree's quick row: its own nodes kept at hand, in order. */
+export const quickOf = (tree) => listOf(tree.quick, (id) => inTree(tree, id));
+
+/** Writes a list: `holder[key]` is `ids` (and is not there at all, when they are none). */
+export function setList(holder, key, ids) {
+  if (ids.length) holder[key] = ids;
+  else delete holder[key];
 }
 
-/**
- * Puts pages into the plan, before its entry `before` or (without one) at
- * its end. Those already in it move there. A group has no page to open.
- */
-export function planNodes(library, ids, before) {
-  const added = ids.filter((id) => library.nodes[id] && !isGroup(library.nodes[id]));
-  const rest = planOf(library).filter((id) => !added.includes(id));
+/** Puts `ids` into the list `list` of `holder[key]`: before its entry `before`, or (without one) at its end. Those already in it move there. */
+export function listPut(holder, key, list, ids, before) {
+  ids = [...new Set(ids)];
+  if (!ids.length) return;
+  const rest = list.filter((id) => !ids.includes(id));
   const at = rest.indexOf(before);
-  rest.splice(at === -1 ? rest.length : at, 0, ...added);
-  setPlan(library, rest);
+  rest.splice(at === -1 ? rest.length : at, 0, ...ids);
+  setList(holder, key, rest);
 }
 
-/** Takes nodes out of the plan. */
-export function unplanNodes(library, ids) {
-  if (library.plan) setPlan(library, planOf(library).filter((id) => !ids.includes(id)));
+/** Takes `ids` out of the list `list` of `holder[key]`. */
+export function listDrop(holder, key, list, ids) {
+  if (ids.some((id) => list.includes(id))) setList(holder, key, list.filter((id) => !ids.includes(id)));
 }
 
 /**

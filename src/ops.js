@@ -21,18 +21,22 @@ import {
   gridOf,
   homeHere,
   isNote,
+  inTree,
+  isGroup,
   kidsOf,
+  listDrop,
+  listPut,
   moveNode,
   newTree,
   parentOf,
   placeNode,
-  planNodes,
+  planOf,
+  quickOf,
   removeNode,
   removeTree,
   renameNode,
   setCollapsed,
   stamped,
-  unplanNodes,
 } from './model.js';
 
 /** `ids` in tree order, without those that sit under another of them. */
@@ -169,12 +173,23 @@ export const ops = {
   'note-text'(library, { id, text }) {
     if (library.nodes[id] && isNote(library.nodes[id])) library.nodes[id].note = text;
   },
-  /** Puts pages into the plan of what to open next: at its end, or before its entry `before`. */
+  // The lists kept at hand (see model.js): the plan of the library, the quick row of a tree.
+  /** Puts pages into the plan of what to open next: at its end, or before its entry `before`. A group has no page to open. */
   plan(library, { ids, before }) {
-    planNodes(library, ids, before);
+    const pages = ids.filter((id) => library.nodes[id] && !isGroup(library.nodes[id]));
+    listPut(library, 'plan', planOf(library), pages, before);
   },
   unplan(library, { ids }) {
-    unplanNodes(library, ids);
+    listDrop(library, 'plan', planOf(library), ids);
+  },
+  /** Keeps nodes of a tree at hand, in its quick row: at its end, or before its entry `before`. */
+  quick(library, { tree, ids, before }) {
+    const t = library.trees[tree];
+    listPut(t, 'quick', quickOf(t), ids.filter((id) => inTree(t, id)), before);
+  },
+  unquick(library, { tree, ids }) {
+    const t = library.trees[tree];
+    listDrop(t, 'quick', quickOf(t), ids);
   },
   /** A new tree; in cell `cell` of the table of trees, or the first free one. */
   'tree-add'(library, { id, name, cell }) {

@@ -31,7 +31,7 @@
 //                                 my own ones since were made from
 //       met                       whether another computer was ever seen there
 
-import { ROOT, freshOf, goneOf, kidsOf, lettersOf, parentsOf, planOf } from './model.js';
+import { ROOT, freshOf, goneOf, kidsOf, lettersOf, parentsOf, planOf, quickOf } from './model.js';
 import { EMPTY, diff, isEmpty, only, takeIn } from './merge.js';
 
 export const BUDGET = 90_000; // Of the 102,400 bytes the browser allows.
@@ -103,11 +103,13 @@ async function encode(library, ids, gone) {
   }
   // A tree is told as rows, top to bottom: each node by its number in the order above, and its depth.
   const number = new Map([...months.values()].flat().map((node, at) => [node.id, at]));
-  const trees = Object.values(part.trees).map(({ children, collapsed, ...tree }) => {
+  const trees = Object.values(part.trees).map((whole) => {
+    const { children, collapsed, quick: kept, ...tree } = whole;
     const rows = [];
     const walk = (id, depth) => kidsOf({ children }, id).forEach((kid) => (rows.push(number.get(kid), depth), walk(kid, depth + 1)));
     walk(ROOT, 0);
-    return { ...tree, rows, collapsed: Object.keys(collapsed).map((id) => number.get(id)) };
+    const quick = quickOf(whole).map((id) => number.get(id));
+    return { ...tree, rows, collapsed: Object.keys(collapsed).map((id) => number.get(id)), ...(quick.length && { quick }) };
   });
   const items = {};
   const plan = planOf(part).map((id) => number.get(id));
@@ -157,7 +159,7 @@ async function read(all) {
       (children[above[depth]] ??= []).push(id);
       above[depth + 1] = id;
     }
-    return { ...tree, children, collapsed: Object.fromEntries(collapsed.map((n) => [nodes[n].id, true])) };
+    return { ...tree, children, collapsed: Object.fromEntries(collapsed.map((n) => [nodes[n].id, true])), ...(tree.quick && { quick: tree.quick.map((n) => nodes[n].id) }) };
   });
   const library = { nodes: Object.fromEntries(nodes.map((node) => [node.id, node])), trees: Object.fromEntries(trees.map((tree) => [tree.id, tree])), trash: [] };
   if (top.grid) library.grid = top.grid;

@@ -212,6 +212,10 @@ test('the plan goes through the synced storage, in order', async () => {
   ops.unplan(a.library, { ids: ['x'] });
   await rounds(store, [a, b]);
   assert.equal('plan' in b.library, false);
+  // A tree's quick row goes the same way, with its tree.
+  ops.quick(a.library, { tree: MAIN, ids: ['y', 'x'] });
+  await rounds(store, [a, b]);
+  assert.deepEqual(b.library.trees[MAIN].quick, ['y', 'x']);
 });
 
 test('what was deleted stays deleted: an emptied trash, a computer back from afar, a copy from before', async () => {

@@ -10,7 +10,7 @@ import { apply, diff, takeIn } from './merge.js';
 import * as github from './github.js';
 import * as channel from './channel.js';
 import * as core from './core.js';
-import { attend, placesOf } from './journal.js';
+import { DWELL, attend, placesOf, visited } from './journal.js';
 import { warningOf } from './safety.js';
 
 const log = (...args) => console.log('[tree]', ...args);
@@ -58,6 +58,7 @@ function enqueue(name, task) {
   const run = queue
     .then(task)
     .then(async (result) => {
+      visited(state, Date.now()); // Whatever this did: where the user is, once that counts, is not in the plan (see journal.js).
       // Not saved is told to the user (see `trouble`); the answer still goes back.
       await commit(name).catch((error) => console.error('[tree] not saved after', name, error));
       return result;
@@ -131,13 +132,16 @@ const shown = new Map();
 chrome.tabs.onActivated.addListener(({ tabId, windowId }) => shown.set(windowId, tabId));
 
 // Where the user looks: the tab in front, in the window in front (see journal.js).
-chrome.tabs.onActivated.addListener(({ tabId }) => enqueue('attention', () => attend(state, tabId, Date.now())));
+// A moment later, if they are still there, it counts: something is to run then, for `enqueue` to see it.
+const look = (tabId) =>
+  enqueue('attention', async () => {
+    attend(state, await tabId(), Date.now());
+    setTimeout(() => enqueue('visited', () => {}), DWELL + 50);
+  });
+chrome.tabs.onActivated.addListener(({ tabId }) => look(() => tabId));
 chrome.windows.onFocusChanged.addListener((windowId) => {
   if (windowId === chrome.windows.WINDOW_ID_NONE) return; // Another program is in front: the user will be back.
-  enqueue('attention', async () => {
-    const [tab] = await chrome.tabs.query({ active: true, windowId });
-    attend(state, tab?.id, Date.now());
-  });
+  look(async () => (await chrome.tabs.query({ active: true, windowId }))[0]?.id);
 });
 
 chrome.tabs.onCreated.addListener((created) => {

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MAIN, ROOT, addNode, createLibrary, goneOf, planOf, problems, rowsOf } from '../src/model.js';
+import { MAIN, ROOT, addNode, createLibrary, goneOf, planOf, problems, quickOf, rowsOf } from '../src/model.js';
 import { ops } from '../src/ops.js';
 import { apply, diff, isEmpty, only, takeIn } from '../src/merge.js';
 
@@ -151,6 +151,27 @@ test('the plan is merged entry by entry: a visit here does not undo what was pla
   // Nothing planned on either side: nothing to tell.
   assert.equal(isEmpty(diff(base, structuredClone(base))), true);
   assert.deepEqual(planOf(only(mine, new Set(['a']))), ['a']);
+});
+
+test("a tree's quick row travels with its tree, merged entry by entry like the plan", () => {
+  const base = createLibrary();
+  for (const id of ['a', 'b', 'c']) addNode(base, MAIN, { id, url: `https://${id}/`, title: id });
+  base.trees[MAIN].quick = ['a'];
+  const mine = structuredClone(base);
+  mine.trees[MAIN].quick = ['c', 'a'];
+  const theirs = structuredClone(base);
+  theirs.trees[MAIN].quick = ['a', 'b'];
+  assert.deepEqual(quickOf(merge(base, mine, theirs, 1).trees[MAIN]), ['c', 'a', 'b']);
+  assert.deepEqual(quickOf(merge(base, theirs, mine, 1).trees[MAIN]), ['c', 'a', 'b']);
+  delete mine.trees[MAIN].quick; // I took a off; they kept b meanwhile.
+  assert.deepEqual(quickOf(merge(base, mine, theirs, 1).trees[MAIN]), ['b']);
+  assert.deepEqual(quickOf(merge(base, theirs, mine, 1).trees[MAIN]), ['b']);
+  mine.trees[MAIN].quick = ['c', 'a'];
+  // A part of the library that leaves a node out leaves it out of the row, and says nothing of it.
+  const part = only(mine, new Set(['a', 'b']));
+  assert.deepEqual(quickOf(part.trees[MAIN]), ['a']);
+  assert.equal(isEmpty(diff(only(mine, new Set(['a', 'b'])), part)), true);
+  assert.deepEqual(problems(merge(base, mine, theirs, 1)), []);
 });
 
 test('a tree deleted elsewhere takes with it only what its deleter knew of', () => {

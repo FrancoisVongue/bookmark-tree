@@ -14,15 +14,16 @@
 // wins.) Pure: no Chrome here.
 //
 //   d.nodes  { [id]: { node, keys } }   a new or changed node, and which of its fields changed
-//   d.trees  { [treeId]: { name, renamed, icon, redrawn, added,
+//   d.trees  { [treeId]: { name, renamed, icon, redrawn, added, quick?,
 //                          put: [[id, parent, after, moved]],  places, top to bottom
 //                          out: [id],                          taken out of the tree
 //                          collapsed: { [id]: bool } } }
 //   d.felled [treeId]                   trees deleted
 //   d.grid   the table of trees, if it changed (taken whole)
-//   d.plan   { put: [[id, after]], out: [id] }   entries of the plan put in (or moved), top to bottom; taken out
+//   d.plan, a tree's `quick`   { put: [[id, after]], out: [id] }   a list kept at hand (see model.js), entry by entry:
+//                              those put in (or moved), first to last; those taken out. Not there, if nothing changed
 
-import { ROOT, descendantsOf, forgetLoose, goneOf, inTree, kidsOf, moveNode, newTree, parentOf, parentsOf, placeNode, planOf, removeNode, removeTree, setCollapsed, setPlan } from './model.js';
+import { ROOT, descendantsOf, forgetLoose, goneOf, inTree, kidsOf, moveNode, newTree, parentOf, parentsOf, placeNode, planOf, quickOf, removeNode, removeTree, setCollapsed, setList } from './model.js';
 
 export const EMPTY = { nodes: {}, trees: {}, trash: [] };
 const NO_TREE = { children: {}, collapsed: {} };
@@ -53,13 +54,25 @@ function diffTree(was, tree, changed) {
     if (!!was.collapsed[id] !== !!tree.collapsed[id]) collapsed[id] = !!tree.collapsed[id];
   }
   const out = descendantsOf(was, ROOT).filter((id) => !after.has(id));
-  return { name: tree.name, renamed: tree.name !== was.name, icon: tree.icon, redrawn: tree.icon !== was.icon, put, out, collapsed };
+  return { name: tree.name, renamed: tree.name !== was.name, icon: tree.icon, redrawn: tree.icon !== was.icon, put, out, collapsed, quick: diffList(quickOf(was), quickOf(tree)) };
 }
 
-/** The plan, entry by entry: those new or after another entry than before, and those no longer in it. */
-function diffPlan(was, plan) {
-  const put = plan.map((id, at) => [id, plan[at - 1] ?? null]).filter(([id, after]) => !was.includes(id) || (was[was.indexOf(id) - 1] ?? null) !== after);
-  return { put, out: was.filter((id) => !plan.includes(id)) };
+/** A list kept at hand, entry by entry: those new or after another entry than before, and those no longer in it. Nothing, if it is the same. */
+function diffList(was, list) {
+  const put = list.map((id, at) => [id, list[at - 1] ?? null]).filter(([id, after]) => !was.includes(id) || (was[was.indexOf(id) - 1] ?? null) !== after);
+  const out = was.filter((id) => !list.includes(id));
+  return put.length || out.length ? { put, out } : undefined;
+}
+
+/** Makes the changes `d` (see diffList) in `list`; `has` says which ids can be in it here. */
+function applyList(list, d, has) {
+  list = list.filter((id) => !d.out.includes(id));
+  for (const [id, after] of d.put) {
+    if (!has(id)) continue;
+    list = list.filter((each) => each !== id);
+    list.splice(after === null ? 0 : list.indexOf(after) + 1 || list.length, 0, id); // After an entry that is not here: at the end.
+  }
+  return list;
 }
 
 /**
@@ -81,9 +94,7 @@ export function only(library, ids) {
     trees[tree.id] = { ...tree, children, collapsed };
   }
   const nodes = Object.fromEntries(Object.entries(library.nodes).filter(([id]) => ids.has(id)));
-  const part = { ...library, nodes, trees, trash: [] };
-  if (library.plan) part.plan = planOf(part);
-  return part;
+  return { ...library, nodes, trees, trash: [] }; // (The lists kept at hand are read through what is there: see model.js.)
 }
 
 /** What changed from `base` to `mine`. */
@@ -95,12 +106,12 @@ export function diff(base, mine) {
   }
   for (const [treeId, tree] of Object.entries(mine.trees)) {
     const entry = { ...diffTree(base.trees[treeId] ?? NO_TREE, tree, d.nodes), added: !base.trees[treeId] };
-    const quiet = !entry.added && !entry.renamed && !entry.redrawn && !entry.put.length && !entry.out.length && !Object.keys(entry.collapsed).length;
+    const quiet = !entry.added && !entry.renamed && !entry.redrawn && !entry.put.length && !entry.out.length && !Object.keys(entry.collapsed).length && !entry.quick;
     if (!quiet) d.trees[treeId] = entry;
   }
   if (!same(base.grid, mine.grid)) d.grid = mine.grid;
-  const plan = diffPlan(planOf(base), planOf(mine));
-  if (plan.put.length || plan.out.length) d.plan = plan;
+  const plan = diffList(planOf(base), planOf(mine));
+  if (plan) d.plan = plan;
   return d;
 }
 
@@ -135,18 +146,11 @@ export function apply(out, d, at) {
     for (const [id, on] of Object.entries(changes.collapsed)) setCollapsed(out, treeId, id, on);
     if (changes.renamed) tree.name = changes.name;
     if (changes.redrawn) tree.icon = changes.icon;
+    if (changes.quick) setList(tree, 'quick', applyList(quickOf(tree), changes.quick, (id) => inTree(tree, id)));
   }
   for (const treeId of d.felled) removeTree(out, treeId, at);
   if (d.grid) out.grid = structuredClone(d.grid);
-  if (d.plan) {
-    let plan = planOf(out).filter((id) => !d.plan.out.includes(id));
-    for (const [id, after] of d.plan.put) {
-      if (!out.nodes[id]) continue;
-      plan = plan.filter((each) => each !== id);
-      plan.splice(after === null ? 0 : plan.indexOf(after) + 1 || plan.length, 0, id); // After an entry that is not here: at the end.
-    }
-    setPlan(out, plan);
-  }
+  if (d.plan) setList(out, 'plan', applyList(planOf(out), d.plan, (id) => out.nodes[id]));
   forgetLoose(out, at);
   out.trash = out.trash.filter((entry) => !out.nodes[entry.node.id]);
   return out;

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MAIN, ROOT, addNode, createLibrary, expire, goneOf, gridOf, migrate, planOf, problems, rowsOf } from '../src/model.js';
+import { MAIN, ROOT, addNode, createLibrary, expire, goneOf, gridOf, migrate, planOf, problems, quickOf, rowsOf } from '../src/model.js';
 import { exportTree, ops } from '../src/ops.js';
 
 /** A library from an outline: two spaces of indentation per level, ids are the names. */
@@ -181,6 +181,23 @@ test('taking back one change leaves everything made since in place', async () =>
   assert.deepEqual(problems(library), []);
   apply(library, diff(before, after), 4); // And redo it.
   assert.equal(library.nodes.a.name, 'Renamed');
+});
+
+test("a tree's quick row: its own nodes kept at hand, in order, each once; what leaves the tree leaves the row", () => {
+  const lib = library('a\n  b\nc');
+  ops['tree-add'](lib, { id: 'other', name: 'Other' });
+  ops.add(lib, { tree: 'other', nodes: [{ id: 'x', url: 'https://x/', title: 'x' }] });
+  const [main, other] = [lib.trees[MAIN], lib.trees.other];
+  ops.quick(lib, { tree: MAIN, ids: ['c', 'b', 'x', 'nobody', 'c'] }); // x is of another tree.
+  assert.deepEqual(quickOf(main), ['c', 'b']);
+  assert.deepEqual(quickOf(other), []);
+  ops.quick(lib, { tree: MAIN, ids: ['a', 'b'], before: 'c' }); // a comes in, b moves: both before c.
+  assert.deepEqual(quickOf(main), ['a', 'b', 'c']);
+  ops.remove(lib, { tree: MAIN, ids: ['b'] }, 1);
+  assert.deepEqual(quickOf(main), ['a', 'c']);
+  ops.unquick(lib, { tree: MAIN, ids: ['a', 'c', 'nobody'] });
+  assert.equal('quick' in main, false);
+  assert.deepEqual(problems(lib), []);
 });
 
 test('the plan: pages in the order to open them, each once; a group is not planned', () => {
