@@ -130,7 +130,7 @@ await open(`${base}/sound`);
 await sleep(1500);
 await panel.bringToFront();
 await sleep(500);
-console.log('\n== sound: waves along the row:', await panel.locator('.row.playing .sound').count(), '| moving:', await panel.locator('.row .sound').evaluate((el) => getComputedStyle(el).animationName));
+console.log('\n== sound: rows with the speaker and the wave:', await panel.locator('.row.playing .snd').count(), '| the wave is drawn:', await panel.locator('.row.playing .wave polyline').evaluate((el) => el.hasAttribute('points')));
 await shot('6-sound');
 
 // Sound out of sight: the pages that play stand in a stack at the bottom, and their tree says it in the table.

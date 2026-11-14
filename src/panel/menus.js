@@ -25,6 +25,7 @@ export function rowMenu(pane, id) {
     page && item('openWindow', () => cmd.activate(pane, id, 'window')),
     item('openAll', () => cmd.wake(pane, ids), '', !anyLive(pane, ids, false)),
     item('sleepShort', () => cmd.sleep(pane, ids), '', !anyLive(pane, ids)),
+    (ui.playing.has(id) || ui.muted.has(id)) && item(ui.muted.has(id) ? 'unmute' : 'mute', () => cmd.mute(id)),
     null,
     item('newChild', () => cmd.newTab(pane, id, 'child'), keyOf('newChild')),
     item('newSibling', () => cmd.newTab(pane, id, 'sibling'), keyOf('newSibling')),

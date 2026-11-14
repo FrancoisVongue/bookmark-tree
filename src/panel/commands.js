@@ -26,6 +26,8 @@ export const sleep = (pane, ids) => send({ type: 'sleep', ids, treeId: pane.tree
 export const wake = (pane, ids) => send({ type: 'wake', ids, treeId: pane.tree, windowId: ui.windowId });
 /** Closes the tab of one node only. */
 export const sleepOne = (id) => send({ type: 'sleep-one', nodeId: id });
+/** Silences a page's tab; one silenced already sounds again. */
+export const mute = (id) => send({ type: 'mute', nodeId: id, muted: !ui.muted.has(id) });
 /** Takes a page that went elsewhere back to its own address. */
 export const goHome = (id) => send({ type: 'go-home', nodeId: id });
 

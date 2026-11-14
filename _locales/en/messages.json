@@ -356,6 +356,15 @@
   "playing": {
     "message": "Playing sound"
   },
+  "mute": {
+    "message": "Mute"
+  },
+  "unmute": {
+    "message": "Unmute"
+  },
+  "muted": {
+    "message": "Muted"
+  },
   "soundGo": {
     "message": "Go to this tab"
   },

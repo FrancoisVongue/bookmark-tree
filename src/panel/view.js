@@ -77,6 +77,26 @@ export function iconView(node) {
   return html`<img class="favicon" alt="" draggable="false" src=${faviconOf(node.url)} />`;
 }
 
+/**
+ * The sign of sound, in two parts. The wave: a line along the bottom edge of
+ * what plays, on a ground of its own; it is in the page whether the thing
+ * plays or not, so that it can come and go softly (wave.js draws the line,
+ * panel.css shows it while its parent is `.playing`). The speaker: there
+ * while the page plays or is silenced, and the button that silences it or
+ * lets it sound again - unless `idle`, where a press means something else.
+ */
+const waveView = (name) => html`<span class="wave" data-wave=${name}><svg viewBox="0 0 100 6" preserveAspectRatio="none"><polyline /></svg></span>`;
+const SPEAKER = html`<svg width="15" height="15" viewBox="0 0 16 16">
+  <path d="M2.5 6.2h2.3L8 3.3v9.4L4.8 9.8H2.5z" />
+  <path class="arc arc-near" d="M10.2 5.9a3 3 0 0 1 0 4.2" />
+  <path class="arc arc-far" d="M12.1 4.1a5.6 5.6 0 0 1 0 7.8" />
+  <path class="cross" d="M10.6 6.2l3.6 3.6M14.2 6.2l-3.6 3.6" />
+</svg>`;
+const speakerView = (id, muted, idle = false) =>
+  idle
+    ? html`<span class="snd">${SPEAKER}</span>`
+    : html`<button class="snd" data-action="mute" data-node=${id} tabindex="-1" title=${t(muted ? 'unmute' : 'mute')}>${SPEAKER}</button>`;
+
 const act = (action, icon, title, more = '') =>
   html`<button class="act ${more}" data-action=${action} tabindex="-1" title=${title}>${ICONS[icon]}</button>`;
 
@@ -86,6 +106,9 @@ function rowView(row, pane, ui, { leads, ticks }, lit) {
   // A row has a tick to set in the pane to choose from, and while ticking for the filter; `ticks`: { on, with, mode } - what is ticked, what comes with it, and what the ticks will mean.
   const picking = !!ticks;
   const live = ui.live.has(row.id);
+  // The browser's two facts about a tab's sound make one state: it plays (sound goes out), or it is muted (the user silenced it).
+  const playing = ui.playing.has(row.id);
+  const muted = ui.muted.has(row.id);
   const drop = ui.drop?.pane === pane && ui.drop.targetId === row.id && ui.drop.position;
   const shared = ui.shared.get(row.id);
   const classes = [
@@ -103,7 +126,8 @@ function rowView(row, pane, ui, { leads, ticks }, lit) {
     row.collapsed && 'collapsed',
     row.lead && 'lead',
     node.pinned && 'pinned',
-    ui.audible.has(row.id) && 'playing',
+    playing && 'playing',
+    muted && 'muted',
     lit && 'lit',
     ui.drag?.kind === 'rows' && ui.drag.from === pane.tree && ui.drag.ids.includes(row.id) && 'dragging',
     drop && `drop-${drop}`,
@@ -121,9 +145,9 @@ function rowView(row, pane, ui, { leads, ticks }, lit) {
       aria-selected=${pane.sel.has(row.id)}
       tabindex=${pane === ui.focus && row.id === ui.cursor ? 0 : -1}
       style="--depth:${row.depth}; --lit:${lit || 0}; --gap:${row.gap}px; margin-top:${-row.pull}px; transform:translateY(${row.shift}px)"
-      title=${[title, node.url, ui.audible.has(row.id) && t('playing'), node.added && t('addedOn', new Date(node.added).toLocaleDateString())].filter(Boolean).join('\n')}
+      title=${[title, node.url, playing && t('playing'), muted && t('muted'), node.added && t('addedOn', new Date(node.added).toLocaleDateString())].filter(Boolean).join('\n')}
     >
-      ${ui.audible.has(row.id) ? html`<span class="sound"></span>` : ''}
+      ${live ? waveView(row.id) : ''}
       <button class="twisty" data-action="collapse" tabindex="-1" title=${t(row.collapsed ? 'expand' : 'collapse')}>
         ${ICONS.chevron}
       </button>
@@ -133,6 +157,7 @@ function rowView(row, pane, ui, { leads, ticks }, lit) {
         : html`<span class="title">${title}</span>`}
       ${shared ? html`<span class="mark" title=${t('alsoIn', shared.join(', '))}>${ICONS.shared}</span>` : ''}
       ${row.hidden ? html`<span class="badge">${row.hidden}</span>` : ''}
+      ${playing || muted ? speakerView(row.id, muted, picking) : ''}
       ${picking || editing
         ? ''
         : html`
@@ -277,11 +302,11 @@ function treeGrid(ui) {
     if (!id) return html`<button class="cell ${drop}" data-action="tree-add" data-cell=${cell} title=${t('newTree')}>${ICONS.add}</button>`;
     const tree = ui.library.trees[id];
     if (ui.typing?.what === 'tree' && ui.typing.tree === id) return html`<input class="rename tree-name" .value=${ui.typing.text} aria-label=${t('renameHint')} />`;
-    // The tree of the current tab is marked wherever the panel is looking. So is a tree with a page that plays, by the sign its row has.
+    // The tree of the current tab is marked wherever the panel is looking. So is a tree with a page that plays, by the wave its row has.
     const playing = ui.playingTrees.has(id);
     const state = `${id === current ? 'current' : ''} ${id === ui.activeTree ? 'has-active' : ''} ${playing ? 'playing' : ''} ${ui.drag?.tree === id ? 'dragging' : ''} ${drop}`;
     return html`<button class="tab ${state}" data-action="tree-show" data-tree=${id} data-cell=${cell} title=${playing ? t('playing') : nothing}>
-      ${playing ? html`<span class="sound"></span>` : nothing}<span>${treeLabel(tree)}</span>
+      ${waveView(`tree:${id}`)}<span>${treeLabel(tree)}</span>
     </button>`;
   };
   return html`<div class="grid" style="grid-template-columns:repeat(${columns}, minmax(0, 1fr))">${cells.map(cellView)}</div>`;
@@ -429,18 +454,19 @@ function planView(ui) {
 /**
  * The pages that play out of sight (see stackOf in sound.js), in a stack
  * of the same dark shape as the notice of what was done: each a place to go
- * to, with the waves its row would have, and a button to send it away.
+ * to, with the wave and the speaker its row would have (a press on the
+ * speaker silences it, and it leaves the stack), and a button to send it away.
  */
 function soundsView(ui) {
   const { ids, more } = ui.sounds;
   if (!ids.length) return nothing;
   const entry = (id) => html`
-    <div class="place" data-node=${id}>
-      <span class="sound"></span>
+    <div class="place playing" data-node=${id}>
+      ${waveView(id)}
       <button class="go" data-action="sound-go" data-node=${id} title=${`${titleOf(ui.library.nodes[id])}\n${t('soundGo')}`}>
         ${iconView(ui.library.nodes[id])}<span class="title">${titleOf(ui.library.nodes[id])}</span>
       </button>
-      ${act('sound-dismiss', 'close', t('soundDismiss'))}
+      ${speakerView(id, false)} ${act('sound-dismiss', 'close', t('soundDismiss'))}
     </div>
   `;
   return html`<div class="bubble sounds">${repeat(ids, (id) => id, entry)}${more ? html`<p class="more">${t('soundMore', more)}</p>` : nothing}</div>`;

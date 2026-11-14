@@ -54,6 +54,7 @@ const actions = {
   unplan: ({ el }) => cmd.plan([el.closest('.place').dataset.node], false),
   'plan-toggle': () => toggleStrip('plan'),
   // A page that plays out of sight: to its tab - in the tree the user works in, if it is there.
+  mute: ({ el }) => cmd.mute(el.dataset.node),
   'sound-go': ({ el }) => cmd.revisit(el.dataset.node, here().tree),
   'sound-dismiss': ({ el }) => dismiss(el.closest('.place').dataset.node),
   'overlay-close': closeOverlay,

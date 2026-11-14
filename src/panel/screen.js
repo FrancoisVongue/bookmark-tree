@@ -8,6 +8,7 @@ import { ROOT, descendantsOf, inTree, isGroup, parentOf, rowsOf } from '../model
 import { find } from '../find.js';
 import { modeOf, nameFor, narrowedTo, savedWith, stillPicked, topmost, withLeads, withSaved } from './filter.js';
 import { stackOf } from './sound.js';
+import { wake } from './wave.js';
 import { t } from '../i18n.js';
 import { draw, titleOf } from './view.js';
 
@@ -26,8 +27,9 @@ export const ui = {
   windowId: undefined,
   library: undefined,
   live: new Set(), // Ids of nodes that have a tab.
-  audible: new Set(), // Ids of nodes whose tab is making sound.
-  playingTrees: new Set(), // Ids of the trees that hold such a node.
+  playing: new Set(), // Ids of nodes whose tab's sound is going out: it makes some, and is not silenced.
+  muted: new Set(), // Ids of nodes whose tab the user has silenced, whether it makes sound or not.
+  playingTrees: new Set(), // Ids of the trees that hold a playing node.
   dismissed: new Set(), // Those of them the user sent away from the stack at the bottom: each stays away until it stops playing.
   sounds: { ids: [], more: 0 }, // What that stack holds: the playing pages whose row is not in sight (see stackOf in sound.js). Worked out with every drawing, in redraw alone.
   shared: new Map(), // Node id -> names of the other trees it is in.
@@ -182,7 +184,7 @@ const isSeen = (pane, row) => beyond(pane, row.top + ROW / 2, row.top + ROW / 2)
 /** Whether node `id` has a row in sight in some pane (it has none when folded away, or left out by the pane's filter or the search). */
 const seenSomewhere = (id) => ui.panes.some((pane) => rowOf(pane, id) && isSeen(pane, rowOf(pane, id)));
 /** The playing pages to put in the stack at the bottom, as things stand. */
-const soundsNow = () => stackOf([...ui.audible], seenSomewhere, ui.dismissed);
+const soundsNow = () => stackOf([...ui.playing], seenSomewhere, ui.dismissed);
 
 /**
  * In a dense tree the rows around the pointer move apart, so that what is
@@ -236,6 +238,7 @@ export function redraw() {
   for (const pane of ui.panes) pane.line = dropLine(pane);
   ui.sounds = soundsNow();
   draw(app, ui);
+  wake(); // What plays may have changed, or come in sight.
   settleFocus();
   room ??= watchRoom();
 }
@@ -712,9 +715,11 @@ function take(state, active) {
   ui.canUndo = state.canUndo;
   ui.canRedo = state.canRedo;
   ui.live = new Set(Object.values(state.binding).map((bound) => bound.node));
-  ui.audible = new Set(state.audible);
-  ui.dismissed = new Set(state.audible.filter((id) => ui.dismissed.has(id))); // What has stopped playing is no longer sent away: it may play again.
-  ui.playingTrees = new Set(Object.values(state.library.trees).filter((tree) => state.audible.some((id) => inTree(tree, id))).map((tree) => tree.id));
+  ui.muted = new Set(state.muted);
+  const playing = state.audible.filter((id) => !ui.muted.has(id));
+  ui.playing = new Set(playing);
+  ui.dismissed = new Set(playing.filter((id) => ui.dismissed.has(id))); // What has stopped playing is no longer sent away: it may play again.
+  ui.playingTrees = new Set(Object.values(state.library.trees).filter((tree) => playing.some((id) => inTree(tree, id))).map((tree) => tree.id));
   ui.activeId = state.binding[active?.id]?.node;
   ui.activeTree = state.binding[active?.id]?.tree;
 }

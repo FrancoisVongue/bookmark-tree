@@ -1,8 +1,8 @@
 // The one owner of the state. It hears what happens to tabs (facts), takes
 // commands from the panels, saves the result and tells the panels it changed.
-// What it asks of the browser in return is five things, all in `browser`
+// What it asks of the browser in return is six things, all in `browser`
 // below: open a tab, show one, close some, send one to an address, give one
-// a window of its own. It never reorders tabs.
+// a window of its own, silence one. It never reorders tabs.
 
 import { descendantsOf, expire, goneOf, isGroup, isNote, migrate, newId, problems, treeFor, validTree } from './model.js';
 import { QUIET, ops } from './ops.js';
@@ -28,6 +28,8 @@ const browser = {
   navigate: (tabId, url) => chrome.tabs.update(tabId, { url }),
   /** Gives a tab a window of its own. */
   detach: (tabId) => chrome.windows.create({ tabId }),
+  /** Silences a tab, or lets it sound again. */
+  mute: (tabId, muted) => chrome.tabs.update(tabId, { muted }),
 };
 
 let state = core.createState();
@@ -166,7 +168,7 @@ chrome.webNavigation.onCreatedNavigationTarget.addListener(({ tabId, sourceTabId
 
 chrome.tabs.onUpdated.addListener((tabId, change, tab) => {
   // Sound is not part of the state: the panels just look again.
-  if (change.audible !== undefined) chrome.runtime.sendMessage({ type: 'changed' }).catch(() => {});
+  if (change.audible !== undefined || change.mutedInfo !== undefined) chrome.runtime.sendMessage({ type: 'changed' }).catch(() => {});
   if (change.url === undefined && change.title === undefined) return;
   enqueue('tab updated', () => core.tabChanged(state, tab));
 });
@@ -439,14 +441,17 @@ async function handle(message, sender) {
   const { library } = state;
   switch (message.type) {
     case 'get-state': {
-      const audible = await chrome.tabs.query({ audible: true });
+      // The browser's two facts about a tab's sound: it makes some; the user has silenced it.
+      const [audible, muted] = await Promise.all([chrome.tabs.query({ audible: true }), chrome.tabs.query({ muted: true })]);
+      const nodesOf = (tabs) => tabs.map((tab) => state.binding[tab.id]?.node).filter(Boolean);
       const { sync, savedToFileAt, warningClosedAt } = await chrome.storage.local.get(['sync', 'savedToFileAt', 'warningClosedAt']);
       const safety = { nodes: Object.keys(library.nodes).length, sync, unsynced: unsynced.here, met, savedAt: savedToFileAt, closedAt: warningClosedAt, now: Date.now() };
       return {
         library,
         binding: state.binding,
         windows: state.windows,
-        audible: audible.map((tab) => state.binding[tab.id]?.node).filter(Boolean),
+        audible: nodesOf(audible),
+        muted: nodesOf(muted),
         trouble,
         unsynced,
         warning: loaded ? warningOf(safety) : undefined, // That the library is kept nowhere else (see safety.js).
@@ -486,6 +491,10 @@ async function handle(message, sender) {
     case 'sleep-one': {
       const tabId = core.tabOf(state, message.nodeId);
       return closeTabs(tabId === undefined ? [] : [tabId]);
+    }
+    case 'mute': {
+      const tabId = core.tabOf(state, message.nodeId);
+      return tabId === undefined ? undefined : browser.mute(tabId, message.muted);
     }
     case 'go-home':
       // A page returns to the address it first had (see `home` in model.js).
