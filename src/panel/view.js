@@ -51,7 +51,15 @@ function faviconOf(url) {
   return `${chrome.runtime.getURL('/_favicon/')}?pageUrl=${encodeURIComponent(url)}&size=32`;
 }
 
-const firstLine = (text) => text.split('\n').find((line) => line.trim())?.replace(/^[#>\-*\s[\]x]+/, '').trim();
+// What a note's first line says, without the marks markdown puts on it: of a foldable block, of code, of a table (its first cell), of a heading, a quote, a list, a task. A line of marks alone says nothing.
+const said = (line) =>
+  line
+    .replace(/^\+{3,}(open|folded)\b|^(`{3,}|~{3,}).*/, '')
+    .replace(/^\|([^|]*).*/, '$1')
+    .replace(/^[#>\-*:\s]+/, '')
+    .replace(/^\[[ x]\]/, '')
+    .trim();
+const firstLine = (text) => text.split('\n').map(said).find(Boolean);
 
 export const titleOf = (node) =>
   node.name || (isNote(node) ? firstLine(node.note) || t('note') : node.title || node.url || t('untitled'));
