@@ -20,7 +20,7 @@ const editor = new Editor({
     TableRow,
     TableHeader,
     TableCell,
-    Link.configure({ openOnClick: false, autolink: true }),
+    Link.configure({ openOnClick: false, autolink: true, shouldAutoLink: (url) => /^https?:\/\//i.test(url) }),
     Placeholder.configure({ placeholder: t('notePlaceholder') }),
     Markdown.configure({ linkify: true, transformPastedText: true }),
   ],
@@ -31,6 +31,12 @@ const editor = new Editor({
     timer = setTimeout(save, 400);
   },
 });
+
+// Only what is written with http(s):// is a link: "cr.MK" or "foo.bar" in a
+// note is text. Typed, it is the Link extension that decides (above); read
+// from markdown or pasted, it is markdown-it's linkify, which is told here
+// not to guess links, and to forget the other schemes it knows.
+editor.storage.markdown.parser.md.linkify.set({ fuzzyLink: false, fuzzyEmail: false }).add('mailto:', null).add('ftp:', null).add('//', null);
 
 toolbar(editor, document.getElementById('tools'));
 

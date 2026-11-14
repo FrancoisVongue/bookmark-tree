@@ -4,7 +4,7 @@
 // searched for, typed, dragged, or open on top, and which playing pages the
 // user sent away from the stack at the bottom.
 
-import { ROOT, descendantsOf, inTree, parentOf, rowsOf } from '../model.js';
+import { ROOT, descendantsOf, inTree, isGroup, parentOf, rowsOf } from '../model.js';
 import { find } from '../find.js';
 import { nameFor, narrowedTo, savedWith, stillPicked, topmost, withLeads, withSaved } from './filter.js';
 import { stackOf } from './sound.js';
@@ -105,11 +105,14 @@ export const op = (name, args) => send({ type: 'op', op: name, args });
 // stands a step below the row before it - a full step, or, if the user
 // asked for a denser tree (the settings page), a shorter one when both rows
 // are of the same level. So what is squeezed is a run of siblings, never
-// the distance from a parent to its first child.
+// the distance from a parent to its first child. A group at the top level
+// is a heading: it stands a little further from what is above it than a row
+// does, so that the sections of a tree do not run together.
 
 const ROW = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--row'));
 const SPARE = 12; // Rows drawn beyond each edge of what is seen,
 const STEP = 6; // and how many rows the view scrolls before the set of drawn rows changes.
+const LEAD = 6; // The room above a group at the top level, over a row's own. (One tile of the guides' mask.)
 
 /** The step between two rows of one level: the row's height at the least, half of it at the most density. */
 const tightStep = () => ROW * (1 - Math.min(1, Math.max(0, Number(localStorage.getItem('density')) || 0)) / 2);
@@ -119,12 +122,14 @@ addEventListener('storage', (event) => {
   if (['density', 'saved'].includes(event.key) && ui.library) arrange();
 });
 
-/** Gives each row of a pane its place: `top`, and `pull` - how much closer than a full step it stands to the row above. */
+/** Gives each row of a pane its place: `top`, and `pull` - how much closer than a full step it stands to the row above (further, when less than nothing: a heading). */
 function place(pane) {
   ui.tight = tightStep();
   let top = 0;
   pane.rows.forEach((row, at) => {
-    const pull = at > 0 && row.depth === pane.rows[at - 1].depth ? ROW - ui.tight : 0;
+    const node = ui.library.nodes[row.id];
+    const lead = at > 0 && row.depth === 0 && node && isGroup(node) ? LEAD : 0;
+    const pull = (at > 0 && row.depth === pane.rows[at - 1].depth ? ROW - ui.tight : 0) - lead;
     top += at > 0 ? ROW - pull : 0;
     Object.assign(row, { top, pull, shift: 0, gap: 0 });
   });
@@ -194,7 +199,7 @@ function spread() {
   for (let n = pane.from; n < pane.to; n++) {
     const row = pane.rows[n];
     const [start, end] = [n > pane.from ? pane.rows[n - 1].top : row.top, row.top]; // The step that leads to this row,
-    const more = row.pull / (end - start || 1); // and how much it opens per pixel, at the pointer itself.
+    const more = Math.max(0, row.pull) / (end - start || 1); // and how much it opens per pixel, at the pointer itself. (A heading's room is not a squeeze to open.)
     if (atPointer === undefined && at < end) atPointer = opened + more * near((start + at) / 2 - at) * Math.max(0, at - start);
     opened += more * near((start + end) / 2 - at) * (end - start);
     row.shift = opened;

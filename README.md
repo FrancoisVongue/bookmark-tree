@@ -100,4 +100,5 @@ the state; the panel and the settings page only show it and send commands.
 
 [MIT](LICENSE). The bundled libraries keep their own:
 [lit-html](src/vendor/lit-html/LICENSE),
-[Tiptap, ProseMirror and others](src/vendor/tiptap/LICENSES.txt).
+[Tiptap, ProseMirror and others](src/vendor/tiptap/LICENSES.txt),
+the [Inter](src/vendor/inter/LICENSE) font (SIL Open Font License 1.1).

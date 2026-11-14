@@ -68,7 +68,7 @@
 .trouble button {
   display: block;
   margin-top: 6px;
-  font-weight: 600;
+  font-weight: var(--bold);
   text-decoration: underline;
 }
 
@@ -318,7 +318,7 @@
 /* (The tree is marked the way the rows above the tab are: by the colour of its name. The fill says which tree is shown.) */
 .tab.has-active {
   color: var(--accent);
-  font-weight: 600;
+  font-weight: var(--bold);
 }
 .tab span {
   max-width: 100%;
@@ -638,7 +638,7 @@
 }
 .row.group .title {
   color: inherit; /* Not an asleep page's grey: a group is never one. */
-  font-weight: 600;
+  font-weight: var(--bold);
 }
 .mark {
   flex: none;
@@ -650,7 +650,7 @@
 /* The folded row that hides the current tab stands for it: a branch never opens by itself. */
 .row.holds-active .title {
   color: var(--accent);
-  font-weight: 600;
+  font-weight: var(--bold);
 }
 /*
  * A page that plays: waves run along its row, behind the text - two of them,
@@ -764,7 +764,6 @@
 .dialog h2 {
   margin: 0;
   font-size: 14px;
-  font-weight: 600;
 }
 .dialog .tabs {
   flex: none;
