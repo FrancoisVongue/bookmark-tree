@@ -299,15 +299,15 @@ test('where a new tab goes, from what is known of where it came from', () => {
   assert.equal(from(2, 'link', { reported: 1, opener: 1 }), 'child'); // A link: the browser reported the page.
   assert.equal(from(3, 'search', { opener: 1 }), 'child'); // The browser's own menu: it comes with a page, from a tab.
   assert.equal(from(4, undefined, { opener: 1 }), 'new'); // Empty: a new tab the user asked for, below where they were.
-  assert.equal(outline(state), 'a\n  link\n  search\nNew Tab');
+  assert.equal(outline(state), 'a\n  search\n  link\nNew Tab');
   // The report that a page opened the tab comes after the tab: its node moves under that page, once.
   assert.equal(tabOpenedFrom(state, 4, 3), true);
   assert.equal(tabOpenedFrom(state, 4, 1), false);
-  assert.equal(outline(state), 'a\n  link\n  search\n    New Tab');
+  assert.equal(outline(state), 'a\n  search\n    New Tab\n  link');
   // The worker woke on this very tab and had already lined itself up with it: it is still put where it came from.
   tabOpened(state, tab(5, 'late'));
   assert.equal(from(5, 'late', { opener: 2 }), 'known');
-  assert.equal(outline(state), 'a\n  link\n    late\n  search\n    New Tab');
+  assert.equal(outline(state), 'a\n  search\n    New Tab\n  link\n    late');
 });
 
 test('an empty tab the user placed stays where it was put; one put at the end of the tree is free to become a sleeping page', () => {

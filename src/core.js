@@ -178,6 +178,7 @@ export function tabOpened(state, tab, sourceTabId, treeId = MAIN, at) {
   const source = binding[sourceTabId];
   if (source && inTree(library.trees[source.tree], source.node)) {
     const node = addNode(library, source.tree, stamped({ id: newId(), url, title: tab.title ?? '' }, at), source.node);
+    moveNode(library, source.tree, node.id, source.node, 'first'); // The newest is on top: what was just opened is what is looked for.
     bind(state, tab.id, node.id, source.tree);
     return 'child';
   }
@@ -213,7 +214,7 @@ export function tabOpenedBeside(state, tabId, nodeId) {
  */
 export function tabAsked(state, tab, { treeId, nodeId, as, at }) {
   const node = addNode(state.library, treeId, stamped({ id: newId(), url: '', title: '' }, at));
-  if (nodeId) moveNode(state.library, treeId, node.id, nodeId, as === 'child' ? 'inside' : 'after');
+  if (nodeId) moveNode(state.library, treeId, node.id, nodeId, as === 'child' ? 'first' : 'after');
   bind(state, tab.id, node.id, treeId, !nodeId); // At the end of the tree: nobody chose that place.
 }
 
@@ -260,7 +261,7 @@ export function tabOpenedFrom(state, tabId, sourceTabId) {
     removeNode(library, bound.tree, bound.node);
     bound.tree = source.tree;
   }
-  return moveNode(library, source.tree, bound.node, source.node, 'inside');
+  return moveNode(library, source.tree, bound.node, source.node, 'first');
 }
 
 /**
