@@ -94,7 +94,8 @@ async function commit(name) {
 }
 
 const allTabs = () => chrome.tabs.query({});
-const reconcile = async () => core.reconcile(state, await allTabs(), (tab) => windowTree(tab.windowId), Date.now());
+// (Tabs being closed for nodes that were removed are as good as closed: see settle.)
+const reconcile = async () => core.reconcile(state, (await allTabs()).filter((tab) => !closing.has(tab.id)), (tab) => windowTree(tab.windowId), Date.now());
 
 async function init() {
   const { library, backups } = await chrome.storage.local.get(['library', 'backups']).catch((error) => {
@@ -205,8 +206,24 @@ async function closeTabs(ids) {
   await browser.close(ids).catch((error) => log('close failed', error.message));
 }
 
-/** After a change to the library: tabs of nodes that are gone close; the rest stay in a tree that holds them. */
-const settle = () => closeTabs(core.rebind(state));
+// Tabs on their way to being closed because their nodes are gone. The browser takes its time over that; nothing here waits for it.
+const closing = new Set();
+
+/**
+ * After a change to the library: the rest of the tabs stay in a tree that
+ * holds them, and the tabs of nodes that are gone are closed - behind the
+ * user's back. The change is saved and the panels are told at once; the
+ * browser closes the tabs when it gets to it. They are bound to nothing by
+ * then, so the "closed" events that follow find nothing to do; and until
+ * they come, those tabs are not counted among the open ones (see reconcile).
+ */
+function settle() {
+  const orphans = core.rebind(state);
+  for (const id of orphans) closing.add(id);
+  closeTabs(orphans)
+    .catch((error) => log('close failed', error.message))
+    .finally(() => orphans.forEach((id) => closing.delete(id)));
+}
 
 /** Keeps a step of undo: one of the user's changes, from the library as it was (`before`, JSON) to as it is. */
 function remember(before) {
@@ -233,7 +250,7 @@ async function change(name, args) {
   if (!QUIET.has(name) && JSON.stringify(state.library) !== before) remember(before);
   // What the operation asks of the browser (see ops.js).
   if (effect.keepTabs) await reconcile();
-  else await settle();
+  else settle();
   const tabId = core.tabOf(state, effect.navigate);
   if (tabId !== undefined) await browser.navigate(tabId, state.library.nodes[effect.navigate].url);
 }
