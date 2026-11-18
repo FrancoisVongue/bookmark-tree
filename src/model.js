@@ -17,12 +17,21 @@
 //   library.plan   [nodeId]  what the user means to open next, in order
 //   library.trash  [{ node, at }]  nodes the user deleted, newest last; they
 //                  are in no tree and can be put back for a while
-//   library.gone   { [nodeId]: time }  what was deleted, and when: so that
-//                  other copies of the library can be told (merge.js). It is
-//                  not the trash: emptying the trash leaves it as it is. A
-//                  node that comes back is marked with the time it did
-//                  (`restored`), and the note of its deletion goes.
+//   library.gone   { [id]: time }  the nodes and trees that were deleted, and
+//                  when: so that other copies of the library can be told
+//                  (merge.js). It is not the trash: emptying the trash
+//                  leaves it as it is.
 //   library.version  the shape all this is in: see migrate
+//
+// Two copies of a library are brought together by time (see takeIn in
+// merge.js), so what can differ between them says when it was last made so:
+//   node.at      when the user last changed the node itself: its name, icon,
+//                text, pin, its fold
+//   node.moved   when the user last gave it another place in a tree
+//   node.seen    when its tab last changed it: address, title, home, `touched`
+//   tree.at      when the user last changed the tree's name, icon or quick row
+//   grid.at, library.planAt   the same for the table of trees and the plan
+// None of these is there until the first such change: then it counts as 0.
 //
 // A tree stores structure only: `children` maps a parent id (or ROOT) to the
 // ordered ids of its children, `collapsed` marks folded nodes. Content lives
@@ -32,7 +41,7 @@
 //
 // Functions change the library they are given and return what they found.
 
-export const VERSION = 3; // Of the shape of a library: see migrate.
+export const VERSION = 4; // Of the shape of a library: see migrate.
 export const ROOT = 'root';
 export const MAIN = 'main';
 
@@ -80,6 +89,14 @@ export const isPage = (node) => !isGroup(node) && !isNote(node);
  * with no text; what behaved as a group then is a group now.
  */
 export function current(nodes, version = 1) {
+  if (version < 4) {
+    // For a few days a node that came back from the trash said so apart; now that is the time of its last change.
+    for (const node of Object.values(nodes)) {
+      if (node.restored === undefined) continue;
+      node.at = Math.max(node.at ?? 0, node.restored);
+      delete node.restored;
+    }
+  }
   if (version < 3) {
     for (const node of Object.values(nodes)) {
       if (node.note === undefined || node.note.trim()) continue;
@@ -294,24 +311,12 @@ export function forgetLoose(library, at) {
 }
 
 /** The ids of what was deleted and has not come back, in order. */
-export const goneOf = (library) => Object.keys(library.gone ?? {}).filter((id) => !library.nodes[id]).sort();
+export const goneOf = (library) => Object.keys(library.gone ?? {}).filter((id) => !library.nodes[id] && !library.trees[id]).sort();
 
-/** When a node came to be as it is: was added, or came back after being deleted. A deletion older than that is not about it. */
-export const bornOf = (node) => Math.max(node.added ?? 0, node.restored ?? 0);
-
-/**
- * Nodes that were deleted and are here again - put back from the trash, or
- * by an undo, or with a whole library from before - are marked as restored
- * at time `at`, and the notes of their deletion go. So every other copy can
- * tell which is later, the deletion or the node (see takeIn in merge.js).
- */
-export function revive(library, at) {
-  for (const id in library.gone ?? {}) {
-    if (!library.nodes[id]) continue;
-    library.nodes[id].restored = at;
-    delete library.gone[id];
-  }
-}
+/** When the user last changed a node or a tree (0: never, as far as is known). */
+export const atOf = (thing) => thing?.at ?? 0;
+/** When the user last had a hand in a node at all: changed it, moved it, or added it. A deletion older than that did not know of it. */
+export const handOf = (node) => Math.max(node?.at ?? 0, node?.moved ?? 0, node?.added ?? 0);
 
 export const KEPT = 30 * DAY; // How long the trash and the notes of deletions are kept.
 /**
@@ -348,6 +353,7 @@ export function removeNode(library, treeId, id, at) {
 export function removeTree(library, treeId, at) {
   if (!library.trees[treeId] || Object.keys(library.trees).length < 2) return false;
   delete library.trees[treeId];
+  if (at !== undefined) (library.gone ??= {})[treeId] = at;
   forgetLoose(library, at);
   return true;
 }

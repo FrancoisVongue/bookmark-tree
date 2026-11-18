@@ -37,11 +37,11 @@ import {
   removeTree,
   renameNode,
   ROOT,
-  revive,
   setCollapsed,
   stamped,
   VERSION,
 } from './model.js';
+import { mark } from './merge.js';
 
 /** `ids` in tree order, without those that sit under another of them. */
 function topmost(tree, ids) {
@@ -235,11 +235,10 @@ export const ops = {
     if (removeTree(library, tree, at)) return { keepTabs: true };
   },
   /** Puts deleted nodes back, at the end of `tree`. */
-  restore(library, { tree, ids }, at) {
+  restore(library, { tree, ids }) {
     const back = new Set(ids);
     for (const { node } of library.trash.filter((entry) => back.has(entry.node.id))) addNode(library, tree, node);
     library.trash = library.trash.filter((entry) => !back.has(entry.node.id));
-    revive(library, at);
   },
   /** Empties the trash. That these nodes were deleted stays known (library.gone). */
   'trash-empty'(library) {
@@ -252,6 +251,18 @@ export const ops = {
     forgetLoose(library);
   },
 };
+
+/**
+ * Does one of the user's operations at time `at`, and stamps what it changed
+ * with that time (see mark in merge.js): so that another copy of the library
+ * can tell which of the two was changed later. Returns what the operation does.
+ */
+export function perform(library, name, args, at) {
+  const before = structuredClone(library);
+  const effect = ops[name](library, args, at);
+  mark(before, library, at);
+  return effect;
+}
 
 /** These are not worth a step of undo. */
 export const QUIET = new Set(['collapse', 'collapse-all', 'home', 'note-text']);

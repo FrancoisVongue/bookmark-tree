@@ -1,12 +1,17 @@
-// Two copies of the library that both changed since they were last the same.
+// Two copies of a library, and what is different between them.
 //
+// By what changed - for an undo, and to know what an operation touched:
 //   diff(base, mine)    what I changed since `base`, as plain data: a history
 //                       squeezed dry (what was added and then removed is not
 //                       in it at all)
 //   apply(copy, d)      makes those changes again in another copy, as far as
 //                       that copy allows
-//   takeIn              brings another copy's changes into mine: theirs since
-//                       the base, except where I changed the same thing
+//   mark(before, after) stamps what the user changed with the time they did
+//
+// By time - for two copies of the same library on two computers, or here
+// and saved elsewhere:
+//   takeIn(mine, theirs)  makes mine what both say, the later word on each
+//                         thing; needs no memory of earlier meetings
 //
 // Nothing is lost quietly: what only one side has stays, and what one side
 // deleted goes to the other's trash rather than away. Pure: no Chrome here.
@@ -21,36 +26,54 @@
 //   d.plan, a tree's `quick`   { put: [[id, after]], out: [id] }   a list kept at hand (see model.js), entry by entry:
 //                              those put in (or moved), first to last; those taken out. Not there, if nothing changed
 
-import { KEPT, ROOT, bornOf, descendantsOf, forgetLoose, inTree, kidsOf, moveNode, newTree, parentOf, parentsOf, placeNode, planOf, quickOf, removeNode, removeTree, setCollapsed, setList } from './model.js';
+import { KEPT, ROOT, atOf, descendantsOf, forgetLoose, handOf, inTree, kidsOf, moveNode, newTree, parentOf, parentsOf, placeNode, planOf, quickOf, removeNode, removeTree, setCollapsed, setList } from './model.js';
 
-export const EMPTY = { nodes: {}, trees: {}, trash: [] };
 const NO_TREE = { children: {}, collapsed: {} };
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const keysOf = (...objects) => [...new Set(objects.flatMap((object) => Object.keys(object ?? {})))];
 
+/** The entries of `list` that are out of step with the rest: the fewest that, taken out and put back, give this order from the rising one. (`rank`: each entry's place in that order.) */
+function outOfStep(list, rank) {
+  // The longest run of entries already in rising order stays; the classic way to find it.
+  const tails = []; // tails[n]: index in `list` of the last entry of the best rising run of length n + 1.
+  const before = [];
+  list.forEach((id, at) => {
+    let [low, high] = [0, tails.length];
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (rank(list[tails[middle]]) < rank(id)) low = middle + 1;
+      else high = middle;
+    }
+    before[at] = low ? tails[low - 1] : -1;
+    tails[low] = at;
+  });
+  const moved = new Set(list);
+  for (let at = tails.at(-1) ?? -1; at !== -1; at = before[at]) moved.delete(list[at]);
+  return moved;
+}
+
 /**
- * What changed in a tree. A node has moved if it has another parent, or
- * stands otherwise among the siblings that were and still are its siblings.
- * (Not if a neighbour came or went: then every tab opened next to a node
- * on one computer would count as that node moved.)
+ * What changed in a tree. A node has moved if it has another parent, or was
+ * taken out of its place among the siblings that were and still are its
+ * siblings and put elsewhere among them. (Not if a neighbour came, went or
+ * was moved past it: then every tab opened next to a node on one computer
+ * would count as that node moved.)
  */
 function diffTree(was, tree, changed) {
   const [before, after] = [parentsOf(was), parentsOf(tree)];
-  const stayed = (id, parent) => before.get(id) === parent && after.get(id) === parent;
-  /** Each node that kept its parent, with the nearest sibling before it that kept it too. */
-  const anchors = ({ children }) => {
-    const anchor = new Map();
-    for (const parent in children) children[parent].reduce((last, id) => (stayed(id, parent) ? (anchor.set(id, last), id) : last), null);
-    return anchor;
-  };
-  const [anchorWas, anchorNow] = [anchors(was), anchors(tree)];
+  const moved = new Set();
+  for (const parent in tree.children) {
+    const stayed = tree.children[parent].filter((id) => before.get(id) === parent);
+    for (const id of tree.children[parent]) if (before.get(id) !== parent) moved.add(id);
+    const rank = new Map(kidsOf(was, parent).map((id, at) => [id, at]));
+    if (stayed.some((id, at) => at && rank.get(stayed[at - 1]) > rank.get(id))) for (const id of outOfStep(stayed, (each) => rank.get(each))) moved.add(id);
+  }
   const put = [];
   const walk = (parent) =>
     kidsOf(tree, parent).forEach((id, at, kids) => {
-      const moved = !stayed(id, parent) || anchorWas.get(id) !== anchorNow.get(id);
       // A changed node's place is told too: a copy that does not have it in the tree puts it there.
-      if (moved || changed[id]) put.push([id, parent, kids[at - 1] ?? null, moved]);
+      if (moved.has(id) || changed[id]) put.push([id, parent, kids[at - 1] ?? null, moved.has(id)]);
       walk(id);
     });
   walk(ROOT);
@@ -161,99 +184,168 @@ export function apply(out, d, at) {
   return out;
 }
 
-/** Of the changes `theirs` to a list kept at hand, those about entries I did not put, move or take out myself (`mine`). */
-function keepMineInList(theirs, mine) {
-  if (!theirs || !mine) return theirs;
-  const touched = new Set([...mine.put.map(([id]) => id), ...mine.out]);
-  const [put, out] = [theirs.put.filter(([id]) => !touched.has(id)), theirs.out.filter((id) => !touched.has(id))];
-  return put.length || out.length ? { put, out } : undefined;
+const FACTS = ['url', 'title', 'home', 'touched', 'seen']; // What a node's tab says of it; the rest is what the user made of it.
+const movedOf = (node) => node?.moved ?? 0;
+
+/**
+ * Stamps in `after` what the user changed since `before` with the time `at`
+ * they did it: the nodes they edited or folded (`at`), those they moved
+ * (`moved`), the trees they named, the table of trees, the plan. What is
+ * back is no longer noted as deleted; what is no longer there is, as of
+ * then. (What tabs do by themselves is not for this: see `seen` in core.js.)
+ */
+export function mark(before, after, at) {
+  const d = diff(before, after);
+  const gone = (after.gone ??= {});
+  const stamp = (id, key) => after.nodes[id] && ((after.nodes[id][key] = at), delete gone[id]);
+  for (const [id, { keys }] of Object.entries(d.nodes)) {
+    stamp(id, 'at');
+    if (keys.some((key) => FACTS.includes(key))) stamp(id, 'seen'); // An address typed by hand, say.
+  }
+  for (const [treeId, changes] of Object.entries(d.trees)) {
+    for (const [id, , , moved] of changes.put) if (moved) stamp(id, 'moved');
+    for (const id of changes.out) stamp(id, 'moved');
+    for (const id in changes.collapsed) stamp(id, 'at');
+    if (changes.added || changes.renamed || changes.redrawn || changes.quick) after.trees[treeId].at = at;
+    delete gone[treeId];
+  }
+  for (const id in { ...before.nodes, ...before.trees }) if (!after.nodes[id] && !after.trees[id]) gone[id] ??= at;
+  if (d.grid) after.grid.at = at;
+  if (d.plan) after.planAt = at;
 }
 
 /**
- * Of the changes `d` made elsewhere, leaves out those to things I changed
- * myself since the same base (`mine`: my own changes, as a diff): my field
- * of a node, my place for it, my fold, my name for a tree, my table of
- * trees. Whoever made `d` did not know of these when they made theirs.
+ * Puts node `id` into a tree where it is in `from` (the same tree in another
+ * copy; `up`: its parents there): under the same parent, right after the
+ * nearest sibling before it there that is its sibling here too; or before
+ * the nearest one after it; or, with no sibling in common, at the end.
  */
-function keepMine(d, mine) {
-  for (const [id, change] of Object.entries(d.nodes)) {
-    const kept = mine.nodes[id]?.keys ?? [];
-    change.keys = change.keys.filter((key) => !kept.includes(key));
-  }
-  for (const [treeId, theirs] of Object.entries(d.trees)) {
-    const here = mine.trees[treeId];
-    if (!here) continue;
-    const moved = new Set(here.put.filter((entry) => entry[3]).map(([id]) => id));
-    const removed = new Set(here.out);
-    theirs.put = theirs.put.filter(([id]) => !moved.has(id) && !removed.has(id));
-    theirs.out = theirs.out.filter((id) => !moved.has(id));
-    for (const id in here.collapsed) delete theirs.collapsed[id];
-    theirs.renamed &&= !here.renamed;
-    theirs.redrawn &&= !here.redrawn;
-    theirs.quick = keepMineInList(theirs.quick, here.quick);
-  }
-  if (mine.grid) delete d.grid;
-  d.plan = keepMineInList(d.plan, mine.plan);
-  if (!d.plan) delete d.plan;
+function seat(library, treeId, from, up, id) {
+  const tree = library.trees[treeId];
+  const parent = up.get(id);
+  placeNode(library, treeId, id, parent);
+  if (parent !== ROOT && !inTree(tree, parent)) return; // Its parent is not here: it stays where it is.
+  const there = kidsOf(from, parent);
+  const here = (each) => each !== id && parentOf(tree, each) === parent;
+  const before = there.slice(0, there.indexOf(id)).findLast(here);
+  const after = before ?? there.slice(there.indexOf(id) + 1).find(here);
+  if (before) moveNode(library, treeId, id, before, 'after');
+  else if (after) moveNode(library, treeId, id, after, 'before');
+  else if (parent === ROOT) moveNode(library, treeId, id, undefined, 'end');
+  else moveNode(library, treeId, id, parent, 'inside');
 }
 
 /**
- * Takes into `library` what changed elsewhere: from `base`, a state both
- * sides knew, to `theirs`. This is the one way two copies come together,
- * whatever carried `theirs` here. Three rules:
- *
- * - What I changed since `base` stays as I made it; of their changes, the
- *   rest is taken. Without a `base` everything here counts as mine: then
- *   only what is missing here is added, and nothing is moved, renamed or
- *   removed. (So a base older than it could be costs nothing but some of
- *   their changes to things I changed too.)
- * - `theirs` may be only a part of their library: what it does not mention
- *   it says nothing about. Nothing is deleted here for being absent there.
- * - A node is deleted by name and time (`gone`: { id: when } - what they
- *   know was deleted). Between a deletion and a node, the later is right:
- *   a node added or restored after it stays or comes back, any other goes -
- *   theirs here, and mine there, by the same rule, whatever is known of a
- *   common past.
- *
- * A tree they deleted is deleted here if they knew all of it. If nodes were
- * put into it here since `base`, they never saw those: the tree stays, with
- * them and the nodes above them; the rest of it goes, as it would have.
+ * Deletes a tree that another copy deleted at time `when` - if they knew all
+ * of it. Nodes put into it or changed here since then they never saw: with
+ * those the tree stays, and the nodes above them; the rest of it goes, as it
+ * would have.
  */
-export function takeIn(library, base, theirs, gone, at) {
-  const spoken = new Set(Object.keys(theirs.nodes));
-  const was = only(base ?? EMPTY, spoken);
-  const d = diff(was, theirs);
-  keepMine(d, diff(was, only(library, spoken)));
-  // A node of theirs that is not here: deleted here since it came to be there, or new to me.
+function fell(library, treeId, when) {
+  const tree = library.trees[treeId];
+  const unseen = descendantsOf(tree, ROOT).filter((id) => handOf(library.nodes[id]) > when);
+  if (!unseen.length) return removeTree(library, treeId, when);
+  const parents = parentsOf(tree);
+  const staying = new Set(unseen);
+  for (const id of unseen) for (let up = parents.get(id); up !== ROOT && !staying.has(up); up = parents.get(up)) staying.add(up);
+  for (const id of descendantsOf(tree, ROOT)) if (!staying.has(id)) removeNode(library, treeId, id, when);
+  // The nodes above them stay too, though deleting the tree named them: as if changed just after. (Not "now": every copy must say the same.)
+  for (const id of staying) if (handOf(library.nodes[id]) <= when) library.nodes[id].at = when + 1;
+}
+
+/**
+ * Makes `library` what it and another copy of it (`theirs`) both say, the
+ * later word on each thing. This is the one way two copies come together,
+ * whatever carried `theirs` here, and it remembers nothing between one
+ * meeting and the next: each thing that can differ says when it was last
+ * made so (see model.js). The rules:
+ *
+ * - A node both have: what the user made of it - name, icon, text, pin,
+ *   fold - is taken from the copy where they last did (`at`); its place,
+ *   from the copy where they last moved it (`moved`); what its tab made of
+ *   it, from the copy where the tab last did (`seen`). Three times, because
+ *   these are three things: a title that changed by itself does not make a
+ *   node the later one, and a new name does not put it back where it was.
+ * - A tree's order starts from the copy where a node of it was moved last,
+ *   and has the nodes the other copy moved later than this one knew put in,
+ *   oldest move first. So both copies come to the same order, whichever
+ *   takes the other in.
+ * - Deleted is said by name and time (`gone`: { id: when }, what they know
+ *   was deleted; mine is in the library). Between a deletion and a node or a
+ *   tree, the later is right: changed or brought back since, it stays, and
+ *   their note goes; else it goes, to the trash here. (A tree deleted there
+ *   stays here with the nodes its deleter never saw, if there are any.)
+ * - What one copy lacks and no deletion names is added. `theirs` may be only
+ *   a part of their library: what it does not mention, it says nothing about.
+ * - A tree's name, icon and quick row; the table of trees; the plan: each
+ *   whole, from the copy that changed it last.
+ *
+ * The times are the computers' own clocks: if one runs behind, its changes
+ * lose to earlier ones made on the other for as long as it is behind by.
+ */
+export function takeIn(library, theirs, gone, at) {
   library.gone ??= {};
-  for (const id of Object.keys(d.nodes).filter((id) => !library.nodes[id])) {
-    if (library.gone[id] >= bornOf(theirs.nodes[id])) delete d.nodes[id];
-    else delete library.gone[id];
+  // (Deletions too old to be kept here are passed over: else whoever still has them would tell them again and again.)
+  const told = Object.entries(gone).filter(([, when]) => when > at - KEPT);
+  // Trees first: a tree that stays keeps some of the nodes its deletion named.
+  for (const [id, when] of told) if (library.trees[id] && when > atOf(library.trees[id])) fell(library, id, when);
+  for (const [id, when] of told) {
+    if (library.nodes[id] && when > handOf(library.nodes[id])) for (const tree in library.trees) removeNode(library, tree, id, when);
+    if (!library.nodes[id] && !library.trees[id]) library.gone[id] = Math.max(library.gone[id] ?? 0, when);
   }
-  const leaving = []; // [treeId, id]: what goes from the trees that stay.
-  const spared = new Set(); // What stays in them: not deleted, though deleting their tree named it so.
-  d.felled = d.felled.filter((treeId) => {
-    const mine = library.trees[treeId];
-    const known = new Set(descendantsOf(base.trees[treeId], ROOT));
-    const unseen = mine ? descendantsOf(mine, ROOT).filter((id) => !known.has(id)) : [];
-    if (!unseen.length) return true;
-    const parents = parentsOf(mine);
-    const staying = new Set(unseen);
-    for (const id of unseen) for (let up = parents.get(id); up !== ROOT && !staying.has(up); up = parents.get(up)) staying.add(up);
-    for (const id of descendantsOf(mine, ROOT)) staying.has(id) ? spared.add(id) : leaving.push([treeId, id]);
-    return false;
-  });
-  apply(library, d, at);
+  const mine = structuredClone(library.nodes); // As they were before theirs came in.
+  const taken = new Set();
+  for (const [id, node] of Object.entries(theirs.nodes)) {
+    if (library.gone[id] >= handOf(node)) continue; // Deleted here since they last had a hand in it: it stays deleted, and they will hear.
+    delete library.gone[id];
+    taken.add(id);
+    const here = library.nodes[id] ?? node;
+    const made = structuredClone(atOf(node) > atOf(here) ? node : here);
+    const tab = (node.seen ?? 0) > (here.seen ?? 0) ? node : here;
+    for (const key of FACTS) tab[key] === undefined ? delete made[key] : (made[key] = structuredClone(tab[key]));
+    if (Math.max(movedOf(node), movedOf(here))) made.moved = Math.max(movedOf(node), movedOf(here));
+    library.nodes[id] = made;
+  }
+  const leaving = []; // [treeId, id]: taken out only once everything has its place, so nothing is without a tree in between.
+  const theirAt = (id) => movedOf(theirs.nodes[id]);
+  const myAt = (id) => movedOf(mine[id]);
+  for (const other of Object.values(only(theirs, taken).trees)) {
+    const had = library.trees[other.id];
+    // A tree deleted here comes back only with something its deletion did not know of: its own change, or a node's.
+    const since = Math.max(atOf(other), ...descendantsOf(other, ROOT).map((id) => handOf(theirs.nodes[id])));
+    if (!had && library.gone[other.id] >= since) continue;
+    delete library.gone[other.id];
+    const { children, collapsed, ...named } = other;
+    const whose = !had || atOf(other) > atOf(had) ? named : had; // Its name, icon, quick row.
+    const latest = (tree, when) => Math.max(0, ...descendantsOf(tree, ROOT).map(when));
+    // The copy to start from, and the one to put in from: each as { tree, nodes, moved(id) }.
+    const [here, there] = [{ tree: had ?? newTree(), nodes: mine, moved: myAt }, { tree: other, nodes: theirs.nodes, moved: theirAt }];
+    const [base, from] = had && latest(other, theirAt) <= latest(had, myAt) ? [here, there] : [there, here];
+    const tree = (library.trees[other.id] = { ...structuredClone(whose), children: structuredClone(base.tree.children), collapsed: { ...base.tree.collapsed } });
+    const [inBase, up] = [parentsOf(base.tree), parentsOf(from.tree)];
+    const later = (id) => from.moved(id) > base.moved(id);
+    // What the other copy moved later, or has and this one says nothing against: put in, oldest move first.
+    const coming = descendantsOf(from.tree, ROOT).filter((id) => library.nodes[id] && (later(id) || (!inBase.has(id) && from.moved(id) >= base.moved(id))));
+    for (const id of coming.sort((a, b) => from.moved(a) - from.moved(b))) seat(library, tree.id, from.tree, up, id);
+    // Its folds, where the other copy changed the node later.
+    for (const id of up.keys()) if (atOf(from.nodes[id]) > atOf(base.nodes[id])) setCollapsed(library, tree.id, id, !!from.tree.collapsed[id]);
+    // What the other copy took out of the tree later than this one last moved it. (Only what that copy speaks of at all.)
+    for (const id of inBase.keys()) if (id in from.nodes && !up.has(id) && later(id)) leaving.push([tree.id, id]);
+  }
   for (const [treeId, id] of leaving) removeNode(library, treeId, id, at);
-  for (const [id, when] of Object.entries(gone)) {
-    const node = library.nodes[id];
-    // Kept here though their tree's deletion named it: it is back, as of now - so that it stays, here and there.
-    if (spared.has(id)) node.restored = at;
-    // (A deletion too old to be kept here is not noted either: else it would be told again and again by whoever still has it.)
-    if (spared.has(id) || when <= at - KEPT || (node && when <= bornOf(node))) continue;
-    if (node) for (const tree in library.trees) removeNode(library, tree, id, at);
-    // Noted with the time it was deleted there, not the time I heard: every copy tells the same of it.
-    library.gone[id] = node ? when : Math.max(library.gone[id] ?? 0, when);
+  if (atOf(theirs.grid) > atOf(library.grid)) library.grid = structuredClone(theirs.grid);
+  if ((theirs.planAt ?? 0) > (library.planAt ?? 0)) {
+    setList(library, 'plan', theirs.plan ?? []);
+    library.planAt = theirs.planAt;
   }
+  forgetLoose(library, at);
+  library.trash = library.trash.filter((entry) => !library.nodes[entry.node.id]);
   return library;
+}
+
+/** Whether a copy `there` would learn anything from `mine`: whether taking mine in would change it. (`gone`: what each knows was deleted.) */
+export function hasNews(there, thereGone, mine, mineGone, at) {
+  const copy = { ...structuredClone(there), gone: { ...thereGone } };
+  const was = JSON.stringify(copy);
+  return JSON.stringify(takeIn(copy, mine, mineGone, at)) !== was;
 }

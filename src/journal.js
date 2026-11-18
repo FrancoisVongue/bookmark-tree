@@ -28,7 +28,10 @@ const KEPT = 100;
 export function visited(state, at) {
   const here = state.attention;
   if (!here || at - here.since < DWELL) return false;
-  listDrop(state.library, 'plan', planOf(state.library), [here.node]);
+  if (planOf(state.library).includes(here.node)) {
+    listDrop(state.library, 'plan', planOf(state.library), [here.node]);
+    state.library.planAt = at; // The user's doing, as much as taking it out by hand: other copies take it so.
+  }
   return true;
 }
 

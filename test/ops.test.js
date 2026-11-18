@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { MAIN, ROOT, addNode, createLibrary, expire, goneOf, gridOf, migrate, planOf, problems, quickOf, rowsOf } from '../src/model.js';
-import { exportTree, ops } from '../src/ops.js';
+import { exportTree, ops, perform } from '../src/ops.js';
 
 /** A library from an outline: two spaces of indentation per level, ids are the names. */
 function library(outline) {
@@ -222,8 +222,8 @@ test('a deletion is noted apart from the trash: emptying the trash keeps it, a r
   ops.delete(lib, { ids: ['a', 'b'] }, 10 * DAY);
   ops.remove(lib, { tree: MAIN, ids: ['c'] }, 20 * DAY);
   assert.deepEqual(lib.gone, { a: 10 * DAY, b: 10 * DAY, c: 20 * DAY });
-  ops.restore(lib, { tree: MAIN, ids: ['b'] }, 21 * DAY);
-  assert.equal(lib.nodes.b.restored, 21 * DAY); // So other copies can tell it came back after it was deleted.
+  perform(lib, 'restore', { tree: MAIN, ids: ['b'] }, 21 * DAY);
+  assert.equal(lib.nodes.b.at, 21 * DAY); // So other copies can tell it came back after it was deleted.
   ops['trash-empty'](lib);
   assert.deepEqual(goneOf(lib), ['a', 'c']);
   expire(lib, 41 * DAY); // a was deleted 31 days ago, c 21.
@@ -244,4 +244,12 @@ test('going home: the page is back at the address it first had, and its tab is a
   Object.assign(lib.nodes.a, { url: 'https://elsewhere/', title: 'Elsewhere' });
   assert.deepEqual(ops.home(lib, { id: 'a' }), { navigate: 'a' });
   assert.deepEqual([lib.nodes.a.url, lib.nodes.a.title], ['https://a/', 'a']);
+});
+
+test('a library of the version before: a node that had come back says so by the time of its last change', () => {
+  const older = { version: 3, nodes: { a: { id: 'a', url: 'https://a/', title: 'a', restored: 50 }, b: { id: 'b', url: 'https://b/', title: 'b', at: 70, restored: 60 } }, trees: createLibrary().trees, trash: [] };
+  older.trees[MAIN].children.root = ['a', 'b'];
+  const now = migrate(older);
+  assert.deepEqual([now.nodes.a, now.nodes.b.at, 'restored' in now.nodes.b], [{ id: 'a', url: 'https://a/', title: 'a', at: 50 }, 70, false]);
+  assert.equal(now.version, 4);
 });

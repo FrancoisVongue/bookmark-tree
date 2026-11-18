@@ -4,9 +4,9 @@
 // below: open a tab, show one, close some, send one to an address, give one
 // a window of its own, silence one. It never reorders tabs.
 
-import { descendantsOf, expire, isGroup, isNote, migrate, newId, problems, revive, treeFor, validTree } from './model.js';
-import { QUIET, ops } from './ops.js';
-import { apply, diff, takeIn } from './merge.js';
+import { descendantsOf, expire, isGroup, isNote, migrate, newId, problems, treeFor, validTree } from './model.js';
+import { QUIET, ops, perform } from './ops.js';
+import { apply, diff, hasNews, mark, takeIn } from './merge.js';
 import * as github from './github.js';
 import * as channel from './channel.js';
 import * as core from './core.js';
@@ -70,8 +70,6 @@ function enqueue(name, task) {
 
 let saved = { library: '', session: '' };
 async function commit(name) {
-  // Whatever brought a deleted node back - the trash, an undo, a backup - it is marked as back, here, where every change passes.
-  if (loaded) revive(state.library, Date.now());
   const library = JSON.stringify(state.library);
   const { binding, windows, attention, journal } = state;
   const session = JSON.stringify({ binding, windows, attention, journal, undo, redo });
@@ -177,7 +175,7 @@ chrome.tabs.onUpdated.addListener((tabId, change, tab) => {
   // Sound is not part of the state: the panels just look again.
   if (change.audible !== undefined || change.mutedInfo !== undefined) chrome.runtime.sendMessage({ type: 'changed' }).catch(() => {});
   if (change.url === undefined && change.title === undefined) return;
-  enqueue('tab updated', () => core.tabChanged(state, tab));
+  enqueue('tab updated', () => core.tabChanged(state, tab, Date.now()));
 });
 
 chrome.tabs.onRemoved.addListener((tabId) =>
@@ -241,7 +239,7 @@ async function change(name, args) {
   const before = JSON.stringify(state.library);
   let effect;
   try {
-    effect = ops[name](state.library, args, Date.now()) ?? {};
+    effect = perform(state.library, name, args, Date.now()) ?? {};
     const found = problems(state.library);
     if (found.length) throw new Error(found[0]);
   } catch (error) {
@@ -267,6 +265,7 @@ async function retrace(way) {
   const step = from.pop();
   if (!step) return;
   const next = apply(structuredClone(state.library), step[way], Date.now());
+  mark(state.library, next, Date.now()); // The user's doing, as much as the change it takes back: other copies of the library take it so.
   if (problems(next).length) return log('that step can no longer be taken:', problems(next)[0]);
   to.push(step);
   state.library = next;
@@ -300,7 +299,7 @@ async function activate({ nodeId, treeId, windowId, where }) {
 // --- Keeping the library elsewhere ---------------------------------------------
 // Settings, in local storage under `sync`:
 //   { repo, token, path, api? }   where (see github.js)
-//   { version, base }             the version last seen there, and the library as it was then (JSON)
+//   { version }                   the version last seen there
 //   { at, error }                 when that was; what went wrong the last time, if anything
 
 const SYNC_EVERY_MINUTES = 24 * 60;
@@ -322,6 +321,7 @@ async function adopt(library, asked = false, deleted = false) {
   if (found.length) throw new Error(`That library is damaged: ${found[0]}`);
   loaded = true;
   const before = JSON.stringify(state.library);
+  if (asked) mark(state.library, library, Date.now()); // All that differs is the user's word, as of now: other copies take it so.
   state.library = library;
   if (asked) remember(before);
   if (deleted) await settle();
@@ -346,27 +346,27 @@ async function syncOnce() {
   try {
     for (let attempt = 1; ; attempt++) {
       const remote = await github.pull(settings);
+      const theirs = remote && migrate(remote.library);
       const news = remote && remote.version !== settings.version;
       const mine = await enqueue('sync: take in', async () => {
         if (news) {
-          const base = settings.base && JSON.parse(settings.base);
-          const theirs = migrate(remote.library);
-          const next = takeIn(structuredClone(state.library), base, theirs, theirs.gone, Date.now());
+          const next = takeIn(structuredClone(state.library), theirs, theirs.gone, Date.now());
           if (JSON.stringify(next) !== JSON.stringify(state.library)) await adopt(next, false, true);
         }
-        return JSON.stringify(core.shared(state.library));
+        return core.shared(state.library);
       });
       if (mine === undefined) throw new Error('What was saved there could not be taken in.');
-      const same = remote && mine === (news ? JSON.stringify(remote.library) : settings.base);
+      // Saved again only if that tells the saved one something.
+      const same = remote && !hasNews(theirs, theirs.gone, mine, mine.gone, Date.now());
       let version = remote?.version;
       try {
-        if (!same) version = await github.push(settings, JSON.parse(mine), version, `Tree: ${new Date().toISOString()}`);
+        if (!same) version = await github.push(settings, mine, version, `Tree: ${new Date().toISOString()}`);
       } catch (error) {
         if (error instanceof github.Conflict && attempt < 3) continue;
         throw error;
       }
       log('synced', same ? '(nothing to save)' : '(saved a version)', news ? '(took theirs in)' : '');
-      return await noteSync(settings, { version, base: mine, at: Date.now(), error: undefined });
+      return await noteSync(settings, { version, at: Date.now(), error: undefined });
     }
   } catch (error) {
     log('sync failed', error.message);
@@ -455,7 +455,7 @@ async function exchange() {
     core.keepFresh(state, Date.now());
     expire(state.library, Date.now()); // Here, not only at the start: so every computer lets a deletion go at the same age.
     const mine = core.shared(state.library);
-    unsynced.here = await channel.publish(cells, ch, mine);
+    unsynced.here = await channel.publish(cells, ch, mine, Date.now());
     unsynced.elsewhere = await channel.awayElsewhere(cells, ch);
     [met, newer] = [!!ch.met, !!ch.newer];
     await chrome.storage.local.set({ channel: { ...ch, unsynced } });

@@ -116,7 +116,9 @@ function sleeperAt(state, url) {
 
 /** Marks a node as used at time `at` (to the day; nothing, when the time is not known). */
 function touch(node, at) {
-  if (node && at !== undefined) node.touched = Math.floor(at / DAY);
+  if (!node || at === undefined) return;
+  node.touched = Math.floor(at / DAY);
+  node.seen = at;
 }
 
 /**
@@ -265,8 +267,9 @@ export function tabOpenedFrom(state, tabId, sourceTabId) {
  * A tab's page changed: its node follows it. The address the page first had
  * is kept as its home when it leaves it, whether the user went on or the
  * site sent them elsewhere: the saved address is never quietly replaced.
+ * (`at`: when; nothing is noted, when the time is not known.)
  */
-export function tabChanged(state, tab) {
+export function tabChanged(state, tab, at) {
   const { library, binding } = state;
   const bound = binding[tab.id];
   const node = library.nodes[bound?.node];
@@ -280,15 +283,17 @@ export function tabChanged(state, tab) {
   if (asleep && dropIfEmpty(library, node.id)) {
     placeNode(library, bound.tree, asleep.id);
     bind(state, tab.id, asleep.id, bound.tree);
-    return tabChanged(state, tab);
+    return tabChanged(state, tab, at);
   }
   if (isOurs(url) && dropIfEmpty(library, node.id)) {
     delete binding[tab.id];
     return;
   }
   if (url && url !== node.url && !node.home && !isBlank(node.url)) homeHere(node);
+  const was = node.url + node.title;
   node.url = url || node.url;
   node.title = tab.title ?? node.title;
+  if (at !== undefined && node.url + node.title !== was) node.seen = at; // What its tab made of it, and when: the later of two copies has it right.
 }
 
 /**
@@ -327,6 +332,6 @@ export function reconcile(state, tabs, treeOf = () => MAIN, at) {
   for (const id in library.nodes) if (!live.has(id)) dropIfEmpty(library, id);
   for (const tab of tabs) {
     tabOpened(state, tab, undefined, treeOf(tab), at);
-    tabChanged(state, tab);
+    tabChanged(state, tab, at);
   }
 }

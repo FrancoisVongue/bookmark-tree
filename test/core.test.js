@@ -341,3 +341,16 @@ test('a tab born empty is a new tab, even if it shows a page by the time it is h
   assert.equal(tabCreated(state, tab(4, 'search'), { born: 'https://search/', opener: 1, shownNode: a }), 'known');
   assert.equal(outline(state), 'a\n  search\nNew Tab\nlater');
 });
+
+test('what a tab does to its node is noted with its time, apart from what the user does', () => {
+  const state = createState();
+  tabOpened(state, tab(1, 'a'), undefined, MAIN, 1000);
+  const node = state.library.nodes[state.binding[1].node];
+  assert.deepEqual([node.at, node.seen], [undefined, undefined]);
+  tabChanged(state, tab(1, 'b'), 2000);
+  assert.equal(node.seen, 2000);
+  tabChanged(state, tab(1, 'b'), 3000); // Nothing changed: nothing noted.
+  assert.equal(node.seen, 2000);
+  tabClosed(state, 1, 4000);
+  assert.deepEqual([node.seen, node.at], [4000, undefined]);
+});
