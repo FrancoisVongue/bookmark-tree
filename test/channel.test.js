@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DAY, MAIN, createLibrary, goneOf, problems, revive, rowsOf } from '../src/model.js';
+import { DAY, MAIN, VERSION, createLibrary, goneOf, problems, revive, rowsOf } from '../src/model.js';
 import { ops } from '../src/ops.js';
 import { apply, diff } from '../src/merge.js';
 import { migrate, newState, publish, receive } from '../src/channel.js';
@@ -17,6 +17,7 @@ function sharedStore() {
   };
   return store;
 }
+const NOW = 2010 * DAY; // Later than anything in these tests, by days.
 const computer = (name) => ({ ch: newState(name), library: createLibrary() });
 /** A page added on day `day`. */
 const add = (who, id, day = 1000, target) =>
@@ -24,7 +25,7 @@ const add = (who, id, day = 1000, target) =>
 const outline = (who, tree = MAIN) => rowsOf(who.library, tree, true).map((row) => '.'.repeat(row.depth) + row.id).join(' ');
 /** One round, as the worker does it: listen, then tell. */
 async function exchange(store, who, budget) {
-  await receive(store, who.ch, who.library, 3000 * DAY); // (Now: later than anything in these tests.)
+  await receive(store, who.ch, who.library, NOW);
   assert.deepEqual(problems(who.library), []);
   return publish(store, who.ch, who.library, budget);
 }
@@ -394,4 +395,91 @@ test('what an older version left is read: its state here, its snapshot there', a
   await settleDown(two);
   assert.equal(outline(a), 'x y');
   assert.equal(outline(b), 'x y');
+});
+
+test('too big to sync whole, whatever the room: once the two agree, nothing more is written', async () => {
+  for (const budget of [800, 1100, 1400, 1500, 1550, 1700, 2000, 2600]) {
+    const store = sharedStore();
+    const [a, b] = [computer('a'), computer('b')];
+    ops['group-add'](a.library, { tree: MAIN, id: 'folder', name: 'Folder' }, 10 * DAY);
+    for (let n = 0; n < 60; n++) add(a, `old${n}`, 10 + n, 'folder');
+    add(a, 'fresh', 2000, 'folder');
+    for (let n = 0; n < 20; n++) add(a, `new${n}`, 1900 + n);
+    for (let n = 0; n < 25; n++) add(b, `theirs${n}`, 500 + n * 60); // b has old pages of its own, and some fresh ones.
+    await rounds(store, [a, b], budget);
+    await rounds(store, [a, b], budget);
+    // A page the other never got is deleted, one it has is renamed, each side adds a page.
+    ops.delete(a.library, { ids: ['old0'] }, 2005 * DAY);
+    ops.rename(a.library, { id: 'fresh', name: 'Still fresh' });
+    add(b, 'late', 2006);
+    await rounds(store, [a, b], budget);
+    await rounds(store, [a, b], budget);
+    assert.equal(b.library.nodes.fresh.name, 'Still fresh', `room for ${budget}`);
+    assert.ok(a.library.nodes.late, `room for ${budget}`);
+    store.writes.length = 0;
+    await rounds(store, [a, b], budget);
+    assert.deepEqual(store.writes, [], `room for ${budget}`);
+    // Neither lost what does not fit.
+    assert.ok(Object.keys(a.library.nodes).length >= 81 && Object.keys(b.library.nodes).length >= 26, `room for ${budget}`);
+  }
+});
+
+test('a tree deleted there while a page was put into it here: what stays, stays on both, and that is the end of it', async () => {
+  const two = pair(['x']);
+  const { a, b, atA, atB } = two;
+  ops['tree-add'](a.library, { id: 'work', name: 'Work' });
+  ops['group-add'](a.library, { tree: 'work', id: 'g', name: 'Group' }, 1000 * DAY);
+  ops.add(a.library, { tree: 'work', nodes: [{ id: 'old', url: 'https://old.example/', title: 'old' }], target: 'g', position: 'inside' }, 1000 * DAY);
+  await inStep(two);
+  ops['tree-remove'](b.library, { tree: 'work' }, 2000 * DAY);
+  ops.add(a.library, { tree: 'work', nodes: [{ id: 'new', url: 'https://new.example/', title: 'new' }], target: 'g', position: 'inside' }, 2000 * DAY);
+  await exchange(atB, b);
+  bring(atB, atA);
+  await exchange(atA, a);
+  assert.equal(outline(a, 'work'), 'g .new');
+  await settleDown(two);
+  await settleDown(two);
+  assert.equal(outline(a, 'work'), 'g .new');
+  assert.equal(outline(b, 'work'), 'g .new');
+  atA.writes.length = atB.writes.length = 0;
+  await settleDown(two);
+  assert.deepEqual([...atA.writes, ...atB.writes], []);
+});
+
+test('a snapshot from a newer version is left alone: nothing taken from it, nothing written over it', async () => {
+  const two = pair(['x']);
+  const { a, b, atA, atB } = two;
+  await inStep(two);
+  add(b, 'theirs', 2000);
+  await exchange(atB, b);
+  atB.cells.head.version = VERSION + 1; // The other computer has been updated; this one has not.
+  bring(atB, atA);
+  ops.rename(a.library, { id: 'x', name: 'Mine' });
+  const there = JSON.stringify(atA.cells);
+  await exchange(atA, a);
+  assert.equal(outline(a), 'x');
+  assert.equal(JSON.stringify(atA.cells), there);
+  assert.equal(a.ch.newer, true);
+  // This one is updated too (the same snapshot, now of a shape it knows): all is as usual.
+  atA.cells.head.version = VERSION;
+  await exchange(atA, a);
+  assert.equal(outline(a), 'x theirs');
+  assert.equal(a.ch.newer, false);
+  bring(atA, atB);
+  await exchange(atB, b);
+  assert.equal(b.library.nodes.x.name, 'Mine');
+});
+
+test('a snapshot from an older version is read in today\'s shape', async () => {
+  const two = pair(['x']);
+  const { a, b, atA, atB } = two;
+  await inStep(two);
+  // As version 2 had it: a group was a note with nothing in it.
+  b.library.nodes.g = { id: 'g', note: '', name: 'A group', added: 2000 * DAY };
+  b.library.trees[MAIN].children.root.push('g');
+  await exchange(atB, b);
+  atB.cells.head.version = 2;
+  bring(atB, atA);
+  await exchange(atA, a);
+  assert.deepEqual(a.library.nodes.g, { id: 'g', name: 'A group', added: 2000 * DAY, group: true });
 });

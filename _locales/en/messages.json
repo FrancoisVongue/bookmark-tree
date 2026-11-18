@@ -65,6 +65,9 @@
   "justNow": {
     "message": "now"
   },
+  "updateHere": {
+    "message": "Another of your computers runs a newer version of this extension. Update it here too: until then nothing is synced with that computer."
+  },
   "backupDue": {
     "message": "This library is kept on this computer only. Save a copy of it to a file."
   },

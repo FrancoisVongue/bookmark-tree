@@ -34,3 +34,9 @@ test('GitHub failing for days is said as such, with its error', () => {
   assert.deepEqual(warningOf({ ...alone, sync: { repo: 'me/library', error: 'GitHub 404' } }), { kind: 'sync', error: 'GitHub 404' }); // Never worked.
   assert.equal(kind({ sync: { repo: 'me/library', at: now - 4 * DAY, error: 'x' }, met: true }), undefined); // The browser has it meanwhile.
 });
+
+test('a newer version on another computer: this one is to be updated, whatever else is true', () => {
+  assert.equal(kind({ newer: true, nodes: 3, met: true }), 'update');
+  assert.equal(kind({ newer: true, closedAt: now - DAY }), undefined); // Told, and put off.
+  assert.equal(kind({ newer: true, closedAt: now - 15 * DAY }), 'update');
+});

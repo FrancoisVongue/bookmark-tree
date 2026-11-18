@@ -313,15 +313,15 @@ export function revive(library, at) {
   }
 }
 
-const KEPT_DAYS = 30;
+export const KEPT = 30 * DAY; // How long the trash and the notes of deletions are kept.
 /**
  * Lets go of what is too old to matter, at time `at`: what has been in the
  * trash for a month, and the notes of deletions a month old (every computer
  * that was to hear of them has, or has been away too long to be believed).
  */
 export function expire(library, at) {
-  library.trash = library.trash.filter((entry) => entry.at > at - KEPT_DAYS * DAY);
-  library.gone = Object.fromEntries(goneOf(library).filter((id) => library.gone[id] > at - KEPT_DAYS * DAY).map((id) => [id, library.gone[id]]));
+  library.trash = library.trash.filter((entry) => entry.at > at - KEPT);
+  library.gone = Object.fromEntries(goneOf(library).filter((id) => library.gone[id] > at - KEPT).map((id) => [id, library.gone[id]]));
 }
 
 /**

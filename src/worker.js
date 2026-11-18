@@ -124,7 +124,7 @@ async function init() {
   await reconcile();
   await backUp();
   const ch = await loadChannel();
-  [unsynced, met] = [ch.unsynced ?? unsynced, !!ch.met];
+  [unsynced, met, newer] = [ch.unsynced ?? unsynced, !!ch.met, !!ch.newer];
 }
 
 // --- Facts from the browser ----------------------------------------------------
@@ -432,6 +432,8 @@ const loadChannel = async () => {
 let unsynced = { here: 0, elsewhere: 0 };
 // Whether another computer has ever been seen in the synced storage: if not, nothing but this one holds the library there.
 let met = false;
+// Whether the snapshot there was written by a newer version of the extension: then nothing is synced until this one is updated.
+let newer = false;
 /**
  * Takes in what the other computers changed, and tells them what changed
  * here - in that order, in one turn of the queue: no tab is heard between
@@ -451,10 +453,11 @@ async function exchange() {
       log('took in changes from another computer');
     }
     core.keepFresh(state, Date.now());
+    expire(state.library, Date.now()); // Here, not only at the start: so every computer lets a deletion go at the same age.
     const mine = core.shared(state.library);
     unsynced.here = await channel.publish(cells, ch, mine);
     unsynced.elsewhere = await channel.awayElsewhere(cells, ch);
-    met = !!ch.met;
+    [met, newer] = [!!ch.met, !!ch.newer];
     await chrome.storage.local.set({ channel: { ...ch, unsynced } });
   } catch (error) {
     log('exchange failed', error.message); // Tried again in a minute, from what was known before.
@@ -476,7 +479,7 @@ async function handle(message, sender) {
       const [audible, muted] = await Promise.all([chrome.tabs.query({ audible: true }), chrome.tabs.query({ muted: true })]);
       const nodesOf = (tabs) => tabs.map((tab) => state.binding[tab.id]?.node).filter(Boolean);
       const { sync, savedToFileAt, warningClosedAt } = await chrome.storage.local.get(['sync', 'savedToFileAt', 'warningClosedAt']);
-      const safety = { nodes: Object.keys(library.nodes).length, sync, unsynced: unsynced.here, met, savedAt: savedToFileAt, closedAt: warningClosedAt, now: Date.now() };
+      const safety = { nodes: Object.keys(library.nodes).length, sync, unsynced: unsynced.here, met, savedAt: savedToFileAt, closedAt: warningClosedAt, newer, now: Date.now() };
       return {
         library,
         binding: state.binding,

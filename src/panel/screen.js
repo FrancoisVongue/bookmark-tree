@@ -724,6 +724,8 @@ function noticeOf(state) {
   const { here, elsewhere } = state.unsynced;
   const settings = (label) => ({ action: 'settings', label });
   const all = [
+    // Another computer runs a newer version: nothing is synced until this one is updated (see channel.js).
+    warning?.kind === 'update' && { id: 'update', text: t('updateHere') },
     // The library is kept nowhere but here (see safety.js in the worker's code).
     warning?.kind === 'sync' && { id: 'sync', text: t('syncFailing', warning.error), button: settings(t('openSettings')) },
     warning?.kind === 'backup' && { id: 'backup', text: t('backupDue'), button: { action: 'backup-now', label: t('unsyncedBackUp') } },

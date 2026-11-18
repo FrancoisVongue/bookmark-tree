@@ -21,7 +21,7 @@
 //   d.plan, a tree's `quick`   { put: [[id, after]], out: [id] }   a list kept at hand (see model.js), entry by entry:
 //                              those put in (or moved), first to last; those taken out. Not there, if nothing changed
 
-import { ROOT, bornOf, descendantsOf, forgetLoose, inTree, kidsOf, moveNode, newTree, parentOf, parentsOf, placeNode, planOf, quickOf, removeNode, removeTree, setCollapsed, setList } from './model.js';
+import { KEPT, ROOT, bornOf, descendantsOf, forgetLoose, inTree, kidsOf, moveNode, newTree, parentOf, parentsOf, placeNode, planOf, quickOf, removeNode, removeTree, setCollapsed, setList } from './model.js';
 
 export const EMPTY = { nodes: {}, trees: {}, trash: [] };
 const NO_TREE = { children: {}, collapsed: {} };
@@ -247,7 +247,10 @@ export function takeIn(library, base, theirs, gone, at) {
   for (const [treeId, id] of leaving) removeNode(library, treeId, id, at);
   for (const [id, when] of Object.entries(gone)) {
     const node = library.nodes[id];
-    if (spared.has(id) || (node && when <= bornOf(node))) continue;
+    // Kept here though their tree's deletion named it: it is back, as of now - so that it stays, here and there.
+    if (spared.has(id)) node.restored = at;
+    // (A deletion too old to be kept here is not noted either: else it would be told again and again by whoever still has it.)
+    if (spared.has(id) || when <= at - KEPT || (node && when <= bornOf(node))) continue;
     if (node) for (const tree in library.trees) removeNode(library, tree, id, at);
     // Noted with the time it was deleted there, not the time I heard: every copy tells the same of it.
     library.gone[id] = node ? when : Math.max(library.gone[id] ?? 0, when);
