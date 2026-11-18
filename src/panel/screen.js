@@ -45,6 +45,8 @@ export const ui = {
   places: { shown: [], more: 0, loose: undefined }, // What the unfolded journal shows (see layJournal).
   // The filter of each tree, on this screen: { [treeId]: { picked: [nodeId], mode, at } } - what is ticked, whether that is shown alone or hidden, and when it was said (see filter.js). Kept with the view, never with the library - and as it was said: what of it counts now is asked when it is read (see filterNow).
   filters: kept.filters ?? {},
+  // Where the user was in each tree when they left it: { [treeId]: { cursor, scroll } } - the row the keyboard was on, and how far the pane was scrolled. Back in the tree, they are there again (see show).
+  left: kept.left ?? {},
   // The filters the user saved, of each tree, to set its filter from: { [treeId]: [{ name, picked, mode }] }, a name once in a tree. Kept as they were said too; only the user takes one off the list.
   saved: savedKept(),
   // While the user ticks them: { tree, ids: Set, mode, anchor } - the whole tree is shown, every row with a tick to set, and the ticks will mean `mode` ('only' | 'hide'); nothing is narrowed until they say so.
@@ -371,9 +373,22 @@ export function focusRow(pane, id) {
 
 /** Shows a tree in a pane. (A tree just made, which the panel has not heard of yet, appears with the worker's next state.) */
 export function show(pane, treeId) {
+  leave(pane);
   pane.tree = treeId;
   pane.sel.clear();
-  if (ui.library.trees[treeId]) arrange();
+  if (!ui.library.trees[treeId]) return;
+  arrange();
+  // Back where the user was in this tree: the same row under the keyboard, the same place in sight (the top, the first time).
+  const was = ui.left[treeId];
+  if (paneEl(pane)) paneEl(pane).scrollTop = was?.scroll ?? 0;
+  if (pane === here() && rowOf(pane, was?.cursor)) ui.cursor = was.cursor;
+  redraw();
+}
+
+/** Notes where the user is in a pane's tree, before the pane shows another. */
+function leave(pane) {
+  if (!ui.library.trees[pane.tree]) return;
+  ui.left[pane.tree] = { cursor: pane === here() ? ui.cursor : ui.left[pane.tree]?.cursor, scroll: paneEl(pane)?.scrollTop ?? 0 };
 }
 
 /** One more pane, showing tree `treeId`. */
@@ -795,7 +810,7 @@ function findShared() {
 let shownTree;
 /** Remembers the layout for next time, and tells the worker which tree new tabs of this window go to. */
 function remember() {
-  const view = { panes: ui.panes.map(({ tree, size }) => ({ tree, size })), split: ui.split, open: ui.open, unsyncedClosed: ui.unsyncedClosed, filters: ui.filters };
+  const view = { panes: ui.panes.map(({ tree, size }) => ({ tree, size })), split: ui.split, open: ui.open, unsyncedClosed: ui.unsyncedClosed, filters: ui.filters, left: ui.left };
   localStorage.setItem('view', JSON.stringify(view));
   if (shownTree === here().tree) return;
   shownTree = here().tree;
@@ -806,6 +821,7 @@ function remember() {
 export function showActiveTree() {
   if (!ui.activeTree || ui.panes.some((pane) => pane.tree === ui.activeTree)) return;
   if (!here()) ui.panes = [newPane(ui.activeTree)];
+  leave(here()); // (Coming after a tab, the panel shows that tab - not where the user was in its tree: see pull.)
   here().tree = ui.activeTree;
   here().sel.clear();
 }
