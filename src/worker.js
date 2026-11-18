@@ -311,14 +311,20 @@ const saveSync = (settings) => chrome.storage.local.set({ sync: settings });
  * Replaces the library; open tabs find their nodes anew. A damaged one is
  * refused. When the user asked for it (`asked`), it is a step they can undo;
  * what comes in by itself from other computers is not.
+ *
+ * Nodes may be missing from it because they were deleted on another
+ * computer (`deleted`). Then their tabs close, as they do when a node is
+ * deleted here: a tab left open would be given a node anew, and the page
+ * deleted there would be back on every computer.
  */
-async function adopt(library, asked = false) {
+async function adopt(library, asked = false, deleted = false) {
   const found = problems(library);
   if (found.length) throw new Error(`That library is damaged: ${found[0]}`);
   loaded = true;
   const before = JSON.stringify(state.library);
   state.library = library;
   if (asked) remember(before);
+  if (deleted) await settle();
   await reconcile();
 }
 
@@ -346,7 +352,7 @@ async function syncOnce() {
           const base = settings.base && JSON.parse(settings.base);
           const theirs = migrate(remote.library);
           const next = takeIn(structuredClone(state.library), base, theirs, theirs.gone, Date.now());
-          if (JSON.stringify(next) !== JSON.stringify(state.library)) await adopt(next);
+          if (JSON.stringify(next) !== JSON.stringify(state.library)) await adopt(next, false, true);
         }
         return JSON.stringify(core.shared(state.library));
       });
@@ -440,7 +446,7 @@ async function exchange() {
   try {
     const next = structuredClone(state.library);
     if (await channel.receive(cells, ch, next, Date.now())) {
-      await adopt(next);
+      await adopt(next, false, true);
       await commit('exchange'); // Saved before the snapshot counts as taken in: else a crash here would skip it for good.
       log('took in changes from another computer');
     }
