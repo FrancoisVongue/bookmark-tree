@@ -6,6 +6,7 @@ import { Editor, Link, Markdown, Placeholder, StarterKit, TableRow, TaskItem, Ta
 import { t } from '../i18n.js';
 import { Cell, Fold, FoldBody, FoldTitle, Footnote, FootnoteRef, Grid, HeaderCell, Words, followFootnote, rules } from './blocks.js';
 import { Code } from './code.js';
+import { Marker, Underline } from './marks.js';
 import { tableTools } from './table.js';
 import { toolbar } from './tools.js';
 
@@ -18,6 +19,8 @@ const editor = new Editor({
   extensions: [
     StarterKit.configure({ codeBlock: false, text: false }), // The note has its own: see blocks.js.
     Words,
+    Marker,
+    Underline,
     Code,
     TaskList,
     TaskItem.configure({ nested: true }),

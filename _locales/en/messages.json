@@ -431,6 +431,12 @@
   "noteItalic": {
     "message": "Italic"
   },
+  "noteUnderline": {
+    "message": "Underline"
+  },
+  "noteMarker": {
+    "message": "Highlight"
+  },
   "noteStrike": {
     "message": "Strikethrough"
   },

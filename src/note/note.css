@@ -175,6 +175,25 @@ main {
   accent-color: var(--accent);
   cursor: pointer;
 }
+/* Words gone over with a marker, and underlined ones (marks.js). The marker's
+   ground follows the line when the words run over to the next one. */
+.tiptap mark,
+#tools mark {
+  background: var(--marker);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0.08em 0.12em;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.tiptap u,
+#tools u {
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+}
+#tools mark {
+  padding: 1px 3px;
+}
 .tiptap a {
   color: var(--accent);
 }

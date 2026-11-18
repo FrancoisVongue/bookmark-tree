@@ -34,7 +34,9 @@ const groups = [
   [
     { title: t('noteBold'), keys: 'Mod+B', icon: '<b>B</b>', run: (chain) => chain.toggleBold(), on: ['bold'] },
     { title: t('noteItalic'), keys: 'Mod+I', icon: '<i>I</i>', run: (chain) => chain.toggleItalic(), on: ['italic'] },
+    { title: t('noteUnderline'), keys: 'Mod+U', icon: '<u>U</u>', run: (chain) => chain.toggleUnderline(), on: ['underline'] },
     { title: t('noteStrike'), keys: 'Mod+Shift+S', icon: '<s>S</s>', run: (chain) => chain.toggleStrike(), on: ['strike'] },
+    { title: t('noteMarker'), keys: 'Mod+Shift+H', icon: '<mark>M</mark>', run: (chain) => chain.toggleMarker(), on: ['marker'] },
     { title: t('noteCode'), keys: 'Mod+E', icon: svg('M7 6l-4 4 4 4M13 6l4 4-4 4'), run: (chain) => chain.toggleCode(), on: ['code'] },
   ],
   [
