@@ -25,6 +25,7 @@ import {
   inTree,
   isGroup,
   isNote,
+  isPage,
   kidsOf,
   moveNode,
   newId,
@@ -136,7 +137,9 @@ export function keepFresh(state, at) {
  */
 function dropIfEmpty(library, id) {
   const node = library.nodes[id];
-  if (!node || node.name || (isNote(node) ? !isGroup(node) : !isBlank(node.url))) return false;
+  // Nothing of the user's in it: a page at no address, a note with no text, a group. (A name is the user's.)
+  const empty = (each) => isGroup(each) || (isNote(each) ? !each.note.trim() : isBlank(each.url));
+  if (!node || node.name || !empty(node)) return false;
   const trees = Object.values(library.trees).filter((tree) => inTree(tree, id));
   if (trees.some((tree) => kidsOf(tree, id).length)) return false;
   for (const tree of trees) removeNode(library, tree.id, id);
@@ -267,7 +270,7 @@ export function tabChanged(state, tab) {
   const { library, binding } = state;
   const bound = binding[tab.id];
   const node = library.nodes[bound?.node];
-  if (!node || isNote(node)) return;
+  if (!node || !isPage(node)) return;
   const url = urlOf(tab);
   // An empty new tab taken to the address of a sleeping node wakes that node.
   // (A tab the user placed - a child, a sibling of some node - stays where

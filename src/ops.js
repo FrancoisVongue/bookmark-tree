@@ -13,16 +13,17 @@
 // Pure: no Chrome here.
 
 import {
-  ROOT,
   addNode,
+  current,
   descendantsOf,
   forgetLoose,
   goHome,
   gridOf,
   homeHere,
-  isNote,
   inTree,
   isGroup,
+  isNote,
+  isPage,
   kidsOf,
   listDrop,
   listPut,
@@ -35,8 +36,10 @@ import {
   removeNode,
   removeTree,
   renameNode,
+  ROOT,
   setCollapsed,
   stamped,
+  VERSION,
 } from './model.js';
 
 /** `ids` in tree order, without those that sit under another of them. */
@@ -141,7 +144,7 @@ export const ops = {
   /** A sleeping page's address, typed by hand. */
   address(library, { id, url }) {
     const node = library.nodes[id];
-    if (!node || isNote(node) || !url?.trim()) return;
+    if (!node || !isPage(node) || !url?.trim()) return;
     node.url = url.trim();
     homeHere(node); // Typed by hand: this is where the page belongs now.
     return { navigate: id };
@@ -160,14 +163,19 @@ export const ops = {
   pin(library, { ids, pinned }) {
     for (const id of ids) {
       const node = library.nodes[id];
-      if (!node || isNote(node)) continue;
+      if (!node || !isPage(node)) continue;
       if (pinned) (homeHere(node), (node.pinned = true));
       else delete node.pinned;
     }
   },
-  /** A note; with a `name` and no text it serves as a group heading. */
-  'note-add'(library, { tree, id, name, target, position }, at) {
-    addNode(library, tree, stamped(name ? { id, note: '', name } : { id, note: '' }, at));
+  /** A note: text of the user's own, empty to begin with. */
+  'note-add'(library, { tree, id, target, position }, at) {
+    addNode(library, tree, stamped({ id, note: '' }, at));
+    if (target) moveNode(library, tree, id, target, position);
+  },
+  /** A group: a heading called `name` for the nodes put under it. */
+  'group-add'(library, { tree, id, name, target, position }, at) {
+    addNode(library, tree, stamped({ id, group: true, name }, at));
     if (target) moveNode(library, tree, id, target, position);
   },
   'note-text'(library, { id, text }) {
@@ -238,9 +246,9 @@ export const ops = {
   'trash-empty'(library) {
     library.trash = [];
   },
-  /** Adds an exported tree ({ nodes, tree }) as a new tree. Nodes we already have stay as they are. */
+  /** Adds an exported tree ({ nodes, tree, version }) as a new tree. Nodes we already have stay as they are. */
   import(library, { id, data }) {
-    for (const node of Object.values(data.nodes)) library.nodes[node.id] ??= node;
+    for (const node of Object.values(current(data.nodes, data.version))) library.nodes[node.id] ??= node;
     library.trees[id] = { ...data.tree, id, name: freeName(library, data.tree.name) };
     forgetLoose(library);
   },
@@ -253,5 +261,5 @@ export const QUIET = new Set(['collapse', 'collapse-all', 'home', 'note-text']);
 export function exportTree(library, treeId) {
   const tree = library.trees[treeId];
   const nodes = Object.fromEntries(descendantsOf(tree, ROOT).map((id) => [id, library.nodes[id]]));
-  return { nodes, tree };
+  return { version: VERSION, nodes, tree };
 }

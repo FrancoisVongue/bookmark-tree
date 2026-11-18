@@ -7,7 +7,7 @@
 // under it. Such a page becomes a folder with the page itself as its first
 // link. A note becomes a folder; its text does not travel.
 
-import { ROOT, isNote, kidsOf, stamped } from './model.js';
+import { ROOT, isPage, kidsOf, stamped } from './model.js';
 
 /** A tree as an outline. `titleOf(node)` names a node. */
 export function toOutline(library, treeId, titleOf) {
@@ -17,7 +17,7 @@ export function toOutline(library, treeId, titleOf) {
     const { added } = node;
     const title = titleOf(node);
     const children = kidsOf(tree, id).map(walk);
-    if (isNote(node)) return stamped({ title, children }, added);
+    if (!isPage(node)) return stamped({ title, children }, added);
     const link = stamped({ title, url: node.url }, added);
     return children.length ? stamped({ title, children: [link, ...children] }, added) : link;
   };
@@ -29,7 +29,7 @@ export function fromOutline(items, name, newId) {
   const data = { nodes: {}, tree: { name, children: {}, collapsed: {} } };
   const walk = (item, parent) => {
     const id = newId();
-    data.nodes[id] = stamped(item.children ? { id, note: '', name: item.title } : { id, url: item.url, title: item.title }, item.added);
+    data.nodes[id] = stamped(item.children ? { id, group: true, name: item.title } : { id, url: item.url, title: item.title }, item.added);
     (data.tree.children[parent] ??= []).push(id);
     for (const child of item.children ?? []) walk(child, id);
   };

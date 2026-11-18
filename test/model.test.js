@@ -1,18 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  MAIN,
-  ROOT,
-  addNode,
-  createLibrary,
-  descendantsOf,
-  moveNode,
-  parentOf,
-  removeNode,
-  renameNode,
-  rowsOf,
-  setCollapsed,
-} from '../src/model.js';
+import { MAIN, ROOT, addNode, createLibrary, descendantsOf, moveNode, parentOf, removeNode, renameNode, rowsOf, setCollapsed, isGroup, isNote, isPage, migrate } from '../src/model.js';
 
 /** A library from an outline: two spaces of indentation per level, ids are the names. */
 function library(outline) {
@@ -140,4 +128,23 @@ test('the library is plain JSON', () => {
   const lib = library('a\n  b');
   setCollapsed(lib, MAIN, 'a', true);
   assert.deepEqual(JSON.parse(JSON.stringify(lib)), lib);
+});
+
+test('a note stays a note with nothing written in it; what an older library used as a group becomes one', () => {
+  const library = createLibrary();
+  addNode(library, MAIN, { id: 'n', note: '' });
+  assert.equal(isNote(library.nodes.n), true);
+  assert.equal(isGroup(library.nodes.n), false);
+  // As version 2 kept it: a group was a note with no text.
+  const old = { version: 2, nodes: { g: { id: 'g', note: '', name: 'Work' }, n: { id: 'n', note: 'text' }, p: { id: 'p', url: 'https://p.example/', title: 'P' } }, trees: { [MAIN]: { id: MAIN, name: 'Main', children: { [ROOT]: ['g', 'n', 'p'] }, collapsed: {} } }, trash: [{ node: { id: 't', note: ' ' }, at: 1 }] };
+  migrate(old);
+  assert.deepEqual(old.nodes.g, { id: 'g', group: true, name: 'Work' });
+  assert.equal(isGroup(old.trash[0].node), true);
+  assert.equal(isNote(old.nodes.n) && !isGroup(old.nodes.n), true);
+  assert.equal(isPage(old.nodes.p), true);
+  // Read again, as today's: nothing more changes - an empty note made now is not taken for a group.
+  old.nodes.e = { id: 'e', note: '' };
+  old.trees[MAIN].children[ROOT].push('e');
+  migrate(old);
+  assert.equal(isNote(old.nodes.e), true);
 });

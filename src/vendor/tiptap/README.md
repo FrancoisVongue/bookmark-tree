@@ -17,7 +17,7 @@ To rebuild it, in an empty folder:
 
 with this `entry.js`:
 
-    export { Editor, InputRule, Node } from '@tiptap/core';
+    export { Editor, InputRule, Mark, Node, markInputRule, markPasteRule } from '@tiptap/core';
     export { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
     export { Decoration, DecorationSet } from '@tiptap/pm/view';
     export { default as StarterKit } from '@tiptap/starter-kit';

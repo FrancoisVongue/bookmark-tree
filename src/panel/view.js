@@ -62,7 +62,7 @@ const said = (line) =>
 const firstLine = (text) => text.split('\n').map(said).find(Boolean);
 
 export const titleOf = (node) =>
-  node.name || (isNote(node) ? firstLine(node.note) || t('note') : node.title || node.url || t('untitled'));
+  node.name || (isGroup(node) ? t('newGroup') : isNote(node) ? firstLine(node.note) || t('note') : node.title || node.url || t('untitled'));
 
 /** Away from its home: the address it first had, or was pinned to. */
 export const isAway = (node) => node.home && node.url !== node.home.url;

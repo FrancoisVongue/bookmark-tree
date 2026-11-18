@@ -178,7 +178,7 @@ test('a tree deleted elsewhere takes with it only what its deleter knew of', () 
   // Both know the tree Work: a group with a page in it, and a page beside.
   const base = library('x');
   ops['tree-add'](base, { id: 'work', name: 'Work' });
-  ops['note-add'](base, { tree: 'work', id: 'g', name: 'Group' });
+  ops['group-add'](base, { tree: 'work', id: 'g', name: 'Group' });
   for (const [id, target] of [['old', 'g'], ['other', undefined]]) {
     ops.add(base, { tree: 'work', nodes: [{ id, url: `https://${id}/`, title: id }], target, position: target && 'inside' });
   }
