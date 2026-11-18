@@ -411,10 +411,11 @@ function ago(at) {
  *   first     the place shown in the heading's stead while folded; `count`: how many more there are
  *   body      what is under the heading while unfolded
  */
-function strip({ name, icon, heading, open, whole = open, first, count, body, foldable = true, more = '', list }) {
+function strip({ name, icon, heading, open, whole = open, first, count, body, foldable = true, more = '', list, height }) {
   const fold = foldable ? act(`${name}-toggle`, 'chevron', t(`${name}${open ? 'Fold' : 'Unfold'}`), 'shown fold') : nothing;
   return html`
-    <section class="strip ${name} ${open ? 'open' : ''} ${more}" data-list=${list ?? nothing}>
+    <section class="strip ${name} ${open ? 'open' : ''} ${more}" data-list=${list ?? nothing} style=${open && height ? `height:${height}px; max-height:none` : nothing}>
+      ${open ? html`<div class="grip" data-grip=${name} title=${t('stripGrip')}></div>` : nothing}
       <div class="strip-head">
         <span class="favicon glyph">${ICONS[icon]}</span>
         ${whole ? html`<span class="title">${heading}</span>` : first}
@@ -436,6 +437,7 @@ function journalView(ui) {
   `;
   return strip({
     name: 'journal',
+    height: ui.heights.journal,
     icon: 'clock',
     heading: t('journal'),
     open: ui.open.journal,
@@ -473,6 +475,7 @@ function planView(ui) {
   `;
   return strip({
     name: 'plan',
+    height: ui.heights.plan,
     list: 'plan',
     icon: 'next',
     heading: t(ids.length ? 'plan' : 'planDrop'),

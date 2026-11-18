@@ -2,7 +2,7 @@
 // into commands for the worker (see screen.js for what the panel itself owns).
 // A side panel also gets out of the way of a window gone full screen (below).
 
-import { allOfJournal, app, applySaved, applyTicks, arrange, clearFilters, closeMenu, closeNotice, closeOverlay, closePane, deselect, dismiss, forgetSaved, here, idAt, log, menuUnder, openMenu, paneAt, pickFrom, picker, pointAt, redraw, refresh, revealActive, rowOf, search, searchJournal, select, setFocus, show, showActiveTree, split, targets, tick, tickMode, togglePicked, toggleStrip, ui, watch } from './screen.js';
+import { allOfJournal, app, applySaved, applyTicks, arrange, clearFilters, closeMenu, closeNotice, closeOverlay, closePane, deselect, dismiss, forgetSaved, here, idAt, log, menuUnder, openMenu, paneAt, pickFrom, picker, pointAt, redraw, refresh, revealActive, rowOf, search, searchJournal, select, setFocus, setStripHeight, show, showActiveTree, split, targets, tick, tickMode, togglePicked, toggleStrip, ui, watch } from './screen.js';
 import { mainMenu, quickMenu, rowMenu, treeMenu } from './menus.js';
 import { endsDrag } from './drag.js';
 import { saveBackup } from '../page.js';
@@ -93,6 +93,8 @@ app.addEventListener('dblclick', (event) => {
   const id = idAt(event.target);
   const pane = paneAt(event.target);
   const treeId = event.target.closest('.bar .tab[data-tree]')?.dataset.tree;
+  const grip = event.target.closest('.grip')?.dataset.grip;
+  if (grip) return setStripHeight(grip), arrange(); // The edge of a strip: back to the height it takes by itself.
   if (treeId) cmd.startTyping({ what: 'tree', tree: treeId });
   else if (pane && id && id === chosen && !ui.ticking && event.target.closest('.title')) cmd.startTyping({ what: 'name', id, pane });
 });

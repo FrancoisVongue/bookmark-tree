@@ -45,6 +45,8 @@ export const ui = {
   places: { shown: [], more: 0, loose: undefined }, // What the unfolded journal shows (see layJournal).
   // The filter of each tree, on this screen: { [treeId]: { picked: [nodeId], mode, at } } - what is ticked, whether that is shown alone or hidden, and when it was said (see filter.js). Kept with the view, never with the library - and as it was said: what of it counts now is asked when it is read (see filterNow).
   filters: kept.filters ?? {},
+  // How tall each unfolded strip is, in pixels, where the user dragged its edge: { journal?, plan? } (see strip in view.js). Without one, a strip is as tall as it needs, up to half the panel.
+  heights: kept.heights ?? {},
   // Where the user was in each tree when they left it: { [treeId]: { cursor, scroll } } - the row the keyboard was on, and how far the pane was scrolled. Back in the tree, they are there again (see show).
   left: kept.left ?? {},
   // The filters the user saved, of each tree, to set its filter from: { [treeId]: [{ name, picked, mode }] }, a name once in a tree. Kept as they were said too; only the user takes one off the list.
@@ -417,6 +419,13 @@ export function split(way) {
   }
   ui.split = way;
   arrange();
+}
+
+/** Gives an unfolded strip ('journal' | 'plan') a height of the user's choosing - within reason: room for a few places, and no more than most of the panel. None: as tall as it needs. */
+export function setStripHeight(name, height) {
+  if (height === undefined) delete ui.heights[name];
+  else ui.heights[name] = Math.round(Math.max(96, Math.min(innerHeight * 0.7, height)));
+  redraw();
 }
 
 /** Opens something on top of the trees (see `ui.overlay` for what it may be). */
@@ -810,7 +819,7 @@ function findShared() {
 let shownTree;
 /** Remembers the layout for next time, and tells the worker which tree new tabs of this window go to. */
 function remember() {
-  const view = { panes: ui.panes.map(({ tree, size }) => ({ tree, size })), split: ui.split, open: ui.open, unsyncedClosed: ui.unsyncedClosed, filters: ui.filters, left: ui.left };
+  const view = { panes: ui.panes.map(({ tree, size }) => ({ tree, size })), split: ui.split, open: ui.open, unsyncedClosed: ui.unsyncedClosed, filters: ui.filters, left: ui.left, heights: ui.heights };
   localStorage.setItem('view', JSON.stringify(view));
   if (shownTree === here().tree) return;
   shownTree = here().tree;

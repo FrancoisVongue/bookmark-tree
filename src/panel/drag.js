@@ -19,7 +19,7 @@
 import { descendantsOf } from '../model.js';
 import { t } from '../i18n.js';
 import { titleOf } from './view.js';
-import { app, arrange, idAt, op, paneAt, paneEl, redraw, rowOf, rowUnder, say, setDrag, setDrop, setFocus, targets, tickRow, tickTo, ui } from './screen.js';
+import { setStripHeight, app, arrange, idAt, op, paneAt, paneEl, redraw, rowOf, rowUnder, say, setDrag, setDrop, setFocus, targets, tickRow, tickTo, ui } from './screen.js';
 import { pagesIn, plannable } from './commands.js';
 
 // The gesture in progress, from the button going down to the click after it.
@@ -192,10 +192,15 @@ app.addEventListener('pointerdown', (event) => {
   }
   if (event.button !== 0 || event.target.closest('button, input, .menu, .overlay')) return;
   const divider = event.target.closest('.divider');
+  const grip = event.target.closest('.grip');
   const id = idAt(event.target);
   const pane = paneAt(event.target);
   if (divider) {
     gesture.press = { divider: Number(divider.dataset.divider) };
+    app.setPointerCapture(event.pointerId);
+  } else if (grip) {
+    // The edge of an unfolded strip: dragging it makes the strip taller or lower. (`from`: the pointer and the height at the press.)
+    gesture.press = { grip: grip.dataset.grip, from: { y: event.clientY, height: grip.parentElement.offsetHeight } };
     app.setPointerCapture(event.pointerId);
   } else if (id && pane && ui.ticking) {
     // Ticking for the filter: the press itself ticks, and nothing is dragged - in the tree being ticked or beside it.
@@ -214,6 +219,8 @@ addEventListener('pointermove', (event) => {
   if (!press) return;
   gesture.pointer = { x: event.clientX, y: event.clientY };
   if (press.divider) return resize(press.divider);
+  // The journal's edge is its top (up is taller); the plan, at the top of the panel, has its edge at the bottom.
+  if (press.grip) return setStripHeight(press.grip, press.from.height + (press.grip === 'plan' ? 1 : -1) * (event.clientY - press.from.y));
   if (ui.drag || press.sweep?.going || Math.hypot(event.clientX - press.x, event.clientY - press.y) < 5) return;
   app.setPointerCapture(event.pointerId); // Keep hearing the pointer outside the panel.
   if (press.sweep) return (press.sweep.going = true), sweep();
@@ -227,7 +234,7 @@ addEventListener('pointermove', (event) => {
 
 addEventListener('pointerup', () => {
   const { drag, drop } = ui;
-  const resized = gesture.press?.divider;
+  const resized = gesture.press?.divider || gesture.press?.grip;
   gesture.press = undefined;
   if (resized) return arrange(); // Remembers the sizes.
   if (!drag) return;

@@ -152,6 +152,9 @@
   "filterApplyHide": {
     "message": "Hide what is ticked (Enter)"
   },
+  "stripGrip": {
+    "message": "Drag to make it taller or lower; double click for its own height"
+  },
   "extDescription": {
     "message": "Your pages as trees, in the side panel."
   },

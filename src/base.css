@@ -99,7 +99,7 @@
    * felt, not seen.
    */
   --bg: #fff;
-  --surface-side: #fbfbfb; /* A place beside the content: a strip. */
+  --surface-side: #f1f2f4; /* A place beside the content: a strip. A clear step off the ground and off a tree out of focus, so that it reads as another place. */
   --surface-back: #f9f9f9; /* Content that has stepped back: a tree out of focus. */
   --surface-over: #fff; /* What floats over it all: a menu, a dialog. In the light its shadow lifts it. */
   --lift: 0 0 0 1px var(--line), 0 2px 6px rgb(0 0 0 / 0.06), 0 10px 28px rgb(0 0 0 / 0.14);
@@ -152,7 +152,7 @@
     --dim: #a0a0a0;
     --accent: #a8c7fa;
     --bg: #1c1c1c;
-    --surface-side: #1a1a1a;
+    --surface-side: #121212;
     --surface-back: #181818;
     --surface-over: #252525;
     --lift: 0 0 0 1px var(--line), 0 8px 28px rgb(0 0 0 / 0.5);
