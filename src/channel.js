@@ -5,10 +5,10 @@
 // the trees. The rest stays on the computers that have it.
 //
 // So a snapshot may be a part of a library: what it does not mention, it
-// says nothing about. How a snapshot is taken into a library is merge.js's
-// to say (takeIn): by the time each thing was last changed, with no memory
-// of earlier snapshots. So this file keeps none either. A computer takes in
-// the snapshot there when it has not seen it, and writes its own when that
+// says nothing about. A snapshot is a library like any other, and how two
+// come together is merge.js's to say (takeIn): by the time each thing was
+// last changed. So nothing is remembered here of the snapshots that were:
+// a computer takes in the one that is there, and writes its own when that
 // would tell the one there something - whoever's it is, however often both
 // write.
 //
@@ -17,28 +17,24 @@
 // content. A month nobody touched keeps its name and is not written again.
 //
 //   in the synced storage:
-//     head           { v, version, id, top: [name], months: [[name]] }
+//     head           { version, id, top: [name], months: [[name]] }
 //                    (`version`: the shape of the library in it, see migrate in model.js)
 //     p.<name>       a piece of squeezed text (a group may take several)
 //     away.<device>  how many pages that computer keeps to itself
-//   kept on this computer (`ch`):
-//     { device, head, at, met, newer }
-//       head          the id of the snapshot there that I last took in or wrote
-//       at            { head, library, hidden } when I last looked whether to write: the snapshot there,
-//                     my library (by a short name of its text); nothing changed since, nothing to do
-//       met           whether another computer was ever seen there
-//       newer         whether the snapshot there is of a shape this version does not know
+//   kept on this computer (`ch`), all of it told anew by each `publish` but the name:
+//     device     this computer's name there
+//     same       { head, library }: the snapshot there and my library (by a short name of its text)
+//                when I last looked whether to write. Both as they were: nothing to do
+//     here, elsewhere   how many pages do not fit: mine, and the most another computer keeps to itself
+//     met        whether another computer writes there too
+//     newer      whether the snapshot there is of a shape this version does not know
 
-import { ROOT, VERSION, current, freshOf, goneOf, kidsOf, lettersOf, parentsOf, planOf, quickOf } from './model.js';
-import { hasNews, only, takeIn } from './merge.js';
+import { ROOT, VERSION, current, freshOf, kidsOf, lettersOf, parentsOf, planOf, quickOf } from './model.js';
+import { hasNews, only } from './merge.js';
 
-export const BUDGET = 90_000; // Of the 102,400 bytes the browser allows.
+const BUDGET = 90_000; // Of the 102,400 bytes the browser allows.
 const PIECE = 7000; // The browser allows 8192 per item, its name included.
 const MONTH = 30;
-
-export const newState = (device) => ({ device });
-/** What an older version kept of the channel, in today's shape: it kept snapshots it had seen, and clocks to tell which knew which. */
-export const migrate = ({ device, head, at, met, newer, unsynced }) => ({ device, head, at, met, newer, unsynced });
 
 // --- Squeezing -----------------------------------------------------------------
 
@@ -89,7 +85,7 @@ function withParents(library, ids) {
 }
 
 /** The nodes `ids` of a library as a head and its pieces. */
-async function encode(library, ids, gone) {
+async function encode(library, ids) {
   const part = only(library, ids);
   const months = new Map(); // Month -> its nodes; the newest month first, and in each the freshest node first.
   for (const node of Object.values(part.nodes).sort((a, b) => freshOf(b) - freshOf(a) || (a.id < b.id ? -1 : 1))) {
@@ -108,25 +104,24 @@ async function encode(library, ids, gone) {
   });
   const items = {};
   const plan = planOf(part).map((id) => number.get(id));
-  // (The deletions: ids, and apart the time of each, in the same order - so a version that knows only the ids still reads them.)
-  const top = { trees, grid: part.grid, gone: Object.keys(gone), goneAt: Object.values(gone), ...(plan.length && { plan }), planAt: part.planAt };
-  const head = { v: 1, version: VERSION, top: await store(top, items), months: [] };
+  // (The deletions: ids, and apart the time of each, in the same order.)
+  const top = { trees, grid: part.grid, gone: Object.keys(part.gone), goneAt: Object.values(part.gone), ...(plan.length && { plan }), planAt: part.planAt };
+  const head = { version: VERSION, top: await store(top, items), months: [] };
   for (const nodes of months.values()) head.months.push(await store(nodes, items));
   head.id = await nameOf(JSON.stringify(head));
   const size = Object.entries(items).reduce((sum, [name, piece]) => sum + name.length + piece.length + 2, JSON.stringify(head).length + 40);
-  return { head, items, size, library: part, gone, hidden: Object.keys(library.nodes).length - ids.size };
+  return { head, items, size, library: part, hidden: Object.keys(library.nodes).length - ids.size };
 }
 
 /**
  * The library as it goes to the synced storage: all of it if it fits in
  * `budget` bytes, else as many of its freshest nodes as do.
  */
-export async function snapshot(library, budget = BUDGET) {
-  const gone = Object.fromEntries(goneOf(library).map((id) => [id, library.gone[id]]));
+async function snapshot(library, budget = BUDGET) {
   const fresh = Object.values(library.nodes)
     .sort((a, b) => freshOf(b) - freshOf(a) || (a.id < b.id ? -1 : 1))
     .map((node) => node.id);
-  const first = (count) => encode(library, withParents(library, fresh.slice(0, count)), gone);
+  const first = (count) => encode(library, withParents(library, fresh.slice(0, count)));
   let best = await first(fresh.length);
   if (best.size <= budget) return best;
   let [fits, over] = [0, fresh.length]; // The most nodes known to fit, the fewest known not to.
@@ -140,11 +135,8 @@ export async function snapshot(library, budget = BUDGET) {
   return best;
 }
 
-/**
- * The snapshot in the synced storage (`all` is everything there), if it is there in full:
- * { id, library, gone: { id: when } }.
- */
-async function read(all) {
+/** The library in the snapshot there (`all` is everything in the synced storage), if it is there in full and of a shape this version knows. */
+async function decode(all) {
   const { head } = all;
   if (isNewer(head)) return undefined;
   const top = head && (await load(head.top, all));
@@ -161,13 +153,13 @@ async function read(all) {
     }
     return { ...tree, children, collapsed: Object.fromEntries(collapsed.map((n) => [nodes[n].id, true])), ...(tree.quick && { quick: tree.quick.map((n) => nodes[n].id) }) };
   });
-  const library = { nodes: Object.fromEntries(nodes.map((node) => [node.id, node])), trees: Object.fromEntries(trees.map((tree) => [tree.id, tree])), trash: [] };
+  // (A version that told deletions without their times: nothing can be made of those.)
+  const gone = Object.fromEntries(top.gone.map((id, n) => [id, top.goneAt?.[n] ?? 0]));
+  const library = { nodes: Object.fromEntries(nodes.map((node) => [node.id, node])), trees: Object.fromEntries(trees.map((tree) => [tree.id, tree])), trash: [], gone };
   if (top.grid) library.grid = top.grid;
   if (top.plan) library.plan = top.plan.map((n) => nodes[n].id);
   if (top.planAt) library.planAt = top.planAt;
-  // (A version that told deletions without their times: nothing can be made of those. It tells them again once it is updated.)
-  const gone = Object.fromEntries(top.gone.map((id, n) => [id, top.goneAt?.[n] ?? 0]));
-  return { id: head.id, library: shaped(library, head.version), gone };
+  return shaped(library, head.version);
 }
 
 // --- The exchange --------------------------------------------------------------
@@ -183,8 +175,8 @@ const isNewer = (head) => head?.version > VERSION;
 
 /**
  * A snapshot's library in today's shape, whichever version wrote it. One
- * that does not say (at first they did not) is of shape 3 if it has what only shape 3 has - a node marked
- * as a group - and else older.
+ * that does not say (at first they did not) is of shape 3 if it has what
+ * only shape 3 has - a node marked as a group - and else older.
  */
 function shaped(library, version = library.version ?? (Object.values(library.nodes).some((node) => node.group) ? 3 : 2)) {
   current(library.nodes, version);
@@ -192,52 +184,30 @@ function shaped(library, version = library.version ?? (Object.values(library.nod
   return library;
 }
 
-/**
- * Takes in what another computer wrote, if anything new is there. Changes
- * `library` and returns true if it did.
- */
-export async function receive(cells, ch, library, at) {
-  const all = await cells.get();
-  ch.newer = isNewer(all.head);
-  const remote = await read(all);
-  if (!remote || remote.id === ch.head) return false;
-  const was = JSON.stringify(library);
-  takeIn(library, remote.library, remote.gone, at);
-  ch.head = remote.id;
-  return JSON.stringify(library) !== was;
-}
+/** The library another computer wrote there - or this one: taking in what is already here changes nothing. */
+export const read = async (cells) => decode(await cells.get());
 
 /**
  * Writes this computer's library (see `snapshot`) if that would tell the
- * snapshot there anything. Returns how many pages do not fit and stay here.
+ * snapshot there anything, and notes in `ch` how things stand (see above).
  */
 export async function publish(cells, ch, library, at, budget) {
   const all = await cells.get();
-  ch.newer = isNewer(all.head);
-  if (ch.newer) return ch.at?.hidden ?? 0;
-  // Nothing changed here, and the snapshot there is the one I knew then: nothing to say that was not said.
+  const others = Object.keys(all).filter((name) => name.startsWith('away.') && name !== `away.${ch.device}`);
+  Object.assign(ch, { elsewhere: Math.max(0, ...others.map((name) => all[name])), met: others.length > 0, newer: isNewer(all.head) });
+  if (ch.newer) return;
   const now = { head: all.head?.id, library: await nameOf(JSON.stringify(library)) };
-  if (ch.at && now.head === ch.at.head && now.library === ch.at.library) return ch.at.hidden;
+  if (ch.same && now.head === ch.same.head && now.library === ch.same.library) return;
   const mine = await snapshot(library, budget);
-  const there = await read(all);
-  const news = !there || hasNews(there.library, there.gone, mine.library, mine.gone, at);
-  if (news) {
+  const there = await decode(all);
+  if (!there || hasNews(there, mine.library, at)) {
     // Pieces nobody points at any more go first, to make room; then the new ones, with the head.
     const stale = Object.keys(all).filter((name) => !name.startsWith('away.') && !(name in mine.items));
     const unwritten = Object.fromEntries(Object.entries(mine.items).filter(([name]) => !(name in all)));
     await cells.remove(stale);
     await cells.set({ ...unwritten, head: mine.head });
-    ch.head = mine.head.id;
+    now.head = mine.head.id;
   }
   if (all[`away.${ch.device}`] !== mine.hidden) await cells.set({ [`away.${ch.device}`]: mine.hidden });
-  ch.at = { head: news ? ch.head : now.head, library: now.library, hidden: mine.hidden };
-  return mine.hidden;
-}
-
-/** How many pages another computer keeps to itself (the most any of them does). Notes in `ch.met` that there is another computer. */
-export async function awayElsewhere(cells, ch) {
-  const all = await cells.get();
-  const others = Object.keys(all).filter((name) => name.startsWith('away.') && name !== `away.${ch.device}`);
-  if (others.length) ch.met = true;
-  return Math.max(0, ...others.map((name) => all[name]));
+  Object.assign(ch, { same: now, here: mine.hidden });
 }

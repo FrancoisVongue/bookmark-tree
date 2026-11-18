@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MAIN, ROOT, addNode, createLibrary, goneOf, gridOf, planOf, problems, quickOf, rowsOf } from '../src/model.js';
+import { DAY, MAIN, ROOT, addNode, createLibrary, goneOf, gridOf, handOf, migrate, planOf, problems, quickOf, rowsOf } from '../src/model.js';
 import { ops, perform } from '../src/ops.js';
-import { apply, diff, hasNews, isEmpty, mark, only, takeIn } from '../src/merge.js';
+import { apply, diff, hasNews, mark, only, takeIn } from '../src/merge.js';
 
 function library(outline) {
   const lib = createLibrary();
@@ -26,20 +26,24 @@ const does = (lib, at, name, args) => perform(lib, name, args, at);
 const page = (id) => ({ id, url: `https://${id}/`, title: id });
 const NOW = 1000;
 /** What `mine` is after taking `theirs` in. */
-const taking = (mine, theirs, at = NOW) => takeIn(structuredClone(mine), theirs, theirs.gone, at);
+const taking = (mine, theirs, at = NOW) => takeIn(structuredClone(mine), theirs, at);
 /**
  * Each copy takes the other in. They must come to the same, whichever does
  * it first, and taking in again must change nothing. Returns what they come to.
  */
 function meet(a, b, at = NOW) {
   const [ra, rb] = [taking(a, b, at), taking(b, a, at)];
-  const told = (lib) => JSON.stringify([Object.keys(lib.trees).sort().map((id) => [id, lib.trees[id].name, outline(lib, id), quickOf(lib.trees[id])]), lib.nodes, planOf(lib), goneOf(lib)]);
-  const sorted = (lib) => ({ ...lib, nodes: Object.fromEntries(Object.entries(lib.nodes).sort()) });
-  assert.equal(told(sorted(ra)), told(sorted(rb)), 'the two come to the same');
-  assert.equal(told(sorted(taking(ra, rb, at))), told(sorted(ra)), 'and stay so');
-  assert.equal(hasNews(ra, ra.gone, rb, rb.gone, at), false, 'with nothing more to tell');
+  assert.equal(told(ra), told(rb), 'the two come to the same');
+  assert.equal(told(taking(ra, rb, at)), told(ra), 'and stay so');
+  assert.equal(hasNews(ra, rb, at), false, 'with nothing more to tell');
   assert.deepEqual(problems(ra), []);
   return ra;
+}
+/** What a library says, in one order whatever order it was put together in. */
+function told(lib) {
+  const trees = Object.keys(lib.trees).sort().map((id) => [id, lib.trees[id].name, outline(lib, id), quickOf(lib.trees[id]), Object.keys(lib.trees[id].collapsed).sort()]);
+  const nodes = Object.keys(lib.nodes).sort().map((id) => Object.entries(lib.nodes[id]).sort());
+  return JSON.stringify([trees, nodes, planOf(lib), goneOf(lib)]);
 }
 
 test('what each side added is all there, each where it was put', () => {
@@ -142,9 +146,9 @@ test('trees: made on either side, named by whoever named last, deleted by name a
   both = meet(c, d);
   assert.deepEqual(Object.keys(both.trees).sort(), ['main', 'work']);
   assert.deepEqual(both.trash.map((entry) => entry.node.id), ['h']);
-  does(d, 30, 'add', { tree: 'home', nodes: [page('new')] });
+  does(d, 30, 'add', { tree: 'home', nodes: [page('new')], target: 'h', position: 'inside' });
   both = meet(c, d, 40);
-  assert.equal(outline(both, 'home'), 'new'); // What its deleter never saw keeps the tree; what they knew of is gone.
+  assert.equal(outline(both, 'home'), 'new'); // What its deleter never saw keeps the tree; what they knew of is gone, as they said.
   assert.deepEqual(goneOf(both), ['h']);
 });
 
@@ -166,18 +170,18 @@ test('an operation stamps what it changed, and only that', () => {
   assert.deepEqual(Object.values(lib.nodes).map((node) => node.moved), [undefined, undefined, 10]); // Not the neighbours it passed.
   does(lib, 11, 'collapse', { tree: MAIN, id: 'a', collapsed: true });
   does(lib, 12, 'address', { id: 'b', url: 'https://typed/' });
-  assert.deepEqual([lib.nodes.a.at, lib.nodes.b.at, lib.nodes.b.seen, lib.nodes.a.moved], [11, 12, 12, undefined]);
+  assert.deepEqual([lib.trees[MAIN].folded, lib.nodes.a.at, lib.nodes.b.at, lib.nodes.b.seen, lib.nodes.a.moved], [11, undefined, 12, 12, undefined]); // A fold is the tree's, not the node's.
   does(lib, 13, 'tree-rename', { tree: MAIN, name: 'Named' });
   does(lib, 14, 'delete', { ids: ['a'] });
   assert.deepEqual([lib.trees[MAIN].at, lib.gone], [13, { a: 14 }]);
   does(lib, 15, 'restore', { tree: MAIN, ids: ['a'] });
-  assert.deepEqual([lib.nodes.a.at, lib.nodes.a.moved, lib.gone], [15, 15, {}]);
+  assert.deepEqual([lib.nodes.a.at, lib.nodes.a.moved, goneOf(lib)], [15, 15, []]);
 });
 
 /** A sync through a store that keeps whole libraries (GitHub), as the worker does it: take theirs in; save mine if it tells theirs anything. */
 function sync(me, cloud, at) {
   if (cloud.library) me.library = taking(me.library, cloud.library, at);
-  const news = !cloud.library || hasNews(cloud.library, cloud.library.gone, me.library, me.library.gone, at);
+  const news = !cloud.library || hasNews(cloud.library, me.library, at);
   if (news) cloud.library = structuredClone(me.library);
   return news;
 }
@@ -208,11 +212,100 @@ test("a tree's icon travels", () => {
   assert.equal(meet(a, b).trees[MAIN].icon, '🔥');
 });
 
-test('a diff is empty when nothing changed; a part of a library leaves a node out of the lists kept at hand too', () => {
-  const lib = library('a\nb\nc');
-  lib.trees[MAIN].quick = ['c', 'a'];
-  lib.plan = ['b', 'a'];
-  assert.equal(isEmpty(diff(lib, structuredClone(lib))), true);
-  const part = only(lib, new Set(['a', 'b']));
-  assert.deepEqual([quickOf(part.trees[MAIN]), planOf(part)], [['a'], ['b', 'a']]);
+test('a part of a library leaves a node out of the lists kept at hand too; taking it in leaves mine as they are for the rest', () => {
+  const [a, b] = two('a\nb\nc');
+  does(a, 5, 'quick', { tree: MAIN, ids: ['c', 'a'] });
+  does(a, 6, 'plan', { ids: ['b', 'c'] });
+  does(a, 7, 'collapse', { tree: MAIN, id: 'c', collapsed: true });
+  const whole = taking(b, a);
+  does(a, 10, 'quick', { tree: MAIN, ids: ['b'] });
+  does(a, 11, 'unplan', { ids: ['b'] });
+  does(a, 12, 'plan', { ids: ['a'] });
+  does(a, 13, 'collapse', { tree: MAIN, id: 'a', collapsed: true });
+  const part = only(a, new Set(['a', 'b']));
+  assert.deepEqual([quickOf(part.trees[MAIN]), planOf(part), part.trees[MAIN].collapsed], [['a', 'b'], ['a'], { a: true }]);
+  const mine = taking(whole, part);
+  assert.deepEqual([quickOf(mine.trees[MAIN]), planOf(mine), mine.trees[MAIN].collapsed], [['a', 'b', 'c'], ['a', 'c'], { c: true, a: true }]);
+});
+
+test('a page put into a group that was then moved stays in it, whatever the other computer moved later', () => {
+  const [a, b] = two('a\nb');
+  does(a, 10, 'group-add', { tree: MAIN, id: 'g', name: 'Group' });
+  does(a, 20, 'add', { tree: MAIN, nodes: [page('x')], target: 'g', position: 'inside' });
+  does(a, 30, 'move', { tree: MAIN, ids: ['g'], target: 'a', position: 'before' });
+  does(b, 40, 'move', { tree: MAIN, ids: ['b'], target: 'a', position: 'before' });
+  assert.equal(outline(meet(a, b)), 'b\ng\n  x\na');
+});
+
+test('folding is not a change to the node: a name given elsewhere before, and not heard of, stays', () => {
+  const [a, b] = two('a\n  x\nb\n  y');
+  does(b, 10, 'rename', { id: 'a', name: 'Named there' });
+  does(b, 11, 'collapse', { tree: MAIN, id: 'b', collapsed: true });
+  does(a, 20, 'collapse', { tree: MAIN, id: 'a', collapsed: true });
+  const both = meet(a, b);
+  assert.equal(both.nodes.a.name, 'Named there');
+  assert.deepEqual(both.trees[MAIN].collapsed, { a: true }); // The folds of a tree are one thing: as they were left where it was folded last.
+});
+
+test('a library kept by the version before this one, with no times in it: read, and what is done from now on wins', () => {
+  const old = () => ({ ...library('a\nb\nc'), version: 3, gone: { d: 5 }, trash: [] });
+  const [a, b] = [migrate(old()), migrate(old())];
+  b.nodes.b.restored = 7; // As that version marked a node brought back.
+  migrate(Object.assign(b, { version: 3 }));
+  assert.equal(b.nodes.b.at, 7);
+  does(a, 2100 * DAY, 'move', { tree: MAIN, ids: ['c'], target: 'a', position: 'before' });
+  does(a, 2100 * DAY + 1, 'delete', { ids: ['b'] });
+  const both = meet(a, b, 2100 * DAY + 2);
+  assert.equal(outline(both), 'c\na');
+});
+
+// Whatever is done on two computers, and whenever one hears of the other: they come to the same, and nothing
+// is lost that nobody deleted - nor by taking in a part of a library, which says nothing of the rest.
+test('any two histories come to the same, whichever copy takes the other in', () => {
+  let seed = 7;
+  const random = (n) => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff), seed % n);
+  const pick = (list) => list[random(list.length)];
+  for (let run = 0; run < 1000; run++) {
+    let [a, b] = two('p\n  q\n  r\ns\nt\n  u');
+    let [clock, made] = [10, 0];
+    const act = (lib) => {
+      const at = (clock += 1 + random(3));
+      const trees = Object.keys(lib.trees);
+      const tree = pick(trees);
+      const here = rowsOf(lib, tree, true).map((row) => row.id);
+      const [id, target] = [pick(here), pick(here)];
+      const all = [
+        () => does(lib, at, 'add', { tree, nodes: [page(`n${made++}`)], target, position: target && pick(['inside', 'before', 'after']) }),
+        () => id && does(lib, at, 'move', { tree, ids: [id], target, position: pick(['inside', 'before', 'after', 'first', 'end']) }),
+        () => id && does(lib, at, 'move', { tree: pick(trees), from: tree, ids: [id], position: 'end', take: random(2) === 0 }),
+        () => id && does(lib, at, 'rename', { id, name: `name ${at}` }),
+        () => id && does(lib, at, 'delete', { ids: [id] }),
+        () => id && does(lib, at, 'remove', { tree, ids: [id] }),
+        () => id && does(lib, at, 'indent', { tree, ids: [id] }),
+        () => id && does(lib, at, 'collapse', { tree, id, collapsed: random(2) === 0 }),
+        () => id && does(lib, at, 'quick', { tree, ids: [id] }),
+        () => id && does(lib, at, 'plan', { ids: [id] }),
+        () => lib.trash.length && does(lib, at, 'restore', { tree, ids: [pick(lib.trash).node.id] }),
+        () => does(lib, at, 'tree-add', { id: `t${made++}`, name: `Tree ${at}` }),
+        () => does(lib, at, 'tree-rename', { tree, name: `Tree ${at}` }),
+        () => trees.length > 1 && does(lib, at, 'tree-remove', { tree }),
+        () => id && Object.assign(lib.nodes[id], { title: `title ${at}`, seen: at }), // Its tab.
+      ];
+      pick(all)();
+      assert.deepEqual(problems(lib), []);
+    };
+    for (let step = random(12); step > 0; step--) act(pick([a, b]));
+    for (let round = random(4); round > 0; round--) {
+      if (random(2)) a = taking(a, b, clock);
+      else b = taking(b, a, clock);
+      for (let step = random(8); step > 0; step--) act(pick([a, b]));
+    }
+    const both = meet(a, b, clock + 100);
+    for (const id in a.nodes) if (b.nodes[id]) assert.ok(both.nodes[id], `${id}, which neither deleted, is there`);
+    const part = only(b, new Set(Object.keys(b.nodes).filter(() => random(3))));
+    const mine = taking(a, part, clock + 100);
+    assert.deepEqual(problems(mine), []);
+    for (const id in a.nodes) assert.ok(mine.nodes[id] || (!b.nodes[id] && b.gone[id] >= handOf(a.nodes[id])), `${id}, which they did not delete, is there`);
+    assert.equal(hasNews(mine, part, clock + 100), false);
+  }
 });

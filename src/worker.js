@@ -121,8 +121,6 @@ async function init() {
   expire(state.library, Date.now());
   await reconcile();
   await backUp();
-  const ch = await loadChannel();
-  [unsynced, met, newer] = [ch.unsynced ?? unsynced, !!ch.met, !!ch.newer];
 }
 
 // --- Facts from the browser ----------------------------------------------------
@@ -299,8 +297,7 @@ async function activate({ nodeId, treeId, windowId, where }) {
 // --- Keeping the library elsewhere ---------------------------------------------
 // Settings, in local storage under `sync`:
 //   { repo, token, path, api? }   where (see github.js)
-//   { version }                   the version last seen there
-//   { at, error }                 when that was; what went wrong the last time, if anything
+//   { at, error }                 when it was last synced; what went wrong the last time, if anything
 
 const SYNC_EVERY_MINUTES = 24 * 60;
 const loadSync = async () => (await chrome.storage.local.get('sync')).sync;
@@ -329,13 +326,22 @@ async function adopt(library, asked = false, deleted = false) {
 }
 
 /**
- * Brings this library and the saved one together: takes in what changed
- * there since the last time (see takeIn in merge.js), saves the result as
- * the next version. If someone saves in between, it starts over.
+ * Takes another copy of the library into this one, whatever carried it here
+ * (see takeIn in merge.js). What it deleted is closed here too.
+ */
+async function meet(theirs) {
+  const next = takeIn(structuredClone(state.library), theirs, Date.now());
+  if (JSON.stringify(next) !== JSON.stringify(state.library)) await adopt(next, false, true);
+}
+
+/**
+ * Brings this library and the one saved on GitHub together: takes that one
+ * in, and saves this one as the next version if that tells the saved one
+ * anything. If someone saves in between, it starts over.
  *
  * It waits for the network outside the queue - tabs go on being heard and
  * the panels answered meanwhile - and queues only what touches the state:
- * taking theirs in, and noting what was saved. One sync runs at a time.
+ * taking theirs in, and noting how it went. One sync runs at a time.
  */
 let syncing;
 const sync = () => (syncing ??= syncOnce().finally(() => (syncing = undefined)));
@@ -347,26 +353,20 @@ async function syncOnce() {
     for (let attempt = 1; ; attempt++) {
       const remote = await github.pull(settings);
       const theirs = remote && migrate(remote.library);
-      const news = remote && remote.version !== settings.version;
       const mine = await enqueue('sync: take in', async () => {
-        if (news) {
-          const next = takeIn(structuredClone(state.library), theirs, theirs.gone, Date.now());
-          if (JSON.stringify(next) !== JSON.stringify(state.library)) await adopt(next, false, true);
-        }
+        if (theirs) await meet(theirs);
         return core.shared(state.library);
       });
       if (mine === undefined) throw new Error('What was saved there could not be taken in.');
-      // Saved again only if that tells the saved one something.
-      const same = remote && !hasNews(theirs, theirs.gone, mine, mine.gone, Date.now());
-      let version = remote?.version;
+      const news = !theirs || hasNews(theirs, mine, Date.now());
       try {
-        if (!same) version = await github.push(settings, mine, version, `Tree: ${new Date().toISOString()}`);
+        if (news) await github.push(settings, mine, remote?.version, `Tree: ${new Date().toISOString()}`);
       } catch (error) {
         if (error instanceof github.Conflict && attempt < 3) continue;
         throw error;
       }
-      log('synced', same ? '(nothing to save)' : '(saved a version)', news ? '(took theirs in)' : '');
-      return await noteSync(settings, { version, at: Date.now(), error: undefined });
+      log('synced', news ? '(saved a version)' : '(nothing to save)');
+      return await noteSync(settings, { at: Date.now(), error: undefined });
     }
   } catch (error) {
     log('sync failed', error.message);
@@ -378,7 +378,8 @@ async function syncOnce() {
 const noteSync = (settings, outcome) =>
   enqueue('sync: note', async () => {
     const now = await loadSync();
-    if (now?.repo === settings.repo && now.api === settings.api) await saveSync({ ...now, ...outcome });
+    // (`version`, `base`: what older versions of the extension kept of the saved library. Nothing is kept of it now.)
+    if (now?.repo === settings.repo && now.api === settings.api) await saveSync({ ...now, ...outcome, version: undefined, base: undefined });
   });
 
 /** The versions one can go back to: those saved on GitHub, then this computer's backups. */
@@ -416,7 +417,7 @@ async function backUp() {
 }
 
 // The quick way between the user's computers (see channel.js), through the
-// storage the browser keeps in sync. What this computer knows of it is in
+// storage the browser keeps in sync. What this computer keeps of it is in
 // local storage under `channel`.
 
 const cells = {
@@ -424,43 +425,28 @@ const cells = {
   set: (items) => chrome.storage.sync.set(items),
   remove: (names) => chrome.storage.sync.remove(names),
 };
-const loadChannel = async () => {
-  const kept = (await chrome.storage.local.get('channel')).channel;
-  return kept ? channel.migrate(kept) : channel.newState(newId());
-};
-// How many pages do not fit in the synced storage: those this computer keeps to itself, and another one does.
-let unsynced = { here: 0, elsewhere: 0 };
-// Whether another computer has ever been seen in the synced storage: if not, nothing but this one holds the library there.
-let met = false;
-// Whether the snapshot there was written by a newer version of the extension: then nothing is synced until this one is updated.
-let newer = false;
+
 /**
- * Takes in what the other computers changed, and tells them what changed
- * here - in that order, in one turn of the queue: no tab is heard between
- * the two, and what is told is the library as it is after taking in. What
- * was taken in is saved before it counts as taken; whether there is
- * anything to tell is the channel's to say (it knows what the snapshot
- * there says), however often this runs.
+ * Takes in the snapshot the computers share, and writes this library there
+ * if that tells it anything - in that order, in one turn of the queue: no
+ * tab is heard between the two, and what is told is the library as it is
+ * after taking in. Nothing is kept of the snapshot taken: taking it in
+ * again changes nothing, so it does not matter when this stops or how
+ * often it runs.
  */
 async function exchange() {
   if (!loaded) return; // A library that could not be read must not be told to anyone, nor replaced behind the user's back.
-  const ch = await loadChannel();
+  const { channel: kept } = await chrome.storage.local.get('channel');
+  const ch = { device: kept?.device ?? newId(), same: kept?.same, here: kept?.here ?? 0 };
   try {
-    const next = structuredClone(state.library);
-    if (await channel.receive(cells, ch, next, Date.now())) {
-      await adopt(next, false, true);
-      await commit('exchange'); // Saved before the snapshot counts as taken in: else a crash here would skip it for good.
-      log('took in changes from another computer');
-    }
+    const theirs = await channel.read(cells);
+    if (theirs) await meet(theirs);
     core.keepFresh(state, Date.now());
     expire(state.library, Date.now()); // Here, not only at the start: so every computer lets a deletion go at the same age.
-    const mine = core.shared(state.library);
-    unsynced.here = await channel.publish(cells, ch, mine, Date.now());
-    unsynced.elsewhere = await channel.awayElsewhere(cells, ch);
-    [met, newer] = [!!ch.met, !!ch.newer];
-    await chrome.storage.local.set({ channel: { ...ch, unsynced } });
+    await channel.publish(cells, ch, core.shared(state.library), Date.now());
+    await chrome.storage.local.set({ channel: ch });
   } catch (error) {
-    log('exchange failed', error.message); // Tried again in a minute, from what was known before.
+    log('exchange failed', error.message); // Tried again in a minute.
   }
 }
 
@@ -478,8 +464,10 @@ async function handle(message, sender) {
       // The browser's two facts about a tab's sound: it makes some; the user has silenced it.
       const [audible, muted] = await Promise.all([chrome.tabs.query({ audible: true }), chrome.tabs.query({ muted: true })]);
       const nodesOf = (tabs) => tabs.map((tab) => state.binding[tab.id]?.node).filter(Boolean);
-      const { sync, savedToFileAt, warningClosedAt } = await chrome.storage.local.get(['sync', 'savedToFileAt', 'warningClosedAt']);
-      const safety = { nodes: Object.keys(library.nodes).length, sync, unsynced: unsynced.here, met, savedAt: savedToFileAt, closedAt: warningClosedAt, newer, now: Date.now() };
+      const { sync, channel: ch = {}, savedToFileAt, warningClosedAt } = await chrome.storage.local.get(['sync', 'channel', 'savedToFileAt', 'warningClosedAt']);
+      // How the last exchange with the other computers went (see channel.js).
+      const unsynced = { here: ch.here ?? 0, elsewhere: ch.elsewhere ?? 0 };
+      const safety = { nodes: Object.keys(library.nodes).length, sync, unsynced: unsynced.here, met: ch.met, savedAt: savedToFileAt, closedAt: warningClosedAt, newer: ch.newer, now: Date.now() };
       return {
         library,
         binding: state.binding,
@@ -545,7 +533,7 @@ async function handle(message, sender) {
       return { ...shown, hasToken: !!token };
     }
     case 'sync-set': {
-      // A new place starts from nothing in common; an empty token field keeps the token.
+      // What was noted of the old place says nothing of a new one; an empty token field keeps the token.
       const old = (await loadSync()) ?? {};
       const moved = old.repo !== message.repo || old.api !== message.api;
       const settings = { ...(moved ? {} : old), repo: message.repo, api: message.api, path: 'tree.json' };

@@ -24,13 +24,14 @@
 //   library.version  the shape all this is in: see migrate
 //
 // Two copies of a library are brought together by time (see takeIn in
-// merge.js), so what can differ between them says when it was last made so:
-//   node.at      when the user last changed the node itself: its name, icon,
-//                text, pin, its fold
-//   node.moved   when the user last gave it another place in a tree
-//   node.seen    when its tab last changed it: address, title, home, `touched`
-//   tree.at      when the user last changed the tree's name, icon or quick row
-//   grid.at, library.planAt   the same for the table of trees and the plan
+// merge.js), so what can differ between them says when the user last made
+// it so:
+//   node.at      the node itself: its name, icon, text, pin
+//   node.moved   its place in a tree (until it is moved: `added`)
+//   node.seen    not the user but its tab: address, title, home, `touched`
+//   tree.at      the tree's name, icon or quick row
+//   tree.folded  which of its nodes are folded
+//   grid.at, library.planAt   the table of trees, the plan
 // None of these is there until the first such change: then it counts as 0.
 //
 // A tree stores structure only: `children` maps a parent id (or ROOT) to the
@@ -310,13 +311,13 @@ export function forgetLoose(library, at) {
   }
 }
 
-/** The ids of what was deleted and has not come back, in order. */
+/** The ids of what was deleted and has not come back, in order. (A note of something that is there says nothing.) */
 export const goneOf = (library) => Object.keys(library.gone ?? {}).filter((id) => !library.nodes[id] && !library.trees[id]).sort();
 
-/** When the user last changed a node or a tree (0: never, as far as is known). */
-export const atOf = (thing) => thing?.at ?? 0;
-/** When the user last had a hand in a node at all: changed it, moved it, or added it. A deletion older than that did not know of it. */
-export const handOf = (node) => Math.max(node?.at ?? 0, node?.moved ?? 0, node?.added ?? 0);
+/** When the user last put a node where it is: moved it, or else added it. */
+export const placedOf = (node) => Math.max(node?.moved ?? 0, node?.added ?? 0);
+/** When the user last had a hand in a node at all: changed it or placed it (0: never, as far as is known). A deletion older than that did not know of it. */
+export const handOf = (node) => Math.max(node?.at ?? 0, placedOf(node));
 
 export const KEPT = 30 * DAY; // How long the trash and the notes of deletions are kept.
 /**

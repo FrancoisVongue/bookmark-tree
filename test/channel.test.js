@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DAY, MAIN, VERSION, createLibrary, goneOf, problems, rowsOf } from '../src/model.js';
 import { perform } from '../src/ops.js';
-import { apply, diff, mark } from '../src/merge.js';
-import { migrate, newState, publish, receive } from '../src/channel.js';
+import { apply, diff, mark, takeIn } from '../src/merge.js';
+import { publish, read } from '../src/channel.js';
 
 /** What the browser keeps in sync between computers, here in memory. `writes` counts the items written. */
 function sharedStore() {
@@ -22,16 +22,18 @@ let clock = 2100 * DAY;
 const tick = () => (clock += 1000);
 /** The user's operations, each stamped with the time it is done (or the time given). */
 const ops = new Proxy({}, { get: (_, name) => (library, args, at) => perform(library, name, args, at ?? tick()) });
-const computer = (name) => ({ ch: newState(name), library: createLibrary() });
+const computer = (name) => ({ ch: { device: name }, library: createLibrary() });
 /** A page added on day `day`. */
 const add = (who, id, day = 1000, target) =>
   ops.add(who.library, { tree: MAIN, nodes: [{ id, url: `https://${id}.example/`, title: id }], target, position: target && 'inside' }, day * DAY);
 const outline = (who, tree = MAIN) => rowsOf(who.library, tree, true).map((row) => '.'.repeat(row.depth) + row.id).join(' ');
-/** One round, as the worker does it: listen, then tell. */
+/** One round, as the worker does it: take in what is there, then tell. Returns how many pages stay here for want of room. */
 async function exchange(store, who, budget) {
-  await receive(store, who.ch, who.library, tick());
+  const theirs = await read(store);
+  if (theirs) takeIn(who.library, theirs, tick());
   assert.deepEqual(problems(who.library), []);
-  return publish(store, who.ch, who.library, tick(), budget);
+  await publish(store, who.ch, who.library, tick(), budget);
+  return who.ch.here;
 }
 const rounds = async (store, computers, budget) => {
   for (let n = 0; n < 3; n++) for (const who of computers) await exchange(store, who, budget);
@@ -358,6 +360,21 @@ test('my snapshot was replaced by one that did not know it, and nothing changed 
   assert.deepEqual([...atA.writes, ...atB.writes], []);
 });
 
+test('nothing is kept of the snapshot taken in: if what it brought was not saved here, it is taken in again', async () => {
+  const two = pair(['x']);
+  const { a, b, atA, atB } = two;
+  await inStep(two);
+  add(b, 'theirs', 2000);
+  await exchange(atB, b);
+  bring(atB, atA);
+  const saved = structuredClone(a.library);
+  await exchange(atA, a);
+  assert.equal(outline(a), 'x theirs');
+  a.library = saved; // The worker stopped before it saved the library; what it keeps of the channel, it had saved.
+  await exchange(atA, a);
+  assert.equal(outline(a), 'x theirs');
+});
+
 test('a deletion taken back by an undo comes back everywhere', async () => {
   const two = pair(['x', 'y']);
   const { a, b } = two;
@@ -376,22 +393,20 @@ test('a deletion taken back by an undo comes back everywhere', async () => {
   assert.deepEqual([a.library.trash, b.library.trash, goneOf(a.library), goneOf(b.library)], [[], [], [], []]);
 });
 
-test('what an older version left is read: its state here, its snapshot there', async () => {
+test('what the version before this one wrote there is read: with a clock, and a node marked as brought back', async () => {
   const two = pair(['x', 'y', 'z']);
   const { a, b, atA, atB } = two;
   await inStep(two);
   ops.rename(b.library, { id: 'x', name: 'Named on b' });
   ops.delete(b.library, { ids: ['z'] });
+  b.library.nodes.y.restored = tick();
   await exchange(atB, b);
-  // As the version before this one wrote it: with a clock, which nothing reads any more.
-  atB.cells.head.clock = { a: 3, b: 4 };
-  // And this computer has just been updated: what it kept of the channel is in the older shape, snapshots and clocks and all.
-  a.ch = migrate({ ...a.ch, clock: { a: 3, b: 3 }, told: { id: a.ch.head, clock: { a: 3 }, seen: '{}', gone: [] }, heard: { id: 'h', clock: {}, seen: '{}', gone: [] } });
-  assert.deepEqual(Object.keys(a.ch).sort(), ['at', 'device', 'head', 'met', 'newer', 'unsynced']);
+  Object.assign(atB.cells.head, { v: 1, version: 3, clock: { a: 3, b: 4 } });
   bring(atB, atA);
   await exchange(atA, a);
   assert.equal(outline(a), 'x y');
   assert.equal(a.library.nodes.x.name, 'Named on b');
+  assert.deepEqual([a.library.nodes.y.at, a.library.nodes.y.restored], [b.library.nodes.y.restored, undefined]);
   assert.deepEqual(a.library.trash.map((entry) => entry.node.id), ['z']);
   await settleDown(two);
   assert.equal(outline(b), 'x y');
@@ -436,11 +451,11 @@ test('a tree deleted there while a page was put into it here: what stays, stays 
   await exchange(atB, b);
   bring(atB, atA);
   await exchange(atA, a);
-  assert.equal(outline(a, 'work'), 'g .new');
+  assert.equal(outline(a, 'work'), 'new'); // What the deleter never saw keeps the tree; the group above it they did delete.
   await settleDown(two);
   await settleDown(two);
-  assert.equal(outline(a, 'work'), 'g .new');
-  assert.equal(outline(b, 'work'), 'g .new');
+  assert.equal(outline(a, 'work'), 'new');
+  assert.equal(outline(b, 'work'), 'new');
   atA.writes.length = atB.writes.length = 0;
   await settleDown(two);
   assert.deepEqual([...atA.writes, ...atB.writes], []);
