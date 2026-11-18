@@ -99,6 +99,14 @@ app.addEventListener('dblclick', (event) => {
 
 // Middle click, as on a tab: closes a live node's tab (the node stays,
 // asleep); on a node that is asleep already, takes it out of the tree.
+//
+// The press of the middle button is taken from the browser first. Left to
+// itself, over a tree long enough to scroll, the browser starts its own
+// scrolling by that button (or, elsewhere, pastes) - and then the click
+// never comes.
+app.addEventListener('mousedown', (event) => {
+  if (event.button === 1 && event.target.closest('.row, .quick [data-entry]')) event.preventDefault();
+});
 app.addEventListener('auxclick', (event) => {
   const id = idAt(event.target);
   const pane = paneAt(event.target);
