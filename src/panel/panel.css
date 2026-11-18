@@ -966,25 +966,40 @@ button.snd:hover {
   flex: 1;
 }
 /*
- * What stands over the trees, above the strips at the bottom, whatever they
- * are: one column that grows upwards from there. At its foot the pages that
- * play out of sight, which stay; on top of them the notice of what was done,
- * which passes - so neither covers the other, and what stays keeps its place.
+ * What was just done, and the pages that play out of sight, are said at the
+ * very bottom of the panel, in room of their own under everything else: the
+ * trees above give way, and nothing lies over a row. The room opens and
+ * closes softly (a grid row from nothing to its content's height), so the
+ * tree slides instead of jumping.
  */
 .toasts {
   flex: none;
-  position: relative;
-  bottom: 12px;
-  z-index: 15;
-  height: 0;
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.18s ease-out;
+}
+.toasts.open {
+  grid-template-rows: 1fr;
+}
+.toasts > div {
+  min-height: 0;
+  overflow: hidden;
+}
+.toasts .said {
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
   align-items: center;
   gap: 6px;
+  padding: 6px 0 8px;
 }
-.toasts > * {
+.toasts .bubble {
   flex: none;
+  box-shadow: none; /* It lies on the panel now, it does not float over it. */
+}
+@media (prefers-reduced-motion: reduce) {
+  .toasts {
+    transition: none;
+  }
 }
 /*
  * The pages that play out of sight: one shape of the notice's kind (`.bubble`

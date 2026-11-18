@@ -540,7 +540,6 @@ export function draw(container, ui) {
       </header>
       ${planView(ui)}
       <main class="panes split-${ui.split}">${repeat(ui.panes, (pane) => pane.id, (pane, index) => paneView(pane, index, ui))}</main>
-      <div class="toasts">${ui.toast ? toastView(ui.toast) : nothing}${soundsView(ui)}</div>
       ${journalView(ui)}
       ${ui.notice
         ? html`<footer class="notice">
@@ -549,6 +548,9 @@ export function draw(container, ui) {
             ${act('notice-close', 'close', t('closeNotice'), 'shown')}
           </footer>`
         : nothing}
+      <div class="toasts ${ui.toast || ui.sounds.ids.length ? 'open' : ''}">
+        <div><div class="said">${ui.toast ? toastView(ui.toast) : nothing}${soundsView(ui)}</div></div>
+      </div>
 
       ${ui.drag?.label ? html`<div class="ghost">${ui.drag.label}</div>` : nothing}
       ${ui.overlay ? OVERLAYS[ui.overlay.kind](ui) : nothing}
