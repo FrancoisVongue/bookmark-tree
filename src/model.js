@@ -17,9 +17,11 @@
 //   library.plan   [nodeId]  what the user means to open next, in order
 //   library.trash  [{ node, at }]  nodes the user deleted, newest last; they
 //                  are in no tree and can be put back for a while
-//   library.gone   { [nodeId]: day }  what was deleted, and the day it was: so
-//                  that other computers can be told (see channel.js). It is
-//                  not the trash: emptying the trash leaves it as it is.
+//   library.gone   { [nodeId]: time }  what was deleted, and when: so that
+//                  other copies of the library can be told (merge.js). It is
+//                  not the trash: emptying the trash leaves it as it is. A
+//                  node that comes back is marked with the time it did
+//                  (`restored`), and the note of its deletion goes.
 //   library.version  the shape all this is in: see migrate
 //
 // A tree stores structure only: `children` maps a parent id (or ROOT) to the
@@ -173,7 +175,9 @@ export function gridOf(library) {
 export function migrate(library) {
   library.trash ??= [];
   // Before deletions were kept apart, the trash was all that told of them.
-  library.gone ??= Object.fromEntries(library.trash.map((entry) => [entry.node.id, Math.floor(entry.at / DAY)]));
+  library.gone ??= Object.fromEntries(library.trash.map((entry) => [entry.node.id, entry.at]));
+  // Deletions used to be noted to the day. As times, they are that day's last moment: what was there that day stays deleted.
+  for (const id in library.gone) if (library.gone[id] < 1e11) library.gone[id] = (library.gone[id] + 1) * DAY - 1;
   // Before every page had a home, having one meant being pinned to it.
   if (!library.version) for (const node of Object.values(library.nodes)) if (node.home) node.pinned = true;
   for (const node of Object.values(library.nodes)) delete node.keep; // A mark an older version had ("keep in sight when folded").
@@ -283,7 +287,7 @@ export function forgetLoose(library, at) {
     if (held.has(id)) continue;
     if (at !== undefined) {
       library.trash.push({ node: library.nodes[id], at });
-      (library.gone ??= {})[id] = Math.floor(at / DAY);
+      (library.gone ??= {})[id] = at;
     }
     delete library.nodes[id];
   }
@@ -291,6 +295,23 @@ export function forgetLoose(library, at) {
 
 /** The ids of what was deleted and has not come back, in order. */
 export const goneOf = (library) => Object.keys(library.gone ?? {}).filter((id) => !library.nodes[id]).sort();
+
+/** When a node came to be as it is: was added, or came back after being deleted. A deletion older than that is not about it. */
+export const bornOf = (node) => Math.max(node.added ?? 0, node.restored ?? 0);
+
+/**
+ * Nodes that were deleted and are here again - put back from the trash, or
+ * by an undo, or with a whole library from before - are marked as restored
+ * at time `at`, and the notes of their deletion go. So every other copy can
+ * tell which is later, the deletion or the node (see takeIn in merge.js).
+ */
+export function revive(library, at) {
+  for (const id in library.gone ?? {}) {
+    if (!library.nodes[id]) continue;
+    library.nodes[id].restored = at;
+    delete library.gone[id];
+  }
+}
 
 const KEPT_DAYS = 30;
 /**
@@ -300,7 +321,7 @@ const KEPT_DAYS = 30;
  */
 export function expire(library, at) {
   library.trash = library.trash.filter((entry) => entry.at > at - KEPT_DAYS * DAY);
-  library.gone = Object.fromEntries(goneOf(library).filter((id) => library.gone[id] > Math.floor(at / DAY) - KEPT_DAYS).map((id) => [id, library.gone[id]]));
+  library.gone = Object.fromEntries(goneOf(library).filter((id) => library.gone[id] > at - KEPT_DAYS * DAY).map((id) => [id, library.gone[id]]));
 }
 
 /**

@@ -4,16 +4,21 @@
 // part is kept: the pages used most recently, with the pages above them in
 // the trees. The rest stays on the computers that have it.
 //
-// So a snapshot may be a part of a library, and two rules follow:
+// So a snapshot may be a part of a library: what it does not mention, it
+// says nothing about. How a snapshot is taken into a library is merge.js's
+// to say (takeIn); what this file adds is which earlier snapshot to measure
+// it against, and when to write one:
 //
-// - What a snapshot does not mention, it says nothing about. A page is
-//   deleted elsewhere only when a snapshot says so by name (`gone`).
-// - A computer learns what changed elsewhere by comparing a snapshot with
-//   one both sides have seen. Each snapshot carries a clock - how many
-//   snapshots of each computer went into it - so a computer can tell
-//   whether a snapshot was made knowing the one it last saw, however many
-//   it has missed since. Without such a common past the two libraries are
-//   simply put together.
+// - There is one place for the snapshot, and both computers write it about
+//   once a minute: they overwrite each other all the time. So each snapshot
+//   carries a clock - how many snapshots of each computer went into it - and
+//   a computer keeps the last snapshot it wrote and the last it took in,
+//   each with its own clock. A snapshot that arrives is measured against the
+//   newer of those two that it was made knowing; against nothing, if it
+//   knew neither (then only what is missing here is added).
+// - A computer writes when it has something the snapshot there does not
+//   say - whoever's that snapshot is. If its own was overwritten by one
+//   that did not know it, it says it again.
 //
 // No work is done twice: pages are grouped by the month they were last
 // used, each group is squeezed apart and stored under the name of its
@@ -24,23 +29,32 @@
 //     p.<name>       a piece of squeezed text (a group may take several)
 //     away.<device>  how many pages that computer keeps to itself
 //   kept on this computer (`ch`):
-//     { device, head, clock, seen, gone, before: { clock, seen }, met }
-//       head, clock, seen, gone   the snapshot last taken in or written: its id and
-//                                 clock, its library (JSON), the deletions it named
-//       before                    the last snapshot taken in from elsewhere: what
-//                                 my own ones since were made from
-//       met                       whether another computer was ever seen there
+//     { device, clock, head, told, heard, at, met }
+//       clock         every snapshot I know of, joined: my next one counts from it
+//       head          the id of the snapshot there, as far as I know
+//       told, heard   the last snapshot I wrote, the last I took in, each as
+//                     { id, clock, seen, gone }: its library (JSON), the deletions it named
+//       at            { head, library, hidden } when I last looked whether to write: the snapshot there,
+//                     my library (by a short name of its text); nothing changed since, nothing to do
+//       met           whether another computer was ever seen there
 
 import { ROOT, freshOf, goneOf, kidsOf, lettersOf, parentsOf, planOf, quickOf } from './model.js';
-import { EMPTY, diff, isEmpty, only, takeIn } from './merge.js';
+import { diff, isEmpty, only, takeIn } from './merge.js';
 
 export const BUDGET = 90_000; // Of the 102,400 bytes the browser allows.
 const PIECE = 7000; // The browser allows 8192 per item, its name included.
 const MONTH = 30;
 
-export const newState = (device) => ({ device, gone: [], clock: {} });
-/** What an older version kept of the channel, in today's shape. The one place that knows the old ones. */
-export const migrate = ({ mine, ...ch }) => ({ ...newState(ch.device), ...ch });
+export const newState = (device) => ({ device, clock: {} });
+/**
+ * What an older version kept of the channel, in today's shape. The one place that knows the old ones:
+ * they kept one snapshot (`seen`, `gone`) under a clock joined from all they knew, and the one before it.
+ */
+export function migrate({ seen, gone, before, mine, ...ch }) {
+  if (!seen) return { ...newState(ch.device), ...ch };
+  const heard = before?.seen ? { clock: before.clock, seen: before.seen, gone: [] } : undefined;
+  return { ...ch, told: { id: ch.head, clock: ch.clock, seen, gone: gone ?? [] }, heard };
+}
 
 /** Whether a snapshot with clock `later` was made knowing the one with clock `earlier`. */
 const knows = (later, earlier) => Object.entries(earlier ?? {}).every(([device, n]) => (later?.[device] ?? 0) >= n);
@@ -113,12 +127,13 @@ async function encode(library, ids, gone) {
   });
   const items = {};
   const plan = planOf(part).map((id) => number.get(id));
-  const top = { trees, grid: part.grid, gone, ...(plan.length && { plan }) };
+  // (The deletions: ids, and apart the time of each, in the same order - so a version that knows only the ids still reads them.)
+  const top = { trees, grid: part.grid, gone: Object.keys(gone), goneAt: Object.values(gone), ...(plan.length && { plan }) };
   const head = { v: 1, top: await store(top, items), months: [] };
   for (const nodes of months.values()) head.months.push(await store(nodes, items));
   head.id = await nameOf(JSON.stringify(head));
   const size = Object.entries(items).reduce((sum, [name, piece]) => sum + name.length + piece.length + 2, JSON.stringify(head).length + 40);
-  return { head, items, size, library: part, gone, hidden: Object.keys(library.nodes).length - ids.size };
+  return { head, items, size, library: part, gone: Object.keys(gone), hidden: Object.keys(library.nodes).length - ids.size };
 }
 
 /**
@@ -126,7 +141,7 @@ async function encode(library, ids, gone) {
  * `budget` bytes, else as many of its freshest nodes as do.
  */
 export async function snapshot(library, budget = BUDGET) {
-  const gone = goneOf(library);
+  const gone = Object.fromEntries(goneOf(library).map((id) => [id, library.gone[id]]));
   const fresh = Object.values(library.nodes)
     .sort((a, b) => freshOf(b) - freshOf(a) || (a.id < b.id ? -1 : 1))
     .map((node) => node.id);
@@ -144,7 +159,10 @@ export async function snapshot(library, budget = BUDGET) {
   return best;
 }
 
-/** The snapshot in the synced storage (`all` is everything there): { id, parent, library, gone }, if it is there in full. */
+/**
+ * The snapshot in the synced storage (`all` is everything there), if it is there in full:
+ * { id, clock, library, gone: [id], goneAt: { id: when } } (no `goneAt`, if an older version wrote it).
+ */
 async function read(all) {
   const { head } = all;
   const top = head && (await load(head.top, all));
@@ -164,15 +182,18 @@ async function read(all) {
   const library = { nodes: Object.fromEntries(nodes.map((node) => [node.id, node])), trees: Object.fromEntries(trees.map((tree) => [tree.id, tree])), trash: [] };
   if (top.grid) library.grid = top.grid;
   if (top.plan) library.plan = top.plan.map((n) => nodes[n].id);
-  return { id: head.id, clock: head.clock, library, gone: top.gone };
+  const goneAt = top.goneAt && Object.fromEntries(top.gone.map((id, n) => [id, top.goneAt[n]]));
+  return { id: head.id, clock: head.clock, library, gone: top.gone, goneAt };
 }
 
 // --- The exchange --------------------------------------------------------------
 // `cells` is the synced storage: { get() -> everything, set(items), remove(names) }.
 
-const parsed = (json) => (json ? JSON.parse(json) : EMPTY);
 /** What changed from `base` to the snapshot `next`, as far as `next` speaks of it. */
 const changes = (base, next) => diff(only(base, new Set(Object.keys(next.nodes))), next);
+
+/** The snapshots I keep, the newer first: the one there as far as I know, then the other. */
+const kept = (ch) => (ch.told?.id === ch.head ? [ch.told, ch.heard] : [ch.heard, ch.told]).filter(Boolean);
 
 /**
  * Takes in what another computer wrote, if anything new is there. Changes
@@ -181,38 +202,42 @@ const changes = (base, next) => diff(only(base, new Set(Object.keys(next.nodes))
 export async function receive(cells, ch, library, at) {
   const remote = await read(await cells.get());
   if (!remote || remote.id === ch.head) return false;
-  // Made knowing the snapshot I have, or at least the last one I took in (we both wrote since)?
-  // Else we share no past: a first meeting.
-  const base = knows(remote.clock, ch.clock) ? ch.seen : ch.before && knows(remote.clock, ch.before.clock) ? ch.before.seen : undefined;
+  // What they changed is measured from a snapshot they knew when they made theirs.
+  const base = kept(ch).find((snapshot) => knows(remote.clock, snapshot.clock));
+  // (A version that told deletions without their times: those it had not named before are taken as made now.)
+  const gone = remote.goneAt ?? Object.fromEntries(remote.gone.filter((id) => !base?.gone.includes(id)).map((id) => [id, at]));
   const was = JSON.stringify(library);
-  takeIn(library, base && JSON.parse(base), remote.library, remote.gone.filter((id) => !ch.gone.includes(id)), at);
-  // The clocks join: what I wrote meanwhile is still to be told, on top of this.
-  const clock = { ...remote.clock };
-  for (const [device, n] of Object.entries(ch.clock)) clock[device] = Math.max(clock[device] ?? 0, n);
-  const seen = JSON.stringify(remote.library);
-  // Kept twice: what I write next is made from this, and whoever wrote at the same time made theirs from it too.
-  Object.assign(ch, { head: remote.id, clock, seen, gone: remote.gone, before: { clock, seen } });
+  takeIn(library, base && JSON.parse(base.seen), remote.library, gone, at);
+  for (const [device, n] of Object.entries(remote.clock ?? {})) ch.clock[device] = Math.max(ch.clock[device] ?? 0, n);
+  ch.heard = { id: remote.id, clock: remote.clock, seen: JSON.stringify(remote.library), gone: remote.gone };
+  ch.head = remote.id;
   return JSON.stringify(library) !== was;
 }
 
 /**
  * Writes this computer's library (see `snapshot`) if it has anything the
- * snapshot last seen does not. Returns how many pages do not fit and stay here.
+ * snapshot there does not say. Returns how many pages do not fit and stay here.
  */
 export async function publish(cells, ch, library, budget) {
-  const mine = await snapshot(library, budget);
-  const news = !isEmpty(changes(parsed(ch.seen), mine.library)) || mine.gone.some((id) => !ch.gone.includes(id));
   const all = await cells.get();
+  // Nothing changed here, and the snapshot there is the one I knew then: nothing to say that was not said.
+  const now = { head: all.head?.id, library: await nameOf(JSON.stringify(library)) };
+  if (ch.at && now.head === ch.at.head && now.library === ch.at.library) return ch.at.hidden;
+  const mine = await snapshot(library, budget);
+  const [there] = kept(ch);
+  const news = !there || !isEmpty(changes(JSON.parse(there.seen), mine.library)) || mine.gone.some((id) => !there.gone.includes(id));
   if (news) {
     // Pieces nobody points at any more go first, to make room; then the new ones, with the head.
     const stale = Object.keys(all).filter((name) => !name.startsWith('away.') && !(name in mine.items));
     const unwritten = Object.fromEntries(Object.entries(mine.items).filter(([name]) => !(name in all)));
     await cells.remove(stale);
-    const clock = { ...ch.clock, [ch.device]: (ch.clock[ch.device] ?? 0) + 1 };
-    await cells.set({ ...unwritten, head: { ...mine.head, clock } });
-    Object.assign(ch, { head: mine.head.id, clock, seen: JSON.stringify(mine.library), gone: mine.gone });
+    ch.clock = { ...ch.clock, [ch.device]: (ch.clock[ch.device] ?? 0) + 1 };
+    await cells.set({ ...unwritten, head: { ...mine.head, clock: ch.clock } });
+    ch.told = { id: mine.head.id, clock: ch.clock, seen: JSON.stringify(mine.library), gone: mine.gone };
+    ch.head = mine.head.id;
   }
   if (all[`away.${ch.device}`] !== mine.hidden) await cells.set({ [`away.${ch.device}`]: mine.hidden });
+  ch.at = { head: news ? ch.head : now.head, library: now.library, hidden: mine.hidden };
   return mine.hidden;
 }
 

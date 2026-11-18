@@ -4,7 +4,7 @@
 // below: open a tab, show one, close some, send one to an address, give one
 // a window of its own, silence one. It never reorders tabs.
 
-import { descendantsOf, expire, goneOf, isGroup, isNote, migrate, newId, problems, treeFor, validTree } from './model.js';
+import { descendantsOf, expire, isGroup, isNote, migrate, newId, problems, revive, treeFor, validTree } from './model.js';
 import { QUIET, ops } from './ops.js';
 import { apply, diff, takeIn } from './merge.js';
 import * as github from './github.js';
@@ -70,6 +70,8 @@ function enqueue(name, task) {
 
 let saved = { library: '', session: '' };
 async function commit(name) {
+  // Whatever brought a deleted node back - the trash, an undo, a backup - it is marked as back, here, where every change passes.
+  if (loaded) revive(state.library, Date.now());
   const library = JSON.stringify(state.library);
   const { binding, windows, attention, journal } = state;
   const session = JSON.stringify({ binding, windows, attention, journal, undo, redo });
@@ -343,8 +345,7 @@ async function syncOnce() {
         if (news) {
           const base = settings.base && JSON.parse(settings.base);
           const theirs = migrate(remote.library);
-          const told = goneOf(theirs).filter((id) => !(id in (base?.gone ?? {})));
-          const next = takeIn(structuredClone(state.library), base, theirs, told, Date.now());
+          const next = takeIn(structuredClone(state.library), base, theirs, theirs.gone, Date.now());
           if (JSON.stringify(next) !== JSON.stringify(state.library)) await adopt(next);
         }
         return JSON.stringify(core.shared(state.library));
@@ -425,10 +426,14 @@ const loadChannel = async () => {
 let unsynced = { here: 0, elsewhere: 0 };
 // Whether another computer has ever been seen in the synced storage: if not, nothing but this one holds the library there.
 let met = false;
-// The library as it was when last told to the others (JSON): telling the same again is skipped.
-let published;
-
-/** Takes in what the other computers changed, and tells them what changed here. */
+/**
+ * Takes in what the other computers changed, and tells them what changed
+ * here - in that order, in one turn of the queue: no tab is heard between
+ * the two, and what is told is the library as it is after taking in. What
+ * was taken in is saved before it counts as taken; whether there is
+ * anything to tell is the channel's to say (it knows what the snapshot
+ * there says), however often this runs.
+ */
 async function exchange() {
   if (!loaded) return; // A library that could not be read must not be told to anyone, nor replaced behind the user's back.
   const ch = await loadChannel();
@@ -441,8 +446,7 @@ async function exchange() {
     }
     core.keepFresh(state, Date.now());
     const mine = core.shared(state.library);
-    if (JSON.stringify(mine) !== published) unsynced.here = await channel.publish(cells, ch, mine);
-    published = JSON.stringify(mine);
+    unsynced.here = await channel.publish(cells, ch, mine);
     unsynced.elsewhere = await channel.awayElsewhere(cells, ch);
     met = !!ch.met;
     await chrome.storage.local.set({ channel: { ...ch, unsynced } });

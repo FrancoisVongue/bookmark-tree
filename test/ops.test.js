@@ -221,15 +221,20 @@ test('a deletion is noted apart from the trash: emptying the trash keeps it, a r
   const DAY = 24 * 3600 * 1000;
   ops.delete(lib, { ids: ['a', 'b'] }, 10 * DAY);
   ops.remove(lib, { tree: MAIN, ids: ['c'] }, 20 * DAY);
-  assert.deepEqual(lib.gone, { a: 10, b: 10, c: 20 });
-  ops.restore(lib, { tree: MAIN, ids: ['b'] });
+  assert.deepEqual(lib.gone, { a: 10 * DAY, b: 10 * DAY, c: 20 * DAY });
+  ops.restore(lib, { tree: MAIN, ids: ['b'] }, 21 * DAY);
+  assert.equal(lib.nodes.b.restored, 21 * DAY); // So other copies can tell it came back after it was deleted.
   ops['trash-empty'](lib);
   assert.deepEqual(goneOf(lib), ['a', 'c']);
   expire(lib, 41 * DAY); // a was deleted 31 days ago, c 21.
-  assert.deepEqual(lib.gone, { c: 20 });
+  assert.deepEqual(lib.gone, { c: 20 * DAY });
   // A library from before deletions were noted: its trash is what tells of them.
-  const older = { nodes: {}, trees: lib.trees, trash: [{ node: { id: 'z' }, at: 3 * DAY }] };
-  assert.deepEqual(migrate(older).gone, { z: 3 });
+  const older = { nodes: {}, trees: lib.trees, trash: [{ node: { id: 'z' }, at: 20_000 * DAY + 5 }] };
+  assert.deepEqual(migrate(older).gone, { z: 20_000 * DAY + 5 });
+  // One from when they were noted to the day: as a time, the last moment of that day.
+  const byDay = { nodes: {}, trees: lib.trees, trash: [], gone: { y: 20_000 } };
+  assert.deepEqual(migrate(byDay).gone, { y: 20_001 * DAY - 1 });
+  assert.deepEqual(migrate(byDay).gone, { y: 20_001 * DAY - 1 });
 });
 
 test('going home: the page is back at the address it first had, and its tab is asked to go there', () => {

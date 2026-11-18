@@ -4,9 +4,8 @@ import { MAIN, ROOT, addNode, createLibrary, goneOf, planOf, problems, quickOf, 
 import { ops } from '../src/ops.js';
 import { apply, diff, isEmpty, only, takeIn } from '../src/merge.js';
 
-/** My library after taking in theirs, as the worker does it for GitHub: what they deleted since `base` is told by their `gone`. */
-const merge = (base, mine, theirs, at) =>
-  takeIn(structuredClone(mine), base, theirs, goneOf(theirs).filter((id) => !(id in (base?.gone ?? {}))), at);
+/** My library after taking in theirs, as the worker does it for GitHub: what they deleted is told by their `gone`. */
+const merge = (base, mine, theirs, at) => takeIn(structuredClone(mine), base, theirs, theirs.gone ?? {}, at);
 
 function library(outline) {
   const lib = createLibrary();
@@ -62,11 +61,26 @@ test('what they deleted goes to my trash even if I changed it: as I left it, to 
   assert.deepEqual(out.trash.map((entry) => entry.node.name), ['Keep me']);
 });
 
-test('both renamed the same node: theirs is taken, whatever carried it here', () => {
+test('both renamed the same node: neither is undone by the other, who did not know; the one told last, knowing, stands', () => {
   const [base, mine, theirs] = three('a');
   ops.rename(mine, { id: 'a', name: 'Mine' });
   ops.rename(theirs, { id: 'a', name: 'Theirs' });
-  assert.equal(merge(base, mine, theirs, 1).nodes.a.name, 'Theirs');
+  const kept = merge(base, mine, theirs, 1);
+  assert.equal(kept.nodes.a.name, 'Mine');
+  // Then they hear of mine, made knowing theirs: nothing of theirs has changed since, so mine it is.
+  assert.equal(merge(theirs, theirs, kept, 2).nodes.a.name, 'Mine');
+});
+
+test('with no past in common, only what is missing is added: nothing here is moved, renamed, folded or removed', () => {
+  const mine = library('a\n  b\nc');
+  const theirs = library('c\nb\na\nnew');
+  ops.rename(mine, { id: 'a', name: 'Mine' });
+  ops.rename(theirs, { id: 'a', name: 'Theirs' });
+  ops.rename(theirs, { id: 'c', name: 'Named there only' });
+  ops.collapse(mine, { tree: MAIN, id: 'a', collapsed: true });
+  const out = merge(undefined, mine, theirs, 1);
+  assert.equal(outline(out), 'a\n  b\nnew\nc'); // The new one goes after the node it stands after there.
+  assert.deepEqual([out.nodes.a.name, out.nodes.c.name, out.trees[MAIN].collapsed.a], ['Mine', 'Named there only', true]);
 });
 
 /** A sync through a store that keeps whole libraries (GitHub), as the worker does it: take theirs in, save mine. */
@@ -88,7 +102,7 @@ test('through a store of whole libraries: a deletion arrives, a restore from the
   assert.equal(outline(b.library), 'x\ny');
   assert.deepEqual(b.library.trash.map((entry) => entry.node.id), ['c']);
   // b wants it back.
-  ops.restore(b.library, { tree: MAIN, ids: ['c'] });
+  ops.restore(b.library, { tree: MAIN, ids: ['c'] }, 5.5);
   sync(b, cloud, 6);
   sync(a, cloud, 7);
   assert.equal(outline(a.library), 'x\ny\nc');

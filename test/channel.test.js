@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DAY, MAIN, createLibrary, problems, rowsOf } from '../src/model.js';
+import { DAY, MAIN, createLibrary, goneOf, problems, revive, rowsOf } from '../src/model.js';
 import { ops } from '../src/ops.js';
-import { newState, publish, receive } from '../src/channel.js';
+import { apply, diff } from '../src/merge.js';
+import { migrate, newState, publish, receive } from '../src/channel.js';
 
 /** What the browser keeps in sync between computers, here in memory. `writes` counts the items written. */
 function sharedStore() {
@@ -23,7 +24,7 @@ const add = (who, id, day = 1000, target) =>
 const outline = (who, tree = MAIN) => rowsOf(who.library, tree, true).map((row) => '.'.repeat(row.depth) + row.id).join(' ');
 /** One round, as the worker does it: listen, then tell. */
 async function exchange(store, who, budget) {
-  await receive(store, who.ch, who.library, 1);
+  await receive(store, who.ch, who.library, 3000 * DAY); // (Now: later than anything in these tests.)
   assert.deepEqual(problems(who.library), []);
   return publish(store, who.ch, who.library, budget);
 }
@@ -54,7 +55,7 @@ test('a removal, a rename and a move arrive; what was restored is not removed ag
   const [a, b] = [computer('a'), computer('b')];
   for (const id of ['x', 'y', 'z']) add(a, id);
   await rounds(store, [a, b]);
-  ops.delete(a.library, { ids: ['y'] }, 5);
+  ops.delete(a.library, { ids: ['y'] }, 2000 * DAY);
   ops.rename(a.library, { id: 'x', name: 'Mine' });
   ops.move(b.library, { tree: MAIN, ids: ['z'], target: 'x', position: 'before' });
   await rounds(store, [a, b]);
@@ -62,7 +63,7 @@ test('a removal, a rename and a move arrive; what was restored is not removed ag
   assert.equal(outline(a), 'z x');
   assert.equal(b.library.nodes.x.name, 'Mine');
   assert.deepEqual(b.library.trash.map((entry) => entry.node.id), ['y']);
-  ops.restore(b.library, { tree: MAIN, ids: ['y'] });
+  ops.restore(b.library, { tree: MAIN, ids: ['y'] }, 2001 * DAY);
   await rounds(store, [a, b]);
   assert.equal(outline(a), 'z x y');
   assert.equal(outline(b), 'z x y');
@@ -225,7 +226,7 @@ test('what was deleted stays deleted: an emptied trash, a computer back from afa
   await rounds(store, [a, b]);
   const old = structuredClone(a.library); // A backup from before, still with c.
   // b goes away. a deletes c, empties the trash, and goes on writing.
-  ops.delete(a.library, { ids: ['c'] }, 5 * DAY);
+  ops.delete(a.library, { ids: ['c'] }, 2000 * DAY);
   ops['trash-empty'](a.library);
   await exchange(store, a);
   add(a, 'n');
@@ -243,4 +244,154 @@ test('what was deleted stays deleted: an emptied trash, a computer back from afa
   await rounds(store, [late, a]);
   assert.equal(outline(a), 'x y n');
   assert.equal(outline(late), 'x y n');
+});
+
+// --- Two computers that are both on ----------------------------------------------
+// Each has the synced storage as it has reached it; `bring` is the browser
+// carrying one's writes to the other, some time later. Both write about once
+// a minute (their own tabs see to that), so their snapshots cross all the time.
+
+function pair(ids) {
+  const [a, b] = [computer('a'), computer('b')];
+  const [atA, atB] = [sharedStore(), sharedStore()];
+  for (const id of ids) add(a, id);
+  return { a, b, atA, atB };
+}
+/** The browser brings what one computer wrote to the other: the later write is what stays. */
+function bring(from, to) {
+  for (const key in to.cells) delete to.cells[key];
+  Object.assign(to.cells, structuredClone(from.cells));
+}
+/** Both in step, to start from. */
+async function inStep({ a, b, atA, atB }) {
+  for (let n = 0; n < 2; n++) {
+    await exchange(atA, a);
+    bring(atA, atB);
+    await exchange(atB, b);
+    bring(atB, atA);
+  }
+}
+/** Time enough for everything to reach everyone. */
+const settleDown = (two) => inStep(two);
+
+test('deleted here while the page changed there: it stays deleted, on both', async () => {
+  const two = pair(['x', 'y']);
+  const { a, b, atA, atB } = two;
+  await inStep(two);
+  b.library.nodes.x.title = 'A new title'; // x is open in a tab there.
+  ops.delete(a.library, { ids: ['x'] }, 2000 * DAY);
+  await exchange(atB, b); // b tells of the title; it has not heard of the deletion.
+  bring(atB, atA);
+  await exchange(atA, a);
+  assert.equal(outline(a), 'y');
+  await settleDown(two);
+  assert.equal(outline(a), 'y');
+  assert.equal(outline(b), 'y');
+});
+
+test('moved here while a tab opened next to it there: it stays where it was moved', async () => {
+  const two = pair(['x', 'y', 'z']);
+  const { a, b, atA, atB } = two;
+  await inStep(two);
+  ops.move(a.library, { tree: MAIN, ids: ['z'], target: 'x', position: 'inside' });
+  ops.add(b.library, { tree: MAIN, nodes: [{ id: 'n', url: 'https://n.example/', title: 'n' }], target: 'y', position: 'after' }, 2000 * DAY);
+  await exchange(atB, b);
+  bring(atB, atA);
+  await exchange(atA, a);
+  assert.equal(outline(a), 'x .z y n');
+  await settleDown(two);
+  assert.equal(outline(a), 'x .z y n');
+  assert.equal(outline(b), 'x .z y n');
+});
+
+test('snapshots that cross, again and again: nothing done here is undone', async () => {
+  const two = pair(['x', 'y', 'z', 'd']);
+  const { a, b, atA, atB } = two;
+  await inStep(two);
+  ops.delete(a.library, { ids: ['d'] }, 2000 * DAY);
+  ops.move(a.library, { tree: MAIN, ids: ['z'], target: 'x', position: 'inside' });
+  ops.rename(a.library, { id: 'y', name: 'Named on a' });
+  await exchange(atA, a); // a tells...
+  add(b, 'b1', 2000);
+  await exchange(atB, b); // ...b, which has not heard, tells too...
+  bring(atB, atA); // ...and b's write is the one that stays.
+  await exchange(atA, a);
+  add(b, 'b2', 2000);
+  await exchange(atB, b); // b writes once more before anything of a's reaches it.
+  bring(atB, atA);
+  await exchange(atA, a);
+  assert.equal(outline(a), 'x .z y b1 b2');
+  assert.equal(a.library.nodes.y.name, 'Named on a');
+  await settleDown(two);
+  for (const who of [a, b]) {
+    assert.equal(outline(who), 'x .z y b1 b2', who.ch.device);
+    assert.equal(who.library.nodes.y.name, 'Named on a');
+  }
+});
+
+test('my snapshot was replaced by one that did not know it, and nothing changed here since: I say it again', async () => {
+  const two = pair(['x', 'y']);
+  const { a, b, atA, atB } = two;
+  await inStep(two);
+  const older = structuredClone(atA.cells); // b's snapshot, as a has it.
+  ops.rename(a.library, { id: 'x', name: 'Named on a' });
+  ops.delete(a.library, { ids: ['y'] }, 2000 * DAY);
+  await exchange(atA, a);
+  // The browser settles the two writes its own way: the older one is back.
+  for (const key in atA.cells) delete atA.cells[key];
+  Object.assign(atA.cells, older);
+  await exchange(atA, a);
+  bring(atA, atB);
+  await exchange(atB, b);
+  assert.equal(b.library.nodes.x.name, 'Named on a');
+  assert.equal(outline(b), 'x');
+  // And then, with nothing new on either side, nothing is written, however often they look.
+  await settleDown(two);
+  atA.writes.length = atB.writes.length = 0;
+  await settleDown(two);
+  assert.deepEqual([...atA.writes, ...atB.writes], []);
+});
+
+test('a deletion taken back by an undo comes back everywhere', async () => {
+  const two = pair(['x', 'y']);
+  const { a, b } = two;
+  await inStep(two);
+  const before = structuredClone(a.library);
+  ops.delete(a.library, { ids: ['y'] }, 2000 * DAY);
+  await settleDown(two);
+  assert.equal(outline(b), 'x');
+  // What the worker does for an undo: the change made backwards, and what is back marked as back.
+  apply(a.library, diff(a.library, before), 2000 * DAY + 60_000);
+  revive(a.library, 2000 * DAY + 60_000);
+  await settleDown(two);
+  assert.equal(outline(a), 'x y');
+  assert.equal(outline(b), 'x y');
+  assert.deepEqual([a.library.trash, b.library.trash, goneOf(a.library), goneOf(b.library)], [[], [], [], []]);
+});
+
+test('what an older version left is read: its state here, its snapshot there', async () => {
+  const two = pair(['x', 'y', 'z']);
+  const { a, b, atA, atB } = two;
+  await inStep(two);
+  // The other computer still runs the older version: its snapshot names deletions without their times.
+  ops.delete(b.library, { ids: ['z'] }, 2000 * DAY);
+  await exchange(atB, b);
+  const through = (data, stream) => new Response(new Blob([data]).stream().pipeThrough(stream));
+  const { head } = atB.cells;
+  const packed = head.top.map((name) => atB.cells[`p.${name}`]).join('');
+  const top = JSON.parse(await through(Uint8Array.from(atob(packed), (char) => char.charCodeAt(0)), new DecompressionStream('deflate-raw')).text());
+  delete top.goneAt;
+  const bytes = new Uint8Array(await through(JSON.stringify(top), new CompressionStream('deflate-raw')).arrayBuffer());
+  atB.cells['p.old'] = btoa(Array.from(bytes, (byte) => String.fromCharCode(byte)).join(''));
+  head.top = ['old'];
+  // And this computer has just been updated: what it kept of the channel is in the older shape.
+  const { told, heard, at, ...kept } = a.ch;
+  a.ch = migrate({ ...kept, seen: told.seen, gone: told.gone, before: heard && { clock: heard.clock, seen: heard.seen }, mine: true });
+  bring(atB, atA);
+  await exchange(atA, a);
+  assert.equal(outline(a), 'x y');
+  assert.deepEqual(a.library.trash.map((entry) => entry.node.id), ['z']);
+  await settleDown(two);
+  assert.equal(outline(a), 'x y');
+  assert.equal(outline(b), 'x y');
 });

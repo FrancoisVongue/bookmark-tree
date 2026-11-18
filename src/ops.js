@@ -37,6 +37,7 @@ import {
   removeTree,
   renameNode,
   ROOT,
+  revive,
   setCollapsed,
   stamped,
   VERSION,
@@ -234,13 +235,11 @@ export const ops = {
     if (removeTree(library, tree, at)) return { keepTabs: true };
   },
   /** Puts deleted nodes back, at the end of `tree`. */
-  restore(library, { tree, ids }) {
+  restore(library, { tree, ids }, at) {
     const back = new Set(ids);
-    for (const { node } of library.trash.filter((entry) => back.has(entry.node.id))) {
-      addNode(library, tree, node);
-      delete library.gone?.[node.id];
-    }
+    for (const { node } of library.trash.filter((entry) => back.has(entry.node.id))) addNode(library, tree, node);
     library.trash = library.trash.filter((entry) => !back.has(entry.node.id));
+    revive(library, at);
   },
   /** Empties the trash. That these nodes were deleted stays known (library.gone). */
   'trash-empty'(library) {
