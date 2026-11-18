@@ -107,11 +107,11 @@ test('too big to sync whole: the fresh part travels with its parents, the rest s
   const store = sharedStore();
   const [a, b] = [computer('a'), computer('b')];
   // An old folder with old pages; one page in it is fresh.
-  ops['note-add'](a.library, { tree: MAIN, id: 'folder', name: 'Folder' }, 10 * DAY);
+  ops['group-add'](a.library, { tree: MAIN, id: 'folder', name: 'Folder' }, 10 * DAY);
   for (let n = 0; n < 60; n++) add(a, `old${n}`, 10 + n, 'folder');
   add(a, 'fresh', 2000, 'folder');
   for (let n = 0; n < 20; n++) add(a, `new${n}`, 1900 + n);
-  const budget = 1500;
+  const budget = 1400;
   const hidden = await exchange(store, a, budget);
   await rounds(store, [a, b], budget);
   assert.ok(hidden > 0 && hidden < 81, `${hidden} stay behind`);

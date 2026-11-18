@@ -7,7 +7,9 @@
 //                  { url, title } is the address the page first had, kept
 //                  once it leaves it: the way back. A `pinned` page goes back
 //                  there by itself when its tab closes. A node with `note`
-//                  (markdown text) is a note, not a page.
+//                  (markdown text, which may be empty) is a note, not a page;
+//                  one with `group` is a group: a heading for the nodes under
+//                  it, with a `name` and nothing else of its own.
 //   library.trees  { [treeId]: { id, name, icon?, children, collapsed, quick? } }  where it sits;
 //                  `quick` [nodeId]: the tree's own nodes kept at hand, in order
 //   library.grid   { columns, rows, cells: [treeId | null] }  where each tree
@@ -28,7 +30,7 @@
 //
 // Functions change the library they are given and return what they found.
 
-const VERSION = 2; // Of the shape of a library: see migrate.
+export const VERSION = 3; // Of the shape of a library: see migrate.
 export const ROOT = 'root';
 export const MAIN = 'main';
 
@@ -62,9 +64,29 @@ export function goHome(node) {
   if (node.home) Object.assign(node, node.home);
 }
 
-/** What a node is. A note without text is a group: a heading for the nodes under it. */
+/**
+ * What a node is: a group, a note, or else a page. It is what it was made
+ * as, whatever is in it: a note with nothing written yet is still a note.
+ */
+export const isGroup = (node) => node.group === true;
 export const isNote = (node) => node.note !== undefined;
-export const isGroup = (node) => isNote(node) && !node.note.trim();
+export const isPage = (node) => !isGroup(node) && !isNote(node);
+
+/**
+ * Nodes kept in an older shape (`version`: of the library or the file they
+ * come from), as they are told today. Before version 3 a group was a note
+ * with no text; what behaved as a group then is a group now.
+ */
+export function current(nodes, version = 1) {
+  if (version < 3) {
+    for (const node of Object.values(nodes)) {
+      if (node.note === undefined || node.note.trim()) continue;
+      delete node.note;
+      node.group = true;
+    }
+  }
+  return nodes;
+}
 
 /**
  * What is wrong with a library, in words; nothing, if it is sound. Every node
@@ -155,6 +177,8 @@ export function migrate(library) {
   // Before every page had a home, having one meant being pinned to it.
   if (!library.version) for (const node of Object.values(library.nodes)) if (node.home) node.pinned = true;
   for (const node of Object.values(library.nodes)) delete node.keep; // A mark an older version had ("keep in sight when folded").
+  current(library.nodes, library.version);
+  for (const entry of library.trash) current({ [entry.node.id]: entry.node }, library.version);
   library.version = VERSION;
   return library;
 }

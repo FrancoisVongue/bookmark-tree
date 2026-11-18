@@ -8,7 +8,7 @@ const titleOf = (node) => node.name || node.title;
 
 test('a tree goes out as a bookmarks file and comes back', () => {
   const lib = createLibrary();
-  ops['note-add'](lib, { tree: MAIN, id: 'g', name: 'Work & "play"' });
+  ops['group-add'](lib, { tree: MAIN, id: 'g', name: 'Work & "play"' });
   ops.add(lib, { tree: MAIN, nodes: [{ id: 'a', url: 'https://a/?x=1&y=2', title: 'A <b>' }], target: 'g', position: 'inside' });
   ops.add(lib, { tree: MAIN, nodes: [{ id: 'b', url: 'https://b/', title: 'B' }], target: 'a', position: 'inside' });
   ops.add(lib, { tree: MAIN, nodes: [{ id: 'c', url: 'https://c/', title: 'C' }] });

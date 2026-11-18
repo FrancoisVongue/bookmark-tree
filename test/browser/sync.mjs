@@ -63,7 +63,7 @@ const show = async (step) => {
   await sleep(500);
   console.log(`\n== ${step}   [${commits.length} versions]\n  A: ${await A.titles()}\n  B: ${await B.titles()}`);
 };
-const group = (who, name) => who.msg({ type: 'op', op: 'note-add', args: { tree: 'main', id: `${who.name}-${name}`, name } });
+const group = (who, name) => who.msg({ type: 'op', op: 'group-add', args: { tree: 'main', id: `${who.name}-${name}`, name } });
 
 await show('before');
 await A.sync();

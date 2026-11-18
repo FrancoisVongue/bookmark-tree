@@ -74,7 +74,7 @@ export async function newNote(pane, target) {
 /** A new group, right in the tree after row `target`, with its name ready to be typed. */
 export async function newGroup(pane, target) {
   const id = crypto.randomUUID();
-  await op('note-add', { tree: pane.tree, id, name: t('newGroup'), target, position: 'after' });
+  await op('group-add', { tree: pane.tree, id, name: t('newGroup'), target, position: 'after' });
   await refresh();
   startTyping({ what: 'name', id, pane });
 }

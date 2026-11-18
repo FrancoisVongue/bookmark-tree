@@ -66,7 +66,7 @@ await step('drag Work onto Main: they change places', async () => {
 await step('remove a column: nothing falls off', async () => { await more('remove a column'); await sleep(200); await more('remove a column'); });
 
 await panel.locator('.grid .tab', { hasText: 'Main' }).click(); await sleep(300);
-await msg({ type: 'op', op: 'note-add', args: { tree: 'main', id: 'g', name: 'Reading' } });
+await msg({ type: 'op', op: 'group-add', args: { tree: 'main', id: 'g', name: 'Reading' } });
 await msg({ type: 'op', op: 'add', args: { tree: 'main', nodes: [{ id: 'x', url: 'https://example.com/x', title: 'X & Y' }], target: 'g', position: 'inside' } });
 await sleep(400);
 console.log(`\n== Main is\n    ${await rows()}`);

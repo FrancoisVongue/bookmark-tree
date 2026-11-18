@@ -1,6 +1,6 @@
 // What the menus hold: what can be done with a row, a tree, the panel. (Showing a menu is the screen's: see openMenu in screen.js.)
 
-import { gridOf, isNote, planOf, quickOf } from '../model.js';
+import { gridOf, isNote, isPage, planOf, quickOf } from '../model.js';
 import { t } from '../i18n.js';
 import { here, hideBranch, openBeside, openMenu, rowOf, showBranch, targets, ui, under } from './screen.js';
 import * as cmd from './commands.js';
@@ -17,13 +17,13 @@ const anyLive = (pane, ids, live = true) =>
 export function rowMenu(pane, id) {
   const ids = targets(pane, id);
   const node = ui.library.nodes[id];
-  const page = !isNote(node);
+  const page = isPage(node);
   // The lists kept at hand say what is in them (see model.js); the row's menu offers the other way.
   const planned = planOf(ui.library).includes(id);
   const toPlan = cmd.plannable(ids);
   const kept = quickOf(ui.library.trees[pane.tree]).includes(id);
   return [
-    !page && item('openNote', () => cmd.activate(pane, id)),
+    isNote(node) && item('openNote', () => cmd.activate(pane, id)),
     page && !ui.live.has(id) && item('openBackground', () => cmd.activate(pane, id, 'background')),
     page && item('openWindow', () => cmd.activate(pane, id, 'window')),
     item('openAll', () => cmd.wake(pane, ids), '', !anyLive(pane, ids, false)),

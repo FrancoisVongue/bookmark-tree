@@ -81,7 +81,7 @@ await round();
 await show('one round: both have both');
 const b = await A.panel.locator('.panes .row', { hasText: 'Page /b' }).getAttribute('data-id');
 await A.msg({ type: 'op', op: 'remove', args: { tree: 'main', ids: [b] } });
-await B.msg({ type: 'op', op: 'note-add', args: { tree: 'main', id: 'g', name: 'Home' } });
+await B.msg({ type: 'op', op: 'group-add', args: { tree: 'main', id: 'g', name: 'Home' } });
 await round();
 await show('A removed /b, B added a group, one round');
 await round();

@@ -139,9 +139,9 @@ test('an exported tree comes back as a new tree with a name of its own', () => {
 test('pasted pages land where they were put; a group is a note with a name', () => {
   const lib = library('a\nb');
   ops.add(lib, { tree: MAIN, nodes: [{ id: 'x', url: 'https://x/' }, { id: 'y', url: 'https://y/' }], target: 'a', position: 'after' });
-  ops['note-add'](lib, { tree: MAIN, id: 'g', name: 'Work', target: 'b', position: 'after' });
+  ops['group-add'](lib, { tree: MAIN, id: 'g', name: 'Work', target: 'b', position: 'after' });
   assert.equal(outline(lib), 'a\nx\ny\nb\ng');
-  assert.deepEqual(lib.nodes.g, { id: 'g', note: '', name: 'Work' });
+  assert.deepEqual(lib.nodes.g, { id: 'g', group: true, name: 'Work' });
 });
 
 test('a sound library has no problems; a damaged one is told apart', () => {
@@ -202,7 +202,7 @@ test("a tree's quick row: its own nodes kept at hand, in order, each once; what 
 
 test('the plan: pages in the order to open them, each once; a group is not planned', () => {
   const lib = library('a\nb\nc');
-  ops['note-add'](lib, { tree: MAIN, id: 'g', name: 'Group' });
+  ops['group-add'](lib, { tree: MAIN, id: 'g', name: 'Group' });
   ops.plan(lib, { ids: ['a', 'b', 'g', 'nobody'] });
   assert.deepEqual(planOf(lib), ['a', 'b']);
   ops.plan(lib, { ids: ['c', 'a'], before: 'b' }); // c comes in, a moves: both before b.
