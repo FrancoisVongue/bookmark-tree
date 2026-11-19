@@ -179,8 +179,12 @@ export const ops = {
     addNode(library, tree, stamped({ id, group: true, name }, at));
     if (target) moveNode(library, tree, id, target, position);
   },
+  /** What is written in a note. Written in, a group is a note from then on: what the user typed is never dropped. */
   'note-text'(library, { id, text }) {
-    if (library.nodes[id] && isNote(library.nodes[id])) library.nodes[id].note = text;
+    const node = library.nodes[id];
+    if (!node || isPage(node)) return;
+    delete node.group;
+    node.note = text;
   },
   // The lists kept at hand (see model.js): the plan of the library, the quick row of a tree.
   /** Puts pages into the plan of what to open next: at its end, or before its entry `before`. A group has no page to open. */

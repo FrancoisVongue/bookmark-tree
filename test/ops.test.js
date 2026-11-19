@@ -253,3 +253,14 @@ test('a library of the version before: a node that had come back says so by the 
   assert.deepEqual([now.nodes.a, now.nodes.b.at, 'restored' in now.nodes.b], [{ id: 'a', url: 'https://a/', title: 'a', at: 50 }, 70, false]);
   assert.equal(now.version, 4);
 });
+
+test('what is typed into a note is kept whatever the node was taken for', () => {
+  const library = createLibrary();
+  ops['group-add'](library, { tree: MAIN, id: 'g', name: 'Was a note once' }, 1);
+  ops['note-text'](library, { id: 'g', text: 'written after all' });
+  assert.equal(library.nodes.g.note, 'written after all');
+  assert.equal(library.nodes.g.group, undefined);
+  ops.add(library, { tree: MAIN, nodes: [{ id: 'p', url: 'https://p.example/', title: 'P' }] }, 2);
+  ops['note-text'](library, { id: 'p', text: 'not a note' });
+  assert.equal(library.nodes.p.note, undefined);
+});

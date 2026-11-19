@@ -60,15 +60,21 @@ rules(editor.storage.markdown.parser.md);
 toolbar(editor, document.getElementById('tools'));
 tableTools(editor, document.querySelector('main'));
 
+// What is typed here is never thrown away. The page keeps two things apart:
+//   shown  what the editor made of the library's text when it last took it:
+//          while the editor still says this, nothing was typed here
+//   seen   the library's text itself, as last looked at
+// It takes the library's text only when nothing was typed here, and it does
+// not count its own text as kept until the library says it has it.
 let timer;
-let saved; // The text as the library has it, as far as this page knows.
+let shown = '';
+let seen;
 const text = () => editor.storage.markdown.getMarkdown();
 
 function save() {
   clearTimeout(timer);
-  if (text() === saved) return;
-  saved = text();
-  send({ type: 'op', op: 'note-text', args: { id, text: saved } });
+  if (text() === shown) return;
+  send({ type: 'op', op: 'note-text', args: { id, text: text() } }); // The library answers with "changed": see load.
 }
 
 /** The tab is called what the note's first line says. */
@@ -77,15 +83,21 @@ function name() {
   document.title = first || t('note');
 }
 
-/** Takes the text from the library, unless it is what this page has already. */
+/** Looks at the library's text: takes it if nothing was typed here, and says again what was typed and is not there. */
 async function load() {
   const state = await send({ type: 'get-state' });
   const node = state?.library.nodes[id];
   if (!node) return log('no such note', id);
-  if (node.note === saved || node.note === text()) return;
-  saved = node.note;
+  const kept = node.note ?? '';
+  if (kept === text()) return void ([seen, shown] = [kept, kept]); // The library has what the page has.
+  const typed = text() !== shown;
+  const news = kept !== seen; // Changed elsewhere since this page looked (or never looked at yet).
+  seen = kept;
+  if (typed) return save(); // Not in the library - not yet, or it was not taken: said again. (Changed elsewhere too: what is typed here stays.)
+  if (!news) return;
   // What the library holds is not something the person did here: "Undo" must not take the note back to an empty page.
-  editor.chain().setMeta('addToHistory', false).setContent(node.note, false).run();
+  editor.chain().setMeta('addToHistory', false).setContent(kept, false).run();
+  shown = text();
   name();
 }
 
