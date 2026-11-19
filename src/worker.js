@@ -49,6 +49,18 @@ const openedFrom = new Map();
 
 const windowTree = (windowId) => validTree(state.library, state.windows[windowId]);
 
+// --- Whose word counts ---------------------------------------------------------
+// One person has this library on several computers and is at one of them at a
+// time. Other copies take the later of two things (see takeIn in merge.js),
+// so this computer may put a time only on what the person did here. What its
+// tabs do by themselves - a title that changes, a tab that closes - gets a
+// time only while a person is at it (they touched the computer within the
+// last minute). A computer left on has nothing later than what was done
+// elsewhere, so it can overwrite nothing there, and it has nothing to tell.
+
+/** The time now, if a person is at this computer; else nothing. */
+const whenHere = async () => ((await chrome.idle.queryState(60)) === 'active' ? Date.now() : undefined);
+
 // --- One thing at a time -------------------------------------------------------
 // Every event and command runs after the one before it has finished and been
 // saved, so none of them ever sees a half-made change.
@@ -58,7 +70,8 @@ function enqueue(name, task) {
   const run = queue
     .then(task)
     .then(async (result) => {
-      visited(state, Date.now()); // Whatever this did: where the user is, once that counts, is not in the plan (see journal.js).
+      const here = await whenHere();
+      if (here) visited(state, here); // Whatever this did: where the user is, once that counts, is not in the plan (see journal.js).
       // Not saved is told to the user (see `trouble`); the answer still goes back.
       await commit(name).catch((error) => console.error('[tree] not saved after', name, error));
       return result;
@@ -95,7 +108,7 @@ async function commit(name) {
 
 const allTabs = () => chrome.tabs.query({});
 // (Tabs being closed for nodes that were removed are as good as closed: see settle.)
-const reconcile = async () => core.reconcile(state, (await allTabs()).filter((tab) => !closing.has(tab.id)), (tab) => windowTree(tab.windowId), Date.now());
+const reconcile = async () => core.reconcile(state, (await allTabs()).filter((tab) => !closing.has(tab.id)), (tab) => windowTree(tab.windowId), await whenHere());
 
 async function init() {
   const { library, backups } = await chrome.storage.local.get(['library', 'backups']).catch((error) => {
@@ -155,7 +168,7 @@ chrome.tabs.onCreated.addListener((created) => {
     // The page the user was on. (A worker just woken does not know which tab was shown: where the user's attention was says it.)
     const shownNode = (beside !== tab.id && state.binding[beside]?.node) || state.attention?.node;
     const born = created.pendingUrl || created.url;
-    const result = core.tabCreated(state, tab, { born, opener: created.openerTabId, reported, shownNode, treeId: windowTree(tab.windowId), at: Date.now() });
+    const result = core.tabCreated(state, tab, { born, opener: created.openerTabId, reported, shownNode, treeId: windowTree(tab.windowId), at: await whenHere() });
     log('tab', tab.id, 'created ->', result, `(born ${born || 'with no address'}, opener ${created.openerTabId}, reported ${reported}, beside tab ${beside})`, tab.pendingUrl || tab.url);
   });
 });
@@ -173,14 +186,14 @@ chrome.tabs.onUpdated.addListener((tabId, change, tab) => {
   // Sound is not part of the state: the panels just look again.
   if (change.audible !== undefined || change.mutedInfo !== undefined) chrome.runtime.sendMessage({ type: 'changed' }).catch(() => {});
   if (change.url === undefined && change.title === undefined) return;
-  enqueue('tab updated', () => core.tabChanged(state, tab, Date.now()));
+  enqueue('tab updated', async () => core.tabChanged(state, tab, await whenHere()));
 });
 
 chrome.tabs.onRemoved.addListener((tabId) =>
-  enqueue('tab closed', () => {
+  enqueue('tab closed', async () => {
     openedFrom.delete(tabId);
     log('tab', tabId, 'closed, node', state.binding[tabId]?.node);
-    core.tabClosed(state, tabId, Date.now());
+    core.tabClosed(state, tabId, await whenHere());
   }),
 );
 
@@ -441,7 +454,8 @@ async function exchange() {
   try {
     const theirs = await channel.read(cells);
     if (theirs) await meet(theirs);
-    core.keepFresh(state, Date.now());
+    const here = await whenHere();
+    if (here) core.keepFresh(state, here);
     expire(state.library, Date.now()); // Here, not only at the start: so every computer lets a deletion go at the same age.
     await channel.publish(cells, ch, core.shared(state.library), Date.now());
     await chrome.storage.local.set({ channel: ch });
